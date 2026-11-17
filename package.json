@@ -12,7 +12,8 @@
     "build": "next build",
     "tauri": "tauri",
     "lint": "cd machine && cargo clippy --all-targets -- -D warnings",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --test src/components/menu/spotlight.test.ts"
   },
   "dependencies": {
     "@radix-ui/react-collapsible": "^1.1.12",
@@ -23,6 +24,7 @@
     "@tauri-apps/api": "2.12.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
+    "embla-carousel-react": "8.6.0",
     "lucide-react": "^1.7.0",
     "next": "16.4.6",
     "react": "19.3.1",
