@@ -114,6 +114,9 @@ struct RawPack {
     default_driver: Option<DriverKind>,
     #[serde(default, rename = "quickActions")]
     quick_actions: Vec<RawQuick>,
+    /// kun.databayt.org home card ids this department shows (`public/r/kun/home.json`).
+    #[serde(default)]
+    cards: Vec<String>,
 }
 
 /// A department or skill name: lowercase-ish, no separators, no dots at the start.
@@ -247,6 +250,8 @@ pub struct PackMeta {
     pub quick_actions: Vec<QuickAction>,
     pub skills: Vec<String>,
     pub default_driver: Option<DriverKind>,
+    /// Home card ids, in the pack's order.
+    pub cards: Vec<String>,
 }
 
 /// Reads `departments/<dept>/pack.json`. A missing file gives an empty meta.
@@ -271,6 +276,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         title_en: pick("en").or(plain),
         skills: item_names(&raw.items),
         default_driver: raw.default_driver,
+        cards: raw.cards.iter().filter(|c| valid_name(c)).cloned().collect(),
         quick_actions: raw
             .quick_actions
             .into_iter()

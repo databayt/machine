@@ -329,6 +329,8 @@ fn profile_for(depts: &[&str], catalog: CatalogAccess) -> MachineProfile {
                 title_ar: None,
                 quick_actions: Vec::new(),
                 skills: Vec::new(),
+                cards: Vec::new(),
+
             })
             .collect(),
         repos: Vec::new(),

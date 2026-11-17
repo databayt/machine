@@ -139,6 +139,8 @@ fn profile(code: CodeAccess) -> MachineProfile {
                 title_ar: None,
                 quick_actions: Vec::new(),
                 skills: Vec::new(),
+                cards: Vec::new(),
+
             })
             .into(),
         repos: vec!["kun".into(), "hogwarts".into(), "mkan".into()],

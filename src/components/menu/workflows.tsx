@@ -25,6 +25,24 @@ export function workflowsFor({
   if (!dept) return []
   const isAr = lang === "ar"
   const category = (isAr ? dept.title_ar : null) ?? dept.title
+  // The department's cards are the kun.databayt.org home cards it names (same icon, title and
+  // description as the site); a tap asks Kun how to use that piece of the engine for this work.
+  if (dept.cards.length > 0)
+    return dept.cards.map((c) => {
+      const ask = isAr
+        ? `أرني كيف أستخدم «${c.title}» في عمل قسم ${category} اليوم، خطوة بخطوة.`
+        : `Show me how to use ${c.title} for ${category} work today, step by step.`
+      return {
+        key: `card:${c.id}`,
+        category,
+        title: c.title,
+        description: c.description,
+        image: c.image,
+        href: promptHref(lang, ask),
+        howHref: `https://kun.databayt.org/${lang}${c.href}`,
+      }
+    })
+
   const seen = new Set<string>()
   const out: Workflow[] = []
   const add = (w: Workflow) => {

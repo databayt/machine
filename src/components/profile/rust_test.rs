@@ -254,3 +254,26 @@ fn hidden_skills_leave_the_menu_and_bad_ids_are_refused() {
         Err(ProfileError::Corrupt(..))
     ));
 }
+
+#[test]
+fn department_cards_come_from_the_home_registry_in_pack_order() {
+    let kun = kun();
+    fs::write(
+        kun.path().join("departments/sales/pack.json"),
+        r#"{"name":"sales","title":"Sales","items":[],"cards":["social-hub","ghost","captain"]}"#,
+    )
+    .unwrap();
+    let reg = kun.path().join("public/r/kun");
+    fs::create_dir_all(&reg).unwrap();
+    fs::write(
+        reg.join("home.json"),
+        r#"{"cards":[
+            {"id":"captain","title":"Captain","description":"CEO brain.","image":"ceo.png","href":"/engine/captain"},
+            {"id":"social-hub","title":"Social","description":"Manage social posts.","image":"like.png","href":"/social"}]}"#,
+    )
+    .unwrap();
+    let r = resolve_in(kun.path(), "moed", DriverKind::Claude).unwrap();
+    let cards: Vec<&str> = r.profile.departments[0].cards.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(cards, ["social-hub", "captain"], "unknown ids drop, order is the pack's");
+    assert_eq!(r.profile.departments[0].cards[0].image.as_deref(), Some("like.png"));
+}

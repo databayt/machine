@@ -10,7 +10,24 @@ export type Access = { code: "read" | "write", workspace: "write" | "none", cata
 /**
  * A department the machine works in.
  */
-export type Department = { name: string, title: string, title_ar: string | null, quick_actions: Array<QuickAction>, skills: Array<SkillRef>, };
+export type Department = { name: string, title: string, title_ar: string | null, quick_actions: Array<QuickAction>, skills: Array<SkillRef>, 
+/**
+ * The kun.databayt.org home cards this department shows — same title, description and icon.
+ */
+cards: Array<HomeCard>, };
+
+/**
+ * One card of the kun.databayt.org home grid, as published in `public/r/kun/home.json`.
+ */
+export type HomeCard = { id: string, title: string, description: string, 
+/**
+ * File under `/icons/home/` (the same raster icon the site shows), when it has one.
+ */
+image: string | null, 
+/**
+ * Path on kun.databayt.org (`/engine/skills`).
+ */
+href: string, };
 
 /**
  * What the UI knows about this machine.

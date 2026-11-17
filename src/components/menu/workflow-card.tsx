@@ -30,8 +30,10 @@ export interface Workflow {
   description: string
   /** The composer starter (`/<lang>/?prompt=…`). */
   href: string
-  /** Asks the agent how this workflow works. */
+  /** Asks the agent how this workflow works (or, for a home card, its kun.databayt.org page). */
   howHref: string
+  /** A kun.databayt.org home icon under `/icons/home/` — the site's own raster, used as-is. */
+  image?: string | null
 }
 
 // A large filled icon per workflow, picked by keywords in its name; Sparkle when nothing matches.
@@ -66,12 +68,18 @@ export const iconFor = (name: string): Icon => ICONS.find(([re]) => re.test(name
 export function WorkflowCard({ w }: { w: Workflow; isAr: boolean }): React.JSX.Element {
   // The title and its starter, not the key: a quick action's key is "qa:…", which reads as QA.
   const Glyph = iconFor(`${w.title} ${w.description}`)
+  const icon = w.image ? (
+    // The site's own icon file, copied in public/icons/home; it inverts in dark mode as the site does.
+    <img src={`/icons/home/${w.image}`} alt="" aria-hidden className="size-12 object-contain dark:invert" draggable={false} />
+  ) : (
+    <Glyph aria-hidden weight="fill" className="size-14 text-foreground/85 transition-colors group-hover:text-foreground" />
+  )
   return (
     <Link
       href={w.href}
       className="group flex min-h-[240px] flex-col justify-between rounded-3xl bg-background p-7 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
     >
-      <Glyph aria-hidden weight="fill" className="size-14 text-foreground/85 transition-colors group-hover:text-foreground" />
+      {icon}
       <div>
         <h3 dir="auto" className="text-xl font-semibold leading-[1.15] tracking-tight lg:text-2xl">
           {w.title}

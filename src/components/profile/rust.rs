@@ -97,6 +97,36 @@ pub struct Department {
     pub title_ar: Option<String>,
     pub quick_actions: Vec<QuickAction>,
     pub skills: Vec<SkillRef>,
+    /// The kun.databayt.org home cards this department shows — same title, description and icon.
+    pub cards: Vec<HomeCard>,
+}
+
+/// One card of the kun.databayt.org home grid, as published in `public/r/kun/home.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "profile/types.ts")]
+pub struct HomeCard {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    /// File under `/icons/home/` (the same raster icon the site shows), when it has one.
+    pub image: Option<String>,
+    /// Path on kun.databayt.org (`/engine/skills`).
+    pub href: String,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct HomeFile {
+    #[serde(default)]
+    cards: Vec<HomeCard>,
+}
+
+/// The home cards from the kun checkout's registry; empty when it has not been generated.
+fn home_cards(kun: &Path) -> Vec<HomeCard> {
+    fs::read_to_string(kun.join("public/r/kun/home.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<HomeFile>(&s).ok())
+        .unwrap_or_default()
+        .cards
 }
 
 /// What the UI knows about this machine.
@@ -236,7 +266,10 @@ fn valid_id(s: &str) -> bool {
 
 fn department(kun: &Path, name: &str, hidden: &[String]) -> Result<Department, PackError> {
     let meta = pack::meta_in(kun, name)?;
+    let home = home_cards(kun);
+    let cards = meta.cards.iter().filter_map(|id| home.iter().find(|c| &c.id == id).cloned()).collect();
     Ok(Department {
+        cards,
         name: name.to_owned(),
         title: meta.title_en.unwrap_or_else(|| name.to_owned()),
         title_ar: meta.title_ar,
