@@ -2,7 +2,7 @@
 import type { CatalogItem } from "../catalog/types"
 
 /** How many tags the cloud shows at most. */
-const MAX_TAGS = 24
+const MAX_TAGS = 40
 
 /**
  * The department's most relevant keywords, ranked: a keyword scores once for every catalog item of

@@ -78,7 +78,7 @@ export function Issues({
   login: string | undefined;
   loading: boolean;
   onStarted: () => void;
-}): React.JSX.Element {
+}): React.JSX.Element | null {
   const isAr = lang === "ar";
   const t = tr(isAr);
   const router = useRouter();
@@ -102,9 +102,7 @@ export function Issues({
           <li key={i} className="h-44 animate-pulse rounded-3xl bg-background" />
         ))}
       </ul>
-    ) : (
-      <p className={quiet}>{t(copy.tasksOffline)}</p>
-    );
+    ) : null;
   }
 
   return (

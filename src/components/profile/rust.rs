@@ -99,6 +99,33 @@ pub struct Department {
     pub skills: Vec<SkillRef>,
     /// The kun.databayt.org home cards this department shows — same title, description and icon.
     pub cards: Vec<HomeCard>,
+    /// The repos this department works in, each with its feature blocks (the tag cloud's
+    /// repository keywords), from `public/r/kun/repos.json`.
+    pub repos: Vec<RepoTag>,
+}
+
+/// A repository and its feature blocks, as published in `public/r/kun/repos.json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "profile/types.ts")]
+pub struct RepoTag {
+    pub name: String,
+    #[serde(default)]
+    pub blocks: Vec<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct ReposFile {
+    #[serde(default)]
+    repos: Vec<RepoTag>,
+}
+
+/// The repos registry from the kun checkout; empty when it has not been generated.
+fn repo_tags(kun: &Path) -> Vec<RepoTag> {
+    fs::read_to_string(kun.join("public/r/kun/repos.json"))
+        .ok()
+        .and_then(|s| serde_json::from_str::<ReposFile>(&s).ok())
+        .unwrap_or_default()
+        .repos
 }
 
 /// One card of the kun.databayt.org home grid, as published in `public/r/kun/home.json`.
@@ -268,8 +295,15 @@ fn department(kun: &Path, name: &str, hidden: &[String]) -> Result<Department, P
     let meta = pack::meta_in(kun, name)?;
     let home = home_cards(kun);
     let cards = meta.cards.iter().filter_map(|id| home.iter().find(|c| &c.id == id).cloned()).collect();
+    let all_repos = repo_tags(kun);
+    let repos = meta
+        .repos
+        .iter()
+        .map(|r| all_repos.iter().find(|t| &t.name == r).cloned().unwrap_or_else(|| RepoTag { name: r.clone(), blocks: Vec::new() }))
+        .collect();
     Ok(Department {
         cards,
+        repos,
         name: name.to_owned(),
         title: meta.title_en.unwrap_or_else(|| name.to_owned()),
         title_ar: meta.title_ar,

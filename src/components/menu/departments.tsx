@@ -19,7 +19,7 @@ import type { MachineProfile } from "../profile/types";
 const EASE: [number, number, number, number] = [0.45, 0.4, 0.17, 0.82];
 
 const item =
-  "relative block whitespace-nowrap py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4 lg:text-2xl";
+  "relative block whitespace-nowrap py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4 lg:text-3xl";
 
 export function Departments({
   isAr,
@@ -43,7 +43,7 @@ export function Departments({
   tools?: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className="min-w-0 lg:flex lg:flex-col">
+    <section className="min-w-0 lg:flex lg:flex-col lg:justify-between lg:self-stretch">
       <ul
         role="listbox"
         aria-label={label}
@@ -81,9 +81,9 @@ export function Departments({
       </ul>
 
       {links.length > 0 && (
-        // A short step below the departments (not pinned to the column's foot), on a narrow column
-        // so the divider stays short. Same type as above.
-        <nav className="hidden lg:mt-8 lg:block lg:w-40">
+        // Pinned to the column's foot, so the column is as tall as the work area beside it; a
+        // narrow block keeps the dividers short. Same type as above.
+        <nav className="hidden lg:mt-8 lg:block lg:w-44">
           <hr className="mb-4 border-foreground/10" />
           <ul className="flex flex-col gap-1">
             {links.map((l) => (

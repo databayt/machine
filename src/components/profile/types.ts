@@ -14,7 +14,12 @@ export type Department = { name: string, title: string, title_ar: string | null,
 /**
  * The kun.databayt.org home cards this department shows — same title, description and icon.
  */
-cards: Array<HomeCard>, };
+cards: Array<HomeCard>, 
+/**
+ * The repos this department works in, each with its feature blocks (the tag cloud's
+ * repository keywords), from `public/r/kun/repos.json`.
+ */
+repos: Array<RepoTag>, };
 
 /**
  * One card of the kun.databayt.org home grid, as published in `public/r/kun/home.json`.
@@ -38,6 +43,11 @@ export type MachineProfile = { login: string, name: string, os: string, driver: 
  * where that lane is Mac-only). Filtered from the menu, the catalog and the workspace.
  */
 hidden: Array<string>, };
+
+/**
+ * A repository and its feature blocks, as published in `public/r/kun/repos.json`.
+ */
+export type RepoTag = { name: string, blocks: Array<string>, };
 
 /**
  * One skill a department offers, from its SKILL.md frontmatter.

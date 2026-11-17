@@ -232,7 +232,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
                   <Banner items={spotlight} lang={lang} onNavigate={close} />
                   <Workflows lang={lang} workflows={workflows} />
-                  <Keywords lang={lang} department={dept} />
+                  <Keywords lang={lang} department={current} />
                   <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={close} />
                 </div>
               </>

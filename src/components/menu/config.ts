@@ -30,7 +30,6 @@ export const copy = {
   healthOk: { en: "Healthy", ar: "سليم" },
   healthBad: { en: "Needs attention", ar: "يحتاج انتباهاً" },
   healthUnknown: { en: "Not checked yet", ar: "لم يُفحص بعد" },
-  tasksOffline: { en: "Tasks load when the machine is connected.", ar: "تظهر المهام حين يتصل الجهاز." },
   noSprintTasks: { en: "No sprint tasks for this department yet.", ar: "لا مهام في هذه الدورة بعد" },
   continue: { en: "Continue", ar: "تابع" },
   pillOpen: { en: "Open", ar: "افتح" },

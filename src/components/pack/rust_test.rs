@@ -140,6 +140,7 @@ fn profile(code: CodeAccess) -> MachineProfile {
                 quick_actions: Vec::new(),
                 skills: Vec::new(),
                 cards: Vec::new(),
+                repos: Vec::new(),
 
             })
             .into(),
