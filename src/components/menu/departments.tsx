@@ -18,7 +18,7 @@ export function Departments({
   first: React.Ref<HTMLButtonElement>;
 }) {
   return (
-    <section className="min-w-0 lg:ps-10 lg:pt-0.5">
+    <section className="min-w-0">
       <ul
         role="listbox"
         aria-label={label}
