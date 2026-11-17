@@ -63,6 +63,34 @@ export function Keywords({ lang, department }: { lang: Locale; department: Depar
     return out;
   }, [repos, words]);
 
+  // Mixed, not big-to-small: after the repos, the ranked words and the repos' blocks are dealt from
+  // both ends of the ranking — strongest, faintest, next strongest, next faintest… — so large and
+  // small words alternate while the important ones still land early, inside the two lines.
+  const mixed = useMemo(() => {
+    const ranked = [
+      ...words.map((w, i) => ({
+        key: `kw:${w.word}`,
+        label: w.word,
+        href: promptHref(lang, w.word),
+        title: undefined as string | undefined,
+        className: weight(i, words.length),
+      })),
+      ...blocks.map((b) => ({
+        key: `block:${b.repo}:${b.block}`,
+        label: b.block,
+        href: promptHref(lang, `${b.repo} ${b.block}`),
+        title: `${b.repo} · ${b.block}`,
+        className: "text-sm text-foreground/35",
+      })),
+    ];
+    const out: typeof ranked = [];
+    for (let lo = 0, hi = ranked.length - 1; lo <= hi; lo += 1, hi -= 1) {
+      out.push(ranked[lo]);
+      if (hi !== lo) out.push(ranked[hi]);
+    }
+    return out;
+  }, [words, blocks, lang]);
+
   if (!department || (repos.length === 0 && words.length === 0 && blocks.length === 0)) return null;
 
   return (
@@ -80,25 +108,10 @@ export function Keywords({ lang, department }: { lang: Locale; department: Depar
           </Link>
         </li>
       ))}
-      {words.map((w, i) => (
-        <li key={`kw:${w.word}`}>
-          <Link
-            href={promptHref(lang, w.word)}
-            dir="auto"
-            className={cn(tagBase, weight(i, words.length))}
-          >
-            {w.word}
-          </Link>
-        </li>
-      ))}
-      {blocks.map((b) => (
-        <li key={`block:${b.repo}:${b.block}`}>
-          <Link
-            href={promptHref(lang, `${b.repo} ${b.block}`)}
-            title={`${b.repo} · ${b.block}`}
-            className={cn(tagBase, "text-sm text-foreground/35")}
-          >
-            {b.block}
+      {mixed.map((m) => (
+        <li key={m.key}>
+          <Link href={m.href} title={m.title} dir="auto" className={cn(tagBase, m.className)}>
+            {m.label}
           </Link>
         </li>
       ))}
