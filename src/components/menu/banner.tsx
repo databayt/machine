@@ -1,17 +1,18 @@
-"use client"
+"use client";
 
 // copy of hogwarts next-action-client.tsx — change both together.
 // (hogwarts/src/components/school-dashboard/dashboard/next-action-client.tsx)
-import { useEffect, useMemo, useRef, useState } from "react"
-import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 
-import { cn } from "@/lib/utils"
-import type { Locale } from "@/components/local/config"
-import { tr } from "../chat/config"
-import { copy } from "./config"
-import { runStart } from "./data"
-import type { SpotlightItem } from "./spotlight"
+import { cn } from "@/lib/utils";
+import type { Locale } from "@/components/local/config";
+import { tr } from "../chat/config";
+import { copy } from "./config";
+import { runStart } from "./data";
+import type { SpotlightItem } from "./spotlight";
 
 /**
  * The menu's banner: the dashboard's green hero object — the same ground, geometry, type and pills
@@ -30,7 +31,7 @@ import type { SpotlightItem } from "./spotlight"
  */
 
 /** How long a fully-revealed sentence holds before it leaves. */
-const HOLD_MS = 10_000
+const HOLD_MS = 10_000;
 
 /**
  * The leave — the sentence evaporates: the whole line lifts and goes out of focus while the
@@ -39,31 +40,31 @@ const HOLD_MS = 10_000
  * time to go. Opacity is faster than the blur and lands first: the headline sits in a clipped box,
  * and a blur still carrying ink at the box edge would be cut off in a straight line.
  */
-const SMOKE_SPREAD_MS = 300
-const SMOKE_FADE_MS = 340
+const SMOKE_SPREAD_MS = 300;
+const SMOKE_FADE_MS = 340;
 /** The last letter starts a full spread late; the cushion keeps the swap off that exact frame. */
-const SMOKE_MS = SMOKE_SPREAD_MS + SMOKE_FADE_MS + 60
+const SMOKE_MS = SMOKE_SPREAD_MS + SMOKE_FADE_MS + 60;
 
 /** The entrance — every letter starts as a random one and flips until its turn, left to right. */
-const REVEAL_MS_PER_CHAR = 26
-const FLIP_MS = 55
+const REVEAL_MS_PER_CHAR = 26;
+const FLIP_MS = 55;
 
 /**
  * What the noise is made of, per locale. Latin gibberish inside an Arabic line opens a
  * left-to-right run inside a right-to-left one, and bidi then moves it around as it flips.
  */
-const ARABIC_CHARSET = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي"
-const LATIN_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
+const ARABIC_CHARSET = "ابتثجحخدذرزسشصضطظعغفقكلمنهوي";
+const LATIN_CHARSET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 
 /**
  * One rendered unit: a base letter with any combining marks that belong to it. Splitting on code
  * points would tear a shadda off its letter and render it as a floating accent.
  */
-const CLUSTERS = /\P{M}\p{M}*|\p{M}+/gu
+const CLUSTERS = /\P{M}\p{M}*|\p{M}+/gu;
 
 interface Piece {
-  ch: string
-  bold: boolean
+  ch: string;
+  bold: boolean;
 }
 
 /**
@@ -74,22 +75,24 @@ interface Piece {
  */
 function toPieces(template: string | undefined, mark: string): Piece[] {
   const clusters = (s: string, bold: boolean): Piece[] =>
-    (s.match(CLUSTERS) ?? []).map((ch) => ({ ch, bold }))
+    (s.match(CLUSTERS) ?? []).map((ch) => ({ ch, bold }));
 
-  if (!template) return clusters(mark, true)
+  if (!template) return clusters(mark, true);
 
   if (template.includes("**")) {
-    return template.split("**").flatMap((seg, i) => clusters(seg.replace("{mark}", mark), i % 2 === 1))
+    return template
+      .split("**")
+      .flatMap((seg, i) => clusters(seg.replace("{mark}", mark), i % 2 === 1));
   }
 
-  const [before, after] = template.split("{mark}")
-  if (after === undefined) return clusters(template, false)
+  const [before, after] = template.split("{mark}");
+  if (after === undefined) return clusters(template, false);
 
-  return [...clusters(before + mark, true), ...clusters(after, false)]
+  return [...clusters(before + mark, true), ...clusters(after, false)];
 }
 
 /** The card shows at most this many — the ranking's own cap. */
-const MAX_VISIBLE = 4
+const MAX_VISIBLE = 4;
 
 export function Banner({
   items,
@@ -97,36 +100,39 @@ export function Banner({
   onNavigate,
   className,
 }: {
-  items: SpotlightItem[]
-  lang: Locale
+  items: SpotlightItem[];
+  lang: Locale;
   /** Called when a pill takes the reader off the menu (Start closes it). */
-  onNavigate?: () => void
-  className?: string
+  onNavigate?: () => void;
+  className?: string;
 }) {
-  const t = tr(lang === "ar")
-  const router = useRouter()
-  const [index, setIndex] = useState(0)
-  const [leaving, setLeaving] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const t = tr(lang === "ar");
+  const router = useRouter();
+  const [index, setIndex] = useState(0);
+  const [leaving, setLeaving] = useState(false);
+  const [busy, setBusy] = useState(false);
   /**
    * Items the reader has acknowledged. A LOCAL dismissal and nothing more: it takes the entry off
    * this card for this visit and writes nothing. The next open asks the data again.
    */
-  const [dismissed, setDismissed] = useState<string[]>([])
+  const [dismissed, setDismissed] = useState<string[]>([]);
 
   const live = useMemo(
     () => items.filter((x) => !dismissed.includes(x.id)).slice(0, MAX_VISIBLE),
     [items, dismissed],
-  )
-  const item = live[index % Math.max(1, live.length)]
+  );
+  const item = live[index % Math.max(1, live.length)];
   // Keyed on the two STRINGS, not on the objects they came out of: `pieces` feeds an effect that
   // sets state, so an identity that changed every render would restart the scramble on its own
   // output and never settle.
-  const template = item?.template ?? ""
-  const mark = item?.mark ?? ""
-  const pieces = useMemo(() => toPieces(template || undefined, mark), [template, mark])
+  const template = item?.template ?? "";
+  const mark = item?.mark ?? "";
+  const pieces = useMemo(
+    () => toPieces(template || undefined, mark),
+    [template, mark],
+  );
 
-  const revealMs = pieces.length * REVEAL_MS_PER_CHAR
+  const revealMs = pieces.length * REVEAL_MS_PER_CHAR;
 
   /**
    * The cycle. Index advances only inside an effect, so the server and the first client render
@@ -135,16 +141,18 @@ export function Banner({
    * rotation — the copy still changes on the same clock, it simply cuts instead of evaporating.
    */
   useEffect(() => {
-    if (live.length < 2) return
-    if (typeof window === "undefined") return
+    if (live.length < 2) return;
+    if (typeof window === "undefined") return;
 
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches
-    const enter = reduce ? 0 : revealMs
-    const leave = reduce ? 0 : SMOKE_MS
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const enter = reduce ? 0 : revealMs;
+    const leave = reduce ? 0 : SMOKE_MS;
 
-    let holdTimer: ReturnType<typeof setTimeout> | undefined
-    let advanceTimer: ReturnType<typeof setTimeout> | undefined
-    let onVisible: (() => void) | undefined
+    let holdTimer: ReturnType<typeof setTimeout> | undefined;
+    let advanceTimer: ReturnType<typeof setTimeout> | undefined;
+    let onVisible: (() => void) | undefined;
 
     /**
      * A hidden window still runs timers, and cycling into a page nobody is looking at just lands
@@ -154,38 +162,61 @@ export function Banner({
     const arm = () => {
       holdTimer = setTimeout(() => {
         if (document.hidden) {
-          onVisible = arm
-          document.addEventListener("visibilitychange", arm, { once: true })
-          return
+          onVisible = arm;
+          document.addEventListener("visibilitychange", arm, { once: true });
+          return;
         }
 
-        if (!reduce) setLeaving(true)
+        if (!reduce) setLeaving(true);
         advanceTimer = setTimeout(() => {
-          setIndex((i) => (i + 1) % live.length)
-          setLeaving(false)
-        }, leave)
-      }, enter + HOLD_MS)
-    }
+          setIndex((i) => (i + 1) % live.length);
+          setLeaving(false);
+        }, leave);
+      }, enter + HOLD_MS);
+    };
 
-    arm()
+    arm();
 
     return () => {
-      if (holdTimer) clearTimeout(holdTimer)
-      if (advanceTimer) clearTimeout(advanceTimer)
-      if (onVisible) document.removeEventListener("visibilitychange", onVisible)
-    }
-  }, [live.length, index, revealMs])
+      if (holdTimer) clearTimeout(holdTimer);
+      if (advanceTimer) clearTimeout(advanceTimer);
+      if (onVisible)
+        document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [live.length, index, revealMs]);
 
-  if (!item) return null
+  if (!item) return null;
+
+  /**
+   * The arrows: the same leave as the timer (the line evaporates), then the next or previous
+   * sentence sorts itself in. Changing `index` re-arms the hold, so a manual step gets its full 10 s.
+   */
+  function step(delta: number) {
+    if (live.length < 2) return;
+    const reduce = window.matchMedia(
+      "(prefers-reduced-motion: reduce)",
+    ).matches;
+    const go = () => {
+      setIndex((i) => (i + delta + live.length) % live.length);
+      setLeaving(false);
+    };
+    if (reduce) return go();
+    setLeaving(true);
+    setTimeout(go, SMOKE_MS);
+  }
+  const isAr = lang === "ar";
+  // In Arabic the visual "previous" arrow points right.
+  const PrevIcon = isAr ? ChevronRightIcon : ChevronLeftIcon;
+  const NextIcon = isAr ? ChevronLeftIcon : ChevronRightIcon;
 
   async function start(id: string) {
-    setBusy(true)
+    setBusy(true);
     try {
-      await runStart(id)
-      onNavigate?.()
-      router.push(`/${lang}/?task=${encodeURIComponent(id)}`)
+      await runStart(id);
+      onNavigate?.();
+      router.push(`/${lang}/?task=${encodeURIComponent(id)}`);
     } catch {
-      setBusy(false)
+      setBusy(false);
     }
   }
 
@@ -200,34 +231,67 @@ export function Banner({
             synthesised and lose the face's own drawing. `h-[2.7em]` is exactly two lines of
             `leading-[1.35]` — the only thing between the copy and a card that changes height on a
             timer. `text-balance` splits those two lines to near equal width. */}
-        <SortingHeadline key={item.id} pieces={pieces} leaving={leaving} locale={lang} />
+        <SortingHeadline
+          key={item.id}
+          pieces={pieces}
+          leaving={leaving}
+          locale={lang}
+        />
 
-        {/* One white pill for the way in, one ghost beside it, both a single word. */}
-        <div className="relative mt-7 flex flex-wrap items-center gap-2">
-          {item.kind === "start" && item.taskId ? (
-            <button type="button" disabled={busy} className={pill("default")} onClick={() => void start(item.taskId!)}>
-              {t(copy.start)}
+        {/* One white pill for the way in, one ghost beside it, both a single word — and, at the far
+            end of the same row, the arrows that step through the items by hand. */}
+        <div className="relative mt-7 flex items-center justify-between gap-4">
+          <div className="flex flex-wrap items-center gap-2">
+            {item.kind === "start" && item.taskId ? (
+              <button
+                type="button"
+                disabled={busy}
+                className={pill("default")}
+                onClick={() => void start(item.taskId!)}
+              >
+                {t(copy.start)}
+              </button>
+            ) : item.href ? (
+              <Link className={pill("default")} href={`/${lang}${item.href}`}>
+                {t(item.kind === "continue" ? copy.continue : copy.pillOpen)}
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className={pill("ghost")}
+              onClick={() => {
+                setDismissed((d) => [...d, item.id]);
+                setIndex(0);
+                setLeaving(false);
+              }}
+            >
+              {t(copy.acknowledge)}
             </button>
-          ) : item.href ? (
-            <Link className={pill("default")} href={`/${lang}${item.href}`}>
-              {t(item.kind === "continue" ? copy.continue : copy.pillOpen)}
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            className={pill("ghost")}
-            onClick={() => {
-              setDismissed((d) => [...d, item.id])
-              setIndex(0)
-              setLeaving(false)
-            }}
-          >
-            {t(copy.acknowledge)}
-          </button>
+          </div>
+          {live.length > 1 && (
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                aria-label={t(copy.prevItem)}
+                className={arrow}
+                onClick={() => step(-1)}
+              >
+                <PrevIcon className="size-5" strokeWidth={2} aria-hidden />
+              </button>
+              <button
+                type="button"
+                aria-label={t(copy.nextItem)}
+                className={arrow}
+                onClick={() => step(1)}
+              >
+                <NextIcon className="size-5" strokeWidth={2} aria-hidden />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>
-  )
+  );
 }
 
 /**
@@ -235,6 +299,10 @@ export function Banner({
  * the same in both themes. A token pair would invert in dark mode and lose the contrast the ground
  * was chosen for.
  */
+/** The banner's arrows: round, dark ink on the green, the ghost pill's hover. Pinned like the pills. */
+const arrow =
+  "inline-flex size-10 items-center justify-center rounded-full text-[#050505] outline-none transition-colors hover:bg-[#050505]/10 focus-visible:ring-2 focus-visible:ring-[#050505]/40";
+
 function pill(variant: "default" | "ghost") {
   return cn(
     "inline-flex h-10 items-center justify-center gap-2 rounded-full px-5",
@@ -243,7 +311,7 @@ function pill(variant: "default" | "ghost") {
     variant === "default"
       ? "bg-white text-[#050505] hover:bg-white/90"
       : "text-[#050505]/75 hover:bg-[#050505]/10 hover:text-[#050505]",
-  )
+  );
 }
 
 /**
@@ -255,56 +323,68 @@ function pill(variant: "default" | "ghost") {
  * it. `display: inline-block` DOES break the joining, which is why the lift is one `translate` on
  * the block and never a per-letter one.
  */
-function SortingHeadline({ pieces, leaving, locale }: { pieces: Piece[]; leaving: boolean; locale: string }) {
-  const charset = locale === "en" ? LATIN_CHARSET : ARABIC_CHARSET
-  const plain = pieces.map((p) => p.ch).join("")
+function SortingHeadline({
+  pieces,
+  leaving,
+  locale,
+}: {
+  pieces: Piece[];
+  leaving: boolean;
+  locale: string;
+}) {
+  const charset = locale === "en" ? LATIN_CHARSET : ARABIC_CHARSET;
+  const plain = pieces.map((p) => p.ch).join("");
 
   // Server render and first client render are the real sentence — the noise is seeded in an
   // effect, after hydration, so `Math.random` never reaches the markup the two must agree on.
-  const [revealed, setRevealed] = useState(pieces.length)
-  const noise = useRef<string[]>([])
-  const [, repaint] = useState(0)
+  const [revealed, setRevealed] = useState(pieces.length);
+  const noise = useRef<string[]>([]);
+  const [, repaint] = useState(0);
 
   useEffect(() => {
-    if (typeof window === "undefined") return
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
 
-    const pick = () => charset.charAt(Math.floor(Math.random() * charset.length))
+    const pick = () =>
+      charset.charAt(Math.floor(Math.random() * charset.length));
     const scramble = () => {
-      noise.current = pieces.map((p) => (p.ch === " " ? " " : pick()))
-    }
+      noise.current = pieces.map((p) => (p.ch === " " ? " " : pick()));
+    };
 
-    scramble()
-    setRevealed(0)
+    scramble();
+    setRevealed(0);
 
-    const start = performance.now()
-    let lastFlip = start
-    let frame = 0
+    const start = performance.now();
+    let lastFlip = start;
+    let frame = 0;
 
     const step = (now: number) => {
-      const done = Math.min(pieces.length, Math.floor((now - start) / REVEAL_MS_PER_CHAR))
-      setRevealed(done)
-      if (done >= pieces.length) return
+      const done = Math.min(
+        pieces.length,
+        Math.floor((now - start) / REVEAL_MS_PER_CHAR),
+      );
+      setRevealed(done);
+      if (done >= pieces.length) return;
 
       if (now - lastFlip >= FLIP_MS) {
         for (let i = done; i < pieces.length; i += 1) {
-          noise.current[i] = pieces[i].ch === " " ? " " : pick()
+          noise.current[i] = pieces[i].ch === " " ? " " : pick();
         }
-        lastFlip = now
+        lastFlip = now;
         // `revealed` only changes every REVEAL_MS_PER_CHAR, so on its own it would hold the paint
         // still between steps and the noise would sit frozen.
-        repaint((n) => n + 1)
+        repaint((n) => n + 1);
       }
 
-      frame = requestAnimationFrame(step)
-    }
+      frame = requestAnimationFrame(step);
+    };
 
-    frame = requestAnimationFrame(step)
-    return () => cancelAnimationFrame(frame)
-  }, [pieces, charset])
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [pieces, charset]);
 
   // Divided across the sentence, so the leave takes the same time whatever the copy is.
-  const stagger = SMOKE_SPREAD_MS / Math.max(1, pieces.length)
+  const stagger = SMOKE_SPREAD_MS / Math.max(1, pieces.length);
 
   return (
     <h2
@@ -337,5 +417,5 @@ function SortingHeadline({ pieces, leaving, locale }: { pieces: Piece[]; leaving
         ))}
       </span>
     </h2>
-  )
+  );
 }

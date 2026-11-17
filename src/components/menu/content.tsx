@@ -14,6 +14,7 @@ import { loadHealth, loadTasks, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
 import { Tools } from "./tools";
+import { Keywords } from "./keywords";
 import { MorphButton } from "./morph-button";
 import { Issues, upcoming } from "./issues";
 import { Banner } from "./banner";
@@ -231,6 +232,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
                   <Banner items={spotlight} lang={lang} onNavigate={close} />
                   <Workflows lang={lang} workflows={workflows} />
+                  <Keywords lang={lang} department={dept} />
                   <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={close} />
                 </div>
               </>

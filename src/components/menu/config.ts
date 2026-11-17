@@ -9,6 +9,8 @@ export const copy = {
   chats: { en: "Chats", ar: "المحادثات" },
   noChats: { en: "No chats yet. Ask something and it is kept here.", ar: "لا محادثات بعد. اسأل شيئاً وستُحفظ هنا." },
   sessions: { en: "Sessions", ar: "الجلسات" },
+  prevItem: { en: "Previous", ar: "السابق" },
+  nextItem: { en: "Next", ar: "التالي" },
   mathematics: { en: "Mathematics", ar: "الرياضيات" },
   mathematicsStarter: {
     en: "Walk me through the Mathematics curriculum we cover: grades, textbooks and how Hogwarts teaches it.",
