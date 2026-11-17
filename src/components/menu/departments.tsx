@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { motion } from "framer-motion";
 
 import { cn } from "@/lib/utils";
 import type { MachineProfile } from "../profile/types";
@@ -12,12 +11,9 @@ import type { MachineProfile } from "../profile/types";
  *
  * The highlight is thmanyah's hero mark (`thmanyah/src/app/globals.css .hero-mark`): a flat
  * highlighter band — no radius — behind the middle of the line (inset ~21% from the top, ~20% from
- * the bottom of the line box), drawn in from the start edge with the reference's tween ease. White
- * here, on the menu's gray. One mark only, under the SELECTED department: it glides to a new
- * department on selection; hover and focus only darken the text, so nothing ghosts in and out.
+ * the bottom of the line box). White here, on the menu's gray. One mark only, under the SELECTED
+ * department, and no motion: it simply moves on a click; hover and focus only darken the text.
  */
-const EASE: [number, number, number, number] = [0.45, 0.4, 0.17, 0.82];
-
 const item =
   "relative block whitespace-nowrap py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4 lg:text-xl";
 
@@ -63,14 +59,7 @@ export function Departments({
               >
                 <span className="relative inline-block">
                   {on && (
-                    <motion.span
-                      aria-hidden
-                      layoutId="department-mark"
-                      className="absolute -inset-x-px bottom-[20%] top-[21%] bg-background ltr:origin-left rtl:origin-right"
-                      initial={{ scaleX: 0 }}
-                      animate={{ scaleX: 1 }}
-                      transition={{ type: "tween", duration: 0.45, ease: EASE }}
-                    />
+                    <span aria-hidden className="absolute -inset-x-px bottom-[20%] top-[21%] bg-background" />
                   )}
                   <span className="relative">{(isAr && d.title_ar) || d.title}</span>
                 </span>
