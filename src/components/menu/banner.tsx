@@ -192,16 +192,7 @@ export function Banner({
   return (
     <section className={cn("flex flex-col", className)}>
       <div className="relative isolate flex flex-1 flex-col justify-center overflow-hidden rounded-[36px] bg-[#00bc6d] px-8 py-12 text-[#050505] sm:px-12 lg:min-h-[259px]">
-        {/* The marginalia mark at the inline end; hidden below md, where the card stacks and it
-            would sit under the headline instead of beside it. */}
-        <img
-          src="/anthropic/marginalia-media-alpha.svg"
-          alt=""
-          decoding="async"
-          draggable={false}
-          aria-hidden="true"
-          className="pointer-events-none absolute end-12 hidden size-[150px] object-contain md:block lg:size-[168px]"
-        />
+        {/* No art here (Abdout, 2026-11-17): the headline takes the full width instead. */}
 
         {/* ~7 words over two lines in a ~16ch measure, the emphasis carried by WEIGHT inside an
             otherwise light line rather than by a highlight. thmanyah sans ships 300 and 700 here
@@ -319,7 +310,7 @@ function SortingHeadline({ pieces, leaving, locale }: { pieces: Piece[]; leaving
     <h2
       aria-label={plain}
       className={cn(
-        "relative h-[2.7em] max-w-[16ch] overflow-hidden text-3xl leading-[1.35] font-light text-balance sm:text-4xl lg:max-w-[420px] lg:text-[38px]",
+        "relative h-[2.7em] max-w-[30ch] overflow-hidden text-3xl leading-[1.35] font-light text-balance sm:text-4xl lg:max-w-[46ch] lg:text-[38px]",
         // `translate`, not `transform` — Tailwind v4 sets the standalone CSS property, so a
         // transition list naming `transform` animates the blur and snaps the lift.
         "transition-[filter,translate] duration-500 ease-out motion-reduce:transition-none",

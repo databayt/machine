@@ -28,8 +28,6 @@ export const copy = {
   acknowledge: { en: "Acknowledge", ar: "اطلعت" },
   howItWorks: { en: "How it works", ar: "كيف تعمل؟" },
   workflows: { en: "Workflows", ar: "المسارات" },
-  prev: { en: "Previous", ar: "السابق" },
-  next: { en: "Next", ar: "التالي" },
   addRepo: { en: "Add repos", ar: "أضف المستودعات" },
   openIssue: { en: "Open on GitHub", ar: "افتح على GitHub" },
   todayHint: { en: "Suggested for today — tap to start", ar: "مقترحات اليوم — اضغط للبدء" },

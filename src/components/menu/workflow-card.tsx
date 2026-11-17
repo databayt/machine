@@ -70,10 +70,10 @@ export function WorkflowCard({ w }: { w: Workflow; isAr: boolean }): React.JSX.E
     <Link
       href={w.href}
       title={w.description}
-      className="group flex min-h-[300px] flex-col justify-between rounded-3xl bg-background p-8 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99] md:p-10"
+      className="group flex min-h-[240px] flex-col justify-between rounded-3xl bg-background p-7 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
     >
-      <Glyph aria-hidden weight="fill" className="size-16 text-foreground/85 transition-colors group-hover:text-foreground" />
-      <h3 dir="auto" className="text-2xl font-semibold leading-[1.1] tracking-tight md:text-3xl">
+      <Glyph aria-hidden weight="fill" className="size-14 text-foreground/85 transition-colors group-hover:text-foreground" />
+      <h3 dir="auto" className="text-xl font-semibold leading-[1.15] tracking-tight lg:text-2xl">
         {w.title}
       </h3>
     </Link>

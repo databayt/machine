@@ -18,7 +18,7 @@ export function Departments({
   first: React.Ref<HTMLButtonElement>;
 }) {
   return (
-    <section className="min-w-0">
+    <section className="min-w-0 lg:ps-10 lg:pt-0.5">
       <ul
         role="listbox"
         aria-label={label}
@@ -35,7 +35,7 @@ export function Departments({
                 aria-selected={on}
                 onClick={() => onSelect(d.name)}
                 className={cn(
-                  "block whitespace-nowrap rounded-md py-1 text-start text-xl font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring lg:py-1.5 lg:text-3xl xl:text-4xl",
+                  "block whitespace-nowrap rounded-md py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring lg:text-2xl",
                   on ? "text-foreground" : "text-muted-foreground hover:text-foreground",
                 )}
               >

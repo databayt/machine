@@ -203,7 +203,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
         >
           <nav
             aria-label={t(copy.title)}
-            className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center gap-8 px-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-4 lg:content-center lg:items-start lg:gap-x-10 lg:py-16"
+            className="mx-auto flex w-full max-w-7xl flex-1 flex-col justify-center gap-8 px-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-4 lg:content-start lg:items-start lg:gap-x-10 lg:pt-[max(0.75rem,env(safe-area-inset-top))] lg:pb-16"
           >
             {inApp && profile && profile.departments.length > 0 ? (
               <>
