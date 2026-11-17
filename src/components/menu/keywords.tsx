@@ -11,21 +11,29 @@ import { promptHref } from "./config";
 import { loadCatalog } from "./data";
 import { rankKeywords } from "./keywords-rank";
 
-/** Set size by rank: the top fifth largest, then three smaller steps. */
-const size = (rank: number, n: number) => {
+/** Size and opacity by rank: the strongest words are larger and darker, the tail smaller and fainter. */
+const weight = (rank: number, n: number) => {
   const r = rank / Math.max(1, n);
-  return r < 0.2 ? "text-xl font-semibold" : r < 0.45 ? "text-lg font-medium" : r < 0.75 ? "text-base" : "text-sm";
+  return r < 0.15
+    ? "text-2xl font-semibold text-foreground"
+    : r < 0.35
+      ? "text-xl font-medium text-foreground/80"
+      : r < 0.6
+        ? "text-lg text-foreground/60"
+        : r < 0.8
+          ? "text-base text-foreground/45"
+          : "text-sm text-foreground/35";
 };
 
-/** Every tag is this tall whatever its type size, so the cloud clips cleanly at two rows. */
+/** Plain words, no chips. Every word sits on the same line height, so the cloud clips cleanly at two lines. */
 const tagBase =
-  "inline-flex h-10 items-center rounded-full px-4 outline-none transition-colors focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-10 items-center rounded-sm outline-none transition-colors hover:text-foreground focus-visible:underline focus-visible:underline-offset-4";
 
 /**
  * The tag cloud under the department's cards, two rows exactly (the rest are cut, not wrapped):
- * first the repositories the department works in — dark tags, so they read apart from keywords —
- * then its most relevant keywords (ranked from its pack's catalog items, the strongest set larger),
- * then those repositories' feature blocks. A tap fills the composer.
+ * plain words, no chips — first the repositories the department works in (bold, full ink), then its
+ * most relevant keywords (ranked from its pack's catalog items: larger and darker the stronger),
+ * then those repositories' feature blocks, small and faint. A tap fills the composer.
  */
 export function Keywords({ lang, department }: { lang: Locale; department: Department | undefined }): React.JSX.Element | null {
   const [catalog, setCatalog] = useState<CatalogItem[] | null>(null);
@@ -60,13 +68,13 @@ export function Keywords({ lang, department }: { lang: Locale; department: Depar
   return (
     <ul
       aria-label={lang === "ar" ? "الكلمات المفتاحية" : "Keywords"}
-      className="flex max-h-[5.5rem] flex-wrap items-center gap-2 overflow-hidden"
+      className="flex max-h-[5.25rem] flex-wrap items-center gap-x-5 gap-y-1 overflow-hidden"
     >
       {repos.map((r) => (
         <li key={`repo:${r.name}`}>
           <Link
             href={promptHref(lang, r.name)}
-            className={cn(tagBase, "bg-foreground text-lg font-semibold text-background hover:bg-foreground/85")}
+            className={cn(tagBase, "text-2xl font-bold tracking-tight text-foreground")}
           >
             {r.name}
           </Link>
@@ -77,7 +85,7 @@ export function Keywords({ lang, department }: { lang: Locale; department: Depar
           <Link
             href={promptHref(lang, w.word)}
             dir="auto"
-            className={cn(tagBase, "bg-background text-foreground/80 hover:bg-foreground hover:text-background", size(i, words.length))}
+            className={cn(tagBase, weight(i, words.length))}
           >
             {w.word}
           </Link>
@@ -88,7 +96,7 @@ export function Keywords({ lang, department }: { lang: Locale; department: Depar
           <Link
             href={promptHref(lang, `${b.repo} ${b.block}`)}
             title={`${b.repo} · ${b.block}`}
-            className={cn(tagBase, "bg-background text-sm text-foreground/70 hover:bg-foreground hover:text-background")}
+            className={cn(tagBase, "text-sm text-foreground/35")}
           >
             {b.block}
           </Link>

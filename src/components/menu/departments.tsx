@@ -7,8 +7,8 @@ import { cn } from "@/lib/utils";
 import type { MachineProfile } from "../profile/types";
 
 /**
- * Column 1: the departments at the top, then a divider and the app links at the foot, so on large
- * screens the column is as tall as the work area beside it; a scroll row of departments on phones.
+ * Column 1: the departments, then a divider, the app links, another divider and the icon row; on large
+ * screens the column sits at the top of the work area, level with the banner; a scroll row on phones.
  *
  * The highlight is thmanyah's hero mark (`thmanyah/src/app/globals.css .hero-mark`): a flat
  * highlighter band — no radius — behind the middle of the line (inset ~21% from the top, ~20% from
@@ -19,7 +19,7 @@ import type { MachineProfile } from "../profile/types";
 const EASE: [number, number, number, number] = [0.45, 0.4, 0.17, 0.82];
 
 const item =
-  "relative block whitespace-nowrap py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4 lg:text-3xl";
+  "relative block whitespace-nowrap py-1 text-start text-lg font-semibold leading-tight tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4 lg:text-xl";
 
 export function Departments({
   isAr,
@@ -43,7 +43,7 @@ export function Departments({
   tools?: React.ReactNode;
 }): React.JSX.Element {
   return (
-    <section className="min-w-0 lg:flex lg:flex-col lg:justify-between lg:self-stretch">
+    <section className="min-w-0 lg:flex lg:flex-col lg:self-start">
       <ul
         role="listbox"
         aria-label={label}
@@ -81,9 +81,9 @@ export function Departments({
       </ul>
 
       {links.length > 0 && (
-        // Pinned to the column's foot, so the column is as tall as the work area beside it; a
+        // Right under the departments, the whole column aligned to the top of the work area; a
         // narrow block keeps the dividers short. Same type as above.
-        <nav className="hidden lg:mt-8 lg:block lg:w-44">
+        <nav className="hidden lg:mt-8 lg:block lg:w-36">
           <hr className="mb-4 border-foreground/10" />
           <ul className="flex flex-col gap-1">
             {links.map((l) => (

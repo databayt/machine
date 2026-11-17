@@ -210,7 +210,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
         >
           <nav
             aria-label={t(copy.title)}
-            className="flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-4 lg:content-center lg:items-center lg:gap-x-14 lg:py-24 lg:ps-[46px] lg:pe-16"
+            className="flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:content-center lg:items-center lg:gap-x-16 lg:py-32 lg:ps-[46px] lg:pe-16"
           >
             {inApp && profile && profile.departments.length > 0 ? (
               <>
@@ -229,7 +229,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   ]}
                   tools={<Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />}
                 />
-                <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
+                <div className="flex min-w-0 flex-col gap-10">
                   <Banner items={spotlight} lang={lang} onNavigate={close} />
                   <Workflows lang={lang} workflows={workflows} />
                   <Keywords lang={lang} department={current} />
