@@ -146,8 +146,8 @@ function PaddleButton({
       disabled={disabled}
       aria-label={label}
       className={cn(
-        "flex size-9 items-center justify-center rounded-full bg-muted text-foreground/70",
-        "transition-colors hover:bg-muted-foreground/20 hover:text-foreground",
+        "flex size-9 items-center justify-center rounded-full bg-background text-foreground/70",
+        "transition-colors hover:text-foreground",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
         "disabled:pointer-events-none disabled:opacity-40",
       )}

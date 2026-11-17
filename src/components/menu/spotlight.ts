@@ -8,7 +8,7 @@ export const MAX_SPOTLIGHT = 4
 /** To-do never crowds to-know out entirely: with something to know, to-do keeps at most this many. */
 const MAX_TODO_WITH_KNOW = 3
 
-export type SpotlightKind = "continue" | "start" | "clone" | "sprint" | "notes" | "health"
+export type SpotlightKind = "continue" | "start" | "clone" | "sprint" | "notes" | "health" | "lane" | "connect"
 
 export interface SpotlightItem {
   id: string
@@ -34,6 +34,10 @@ export interface SpotlightInput {
   /** Unread CEO notes (the `network:unread` event); 0 when unknown. */
   unread: number
   health: HealthReport | null
+  /** The selected department's quick actions — the banner's to-do when no task is waiting. */
+  lanes?: { label: string; prompt: string }[]
+  /** The department's name, for the "connect" line. */
+  department?: string
 }
 
 /** The sentence is split on `**` and `{mark}`: a title must not be able to reopen either. */
@@ -46,13 +50,15 @@ const T = {
   sprint: { en: "**{mark}** is the current sprint", ar: "**{mark}** هي الدورة الحالية" },
   notes: { en: "**{mark}** from the CEO", ar: "**{mark}** من المدير" },
   health: { en: "**{mark}**", ar: "**{mark}**" },
+  lane: { en: "**{mark}** — a good start for today", ar: "**{mark}** — بداية جيدة لليوم" },
+  connect: { en: "**Connect this machine** to see {mark}'s sprint", ar: "**صِل هذا الجهاز** لترى دورة {mark}" },
 } as const
 
 const noteCount = (n: number, ar: boolean) =>
   ar ? (n === 1 ? "ملاحظة واحدة" : n === 2 ? "ملاحظتان" : n <= 10 ? `${n} ملاحظات` : `${n} ملاحظة`) : n === 1 ? "1 note" : `${n} notes`
 
 export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
-  const { lang, view, tasks, login, unread, health } = input
+  const { lang, view, tasks, login, unread, health, lanes = [], department = "" } = input
   const ar = lang === "ar"
   const pick = (k: keyof typeof T) => T[k][lang]
   const num = (t: Task) => `#${t.number}`
@@ -135,6 +141,21 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
         mark: clean(h.detail || h.key),
         href: "/engine/",
       })
+
+  // Never an empty banner: with no task waiting, the department's own lanes are today's to-do;
+  // with no live sprint (the machine is not connected yet), say so as the thing to know.
+  if (todo.length === 0)
+    for (const l of lanes.slice(0, 2))
+      add(todo, {
+        id: `lane:${l.prompt}`,
+        side: "do",
+        kind: "lane",
+        template: pick("lane"),
+        mark: clean(l.label),
+        href: `/?prompt=${encodeURIComponent(l.prompt)}`,
+      })
+  if (!view)
+    add(know, { id: "connect", side: "know", kind: "connect", template: pick("connect"), mark: clean(department), href: "/settings/" })
 
   const todoTake = know.length ? Math.min(todo.length, MAX_TODO_WITH_KNOW) : MAX_SPOTLIGHT
   return [...todo.slice(0, todoTake), ...know].slice(0, MAX_SPOTLIGHT)

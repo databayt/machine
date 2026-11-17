@@ -2,7 +2,7 @@
   "name": "machine",
   "version": "0.1.0",
   "private": true,
-  "description": "Kun on every teammate's computer \u2014 the machine desktop app (Tauri 2 + a static Next.js UI)",
+  "description": "Kun on every teammate's computer — the machine desktop app (Tauri 2 + a static Next.js UI)",
   "license": "SSPL-1.0",
   "packageManager": "pnpm@10.33.0",
   "scripts": {
@@ -16,6 +16,7 @@
     "test": "node --test src/components/menu/spotlight.test.ts"
   },
   "dependencies": {
+    "@phosphor-icons/react": "2.1.10",
     "@radix-ui/react-collapsible": "^1.1.12",
     "@radix-ui/react-label": "^2.1.15",
     "@radix-ui/react-popover": "^1.1.15",

@@ -44,8 +44,13 @@ const base = (over: Partial<SpotlightInput>): SpotlightInput => ({
   ...over,
 })
 
-test("nothing to say: no items", () => {
-  assert.deepEqual(rankSpotlight(base({})), [])
+test("not connected: the banner still says so", () => {
+  assert.deepEqual(rankSpotlight(base({})).map((i) => i.kind), ["connect"])
+})
+
+test("nothing to say: connected, no tasks, no lanes, nothing to know", () => {
+  const view = { sprint: null, mine: [], board: [], inProgress: 0, wipLimit: 1, readiness: {} }
+  assert.deepEqual(rankSpotlight(base({ view: view as unknown as SpotlightInput["view"] })), [])
 })
 
 test("to-do first: held, then ready by priority, then clone; to-know after", () => {
@@ -115,4 +120,28 @@ test("titles cannot reopen the emphasis; Arabic templates; dedupe", () => {
   assert.ok(!first.template.includes("Fix **"))
   assert.match(first.template, /^\*\*ابدأ/)
   assert.equal(rankSpotlight(base({ view: v, tasks: [t, t] })).filter((i) => i.kind === "start").length, 1)
+})
+
+test("never empty: no tasks and no live sprint → the department's lanes, then connect", () => {
+  const items = rankSpotlight({
+    lang: "en",
+    view: null,
+    tasks: [],
+    login: "moed",
+    unread: 0,
+    health: null,
+    lanes: [
+      { label: "Quote a school", prompt: "quote" },
+      { label: "Who to follow up", prompt: "follow" },
+      { label: "Find leads", prompt: "find" },
+    ],
+    department: "Sales",
+  })
+  assert.deepEqual(
+    items.map((i) => i.kind),
+    ["lane", "lane", "connect"],
+  )
+  assert.equal(items[0].mark, "Quote a school")
+  assert.equal(items[2].mark, "Sales")
+  assert.equal(items[2].href, "/settings/")
 })

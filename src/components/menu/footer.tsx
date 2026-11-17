@@ -75,7 +75,7 @@ export function Footer({
                         <Link
                           href={`/${lang}/?s=${encodeURIComponent(s.id)}`}
                           dir="auto"
-                          className="block truncate rounded-lg px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
+                          className="block truncate rounded-lg px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-background"
                         >
                           {s.title || t(copy.newChat)}
                         </Link>

@@ -99,7 +99,7 @@ export function Issues({
     return loading ? (
       <ul aria-hidden className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {[0, 1, 2].map((i) => (
-          <li key={i} className="h-44 animate-pulse rounded-3xl bg-muted" />
+          <li key={i} className="h-44 animate-pulse rounded-3xl bg-background" />
         ))}
       </ul>
     ) : (
@@ -125,7 +125,7 @@ export function Issues({
             const mine = !!task.holder && task.holder === login;
             const repoMissing = r.missing.some((m) => m.startsWith("repo:"));
             return (
-              <li key={task.id} className="relative flex min-h-44 min-w-0 flex-col justify-between gap-4 rounded-3xl bg-muted p-5">
+              <li key={task.id} className="relative flex min-h-44 min-w-0 flex-col justify-between gap-4 rounded-3xl bg-background p-5">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <span dir="ltr" className="truncate">

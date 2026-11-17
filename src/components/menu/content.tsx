@@ -163,8 +163,18 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     [lang, current, profile?.hidden],
   );
   const spotlight = useMemo(
-    () => rankSpotlight({ lang, view: tasks, tasks: queue, login: profile?.login, unread, health }),
-    [lang, tasks, queue, profile?.login, unread, health],
+    () =>
+      rankSpotlight({
+        lang,
+        view: tasks,
+        tasks: queue,
+        login: profile?.login,
+        unread,
+        health,
+        lanes: (current?.quick_actions ?? []).map((q) => ({ label: lang === "ar" ? q.label_ar : q.label_en, prompt: q.prompt })),
+        department: (lang === "ar" && current?.title_ar) || current?.title || "",
+      }),
+    [lang, tasks, queue, profile?.login, unread, health, current],
   );
 
   return (
@@ -187,7 +197,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
             if (a && a.target !== "_blank") close();
           }}
           className={cn(
-            "fixed inset-0 z-50 flex h-dvh flex-col overflow-y-auto overscroll-contain bg-background text-foreground transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+            "fixed inset-0 z-50 flex h-dvh flex-col overflow-y-auto overscroll-contain bg-muted text-foreground transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
             visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
           )}
         >
