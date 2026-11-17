@@ -1,5 +1,5 @@
 # machine — Kun's desktop shell. Shell only: every feature's Rust lives beside its
-# content.tsx in src/components/machine/<feature>/rust.rs and is wired in by build.rs.
+# content.tsx in src/components/<feature>/rust.rs and is wired in by build.rs.
 [package]
 name = "machine"
 version = "0.1.0"

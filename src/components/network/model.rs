@@ -1,4 +1,4 @@
-//! The wire shapes of `src/lib/machine/contract.ts` (health, heartbeat, messages, team), mirrored
+//! The wire shapes of `src/lib/contract.ts` (health, heartbeat, messages, team), mirrored
 //! with serde in camelCase. Keep them in step with the contract.
 
 use serde::{Deserialize, Serialize};

@@ -1,5 +1,5 @@
 ---
-source: "../src/components/machine/pack/rust_test.rs"
+source: "../src/components/pack/rust_test.rs"
 expression: json
 ---
 {

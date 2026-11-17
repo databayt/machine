@@ -1,4 +1,4 @@
-//! The wire shapes of the task API in `src/lib/machine/contract.ts`, mirrored with serde in
+//! The wire shapes of the task API in `src/lib/contract.ts`, mirrored with serde in
 //! camelCase, plus the gate's verdict. Keep them in step with the contract.
 
 use serde::{Deserialize, Serialize};

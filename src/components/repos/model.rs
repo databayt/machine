@@ -28,7 +28,7 @@ pub struct RepoEntry {
     pub added_at: u64,
 }
 
-/// A clone on this computer, as read from git. Mirrors `LocalRepo` in `src/lib/machine/contract.ts`.
+/// A clone on this computer, as read from git. Mirrors `LocalRepo` in `src/lib/contract.ts`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "repos/types.ts")]
 pub struct LocalRepo {

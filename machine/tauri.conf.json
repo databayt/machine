@@ -5,13 +5,16 @@
   "version": "0.1.0",
   "identifier": "org.databayt.machine",
   "build": {
-    "devUrl": "http://localhost:3000/ar/machine",
-    "frontendDist": "https://kun.databayt.org/ar/machine"
+    "devUrl": "http://localhost:3000/ar/",
+    "frontendDist": "../out",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
   },
   "app": {
     "windows": [
       {
         "label": "main",
+        "url": "ar/",
         "title": "Kun",
         "width": 1100,
         "height": 760,

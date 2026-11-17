@@ -1,5 +1,5 @@
 //! The machine shell: loads kun's `/<lang>/machine` routes and registers every feature.
-//! Feature code lives in `src/components/machine/<feature>/rust.rs`, never here.
+//! Feature code lives in `src/components/<feature>/rust.rs`, never here.
 
 include!(concat!(env!("OUT_DIR"), "/features.rs"));
 
