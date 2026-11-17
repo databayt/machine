@@ -2,9 +2,10 @@
 // dynamic-imports its feature (kept off the first paint) and falls back to null / empty on any failure.
 // The app side reads the Rust-generated types (the shapes the commands actually return).
 import type { HealthReport, TeamResponse } from "../network/types";
+import type { CatalogItem } from "../catalog/types";
 import type { TasksView } from "../tasks/actions";
 
-export type { HealthReport, TasksView, TeamResponse };
+export type { CatalogItem, HealthReport, TasksView, TeamResponse };
 export type Readiness = TasksView["readiness"][string];
 export type RepoRow = { name: string; local: boolean; mode: "keep" | "sprint" | null };
 
@@ -44,6 +45,15 @@ export async function loadRepos(): Promise<RepoRow[]> {
   try {
     const m = await import("../repos/actions");
     return (await m.listRepos()) ?? [];
+  } catch {
+    return [];
+  }
+}
+
+export async function loadCatalog(): Promise<CatalogItem[]> {
+  try {
+    const m = await import("../catalog/actions");
+    return (await m.list()) ?? [];
   } catch {
     return [];
   }

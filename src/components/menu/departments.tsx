@@ -6,23 +6,22 @@ export function Departments({
   isAr,
   profile,
   selected,
+  label,
   onSelect,
-  title,
   first,
 }: {
   isAr: boolean;
   profile: MachineProfile;
   selected: string;
+  label: string;
   onSelect: (name: string) => void;
-  title: string;
   first: React.Ref<HTMLButtonElement>;
 }) {
   return (
     <section className="min-w-0">
-      <h2 className="hidden pb-3 text-xs font-normal text-muted-foreground lg:block">{title}</h2>
       <ul
         role="listbox"
-        aria-label={title}
+        aria-label={label}
         className="-mx-6 flex gap-5 overflow-x-auto px-6 pb-1 lg:mx-0 lg:block lg:overflow-visible lg:px-0"
       >
         {profile.departments.map((d) => {

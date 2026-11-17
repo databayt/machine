@@ -5,18 +5,17 @@ import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
-import type { HealthReport, TeamResponse } from "./data";
+import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { copy, DEPT_KEY } from "./config";
-import { deptExtras, loadHealth, loadRepos, loadTasks, loadTeam, type RepoRow, type TasksView } from "./data";
+import { loadCatalog, loadHealth, loadTasks, type CatalogItem, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
-import { Know } from "./know";
 import { MorphButton } from "./morph-button";
-import { Now } from "./now";
-import { Run } from "./run";
+import { Issues, upcoming } from "./issues";
+import { pillsFor, Today } from "./today";
 import { quiet } from "./ui";
 
 const MS = 200;
@@ -24,7 +23,7 @@ const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefe
 
 /**
  * The machine's mega menu. A fixed two-line button morphs into an X; the full-screen dialog fades and
- * lifts in. Four columns centred on the screen: Departments · Now · Run · Know, over a footer strip.
+ * lifts in. Departments on the first column; the rest is the work area: upcoming issues as cards, then today's workflows and keywords. A footer strip below.
  */
 export function MachineMenu({ lang }: { lang: Locale }) {
   const isAr = lang === "ar";
@@ -42,8 +41,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   const [dept, setDept] = useState<string>("");
   const [tasks, setTasks] = useState<TasksView | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [team, setTeam] = useState<TeamResponse | null>(null);
-  const [repos, setRepos] = useState<RepoRow[]>([]);
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [health, setHealth] = useState<HealthReport | null>(null);
 
   const open = useCallback(() => {
@@ -98,21 +96,19 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   useEffect(() => {
     if (!visible || !inApp) return;
     loadHealth().then(setHealth);
-    loadRepos().then(setRepos);
+    loadCatalog().then(setCatalog);
   }, [visible, inApp]);
 
   useEffect(() => {
     if (!visible || !inApp || !dept) return;
     let live = true;
     setTasks(null);
-    setTeam(null);
     setTasksLoading(true);
     loadTasks(dept).then((v) => {
       if (!live) return;
       setTasks(v);
       setTasksLoading(false);
     });
-    loadTeam(dept).then((v) => live && setTeam(v));
     return () => {
       live = false;
     };
@@ -145,7 +141,8 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   const showCatalog = !profile || profile.access.catalog === "all" || profile.access.catalog === "profile";
   const showEngine = inApp === true && (!profile || profile.access.engine);
   const current = profile?.departments.find((d) => d.name === dept);
-  const extras = current ? deptExtras(current) : { repos: [], docs: [] };
+  const queue = upcoming(tasks, profile?.login);
+  const pills = pillsFor({ lang, dept: current, tasks: queue, catalog, hidden: profile?.hidden ?? [] });
 
   return (
     <>
@@ -181,13 +178,14 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   isAr={isAr}
                   profile={profile}
                   selected={dept}
+                  label={t(copy.title)}
                   onSelect={choose}
-                  title={t(copy.departments)}
                   first={firstDept}
                 />
-                <Now lang={lang} view={tasks} loading={tasksLoading} onStarted={close} />
-                <Run lang={lang} dept={current} />
-                <Know lang={lang} repos={extras.repos} localRepos={repos} docs={extras.docs} team={team} />
+                <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
+                  <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={close} />
+                  <Today lang={lang} pills={pills} />
+                </div>
               </>
             ) : (
               <p className={cn(quiet, "lg:col-span-4 lg:text-center")}>
