@@ -24,7 +24,7 @@ export interface Workflow {
 const ICONS: [RegExp, LucideIcon][] = [
   [/video|film|edit|cut|reel|record|مونتاج|فيديو/i, VideoIcon],
   [/clip|shoot|motion|story/i, ClapperboardIcon],
-  [/social|post|publish|carousel|campaign|brand|ads?\b|منشور|حملة/i, MegaphoneIcon],
+  [/social|post|publish|carousel|campaign|brand|\bads?\b|منشور|حملة/i, MegaphoneIcon],
   [/lead|prospect|scrape|sales|outreach|funnel|client|عميل|مبيعات/i, TargetIcon],
   [/mail|email|inbox|newsletter|بريد/i, MailIcon],
   [/chat|reply|message|support|whatsapp|رسالة/i, MessageSquareIcon],
@@ -51,7 +51,7 @@ export function WorkflowCard({ w, isAr }: { w: Workflow; isAr: boolean }): React
   const t = tr(isAr)
   const Icon = iconFor(`${w.key} ${w.title}`)
   return (
-    <div className="group relative flex min-h-[460px] flex-col overflow-hidden rounded-3xl bg-card p-8 text-start text-card-foreground md:p-10">
+    <div className="group relative flex min-h-[460px] flex-col overflow-hidden rounded-3xl bg-muted p-8 text-start text-foreground md:p-10">
       <div>
         <p className="mb-1 text-sm font-medium tracking-tight text-foreground/80">{w.category}</p>
         <h3 dir="auto" className="text-2xl font-semibold leading-[1.1] tracking-tight md:text-3xl">
