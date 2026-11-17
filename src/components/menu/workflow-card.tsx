@@ -77,7 +77,7 @@ export function WorkflowCard({ w }: { w: Workflow; isAr: boolean }): React.JSX.E
   return (
     <Link
       href={w.href}
-      className="group flex min-h-[240px] flex-col justify-between rounded-3xl bg-background p-7 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
+      className="group flex flex-col gap-4 rounded-3xl bg-background p-7 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
     >
       {icon}
       <div>

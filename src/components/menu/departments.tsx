@@ -40,7 +40,7 @@ export function Departments({
   links?: { href: string; label: string }[];
 }): React.JSX.Element {
   return (
-    <section className="min-w-0 lg:flex lg:flex-col lg:justify-between lg:self-stretch">
+    <section className="min-w-0 lg:flex lg:flex-col">
       <ul
         role="listbox"
         aria-label={label}
@@ -78,16 +78,28 @@ export function Departments({
       </ul>
 
       {links.length > 0 && (
-        // The departments sit at the top of the column and these at its foot, so the column is as
-        // tall as the work area beside it without spreading the names apart. Same type as above.
-        <nav className="hidden lg:block">
+        // A short step below the departments (not pinned to the column's foot), on a narrow column
+        // so the divider stays short. Same type as above.
+        <nav className="hidden lg:mt-8 lg:block lg:w-40">
           <hr className="mb-4 border-foreground/10" />
           <ul className="flex flex-col gap-1">
             {links.map((l) => (
               <li key={l.href}>
-                <Link href={l.href} className={cn(item, "text-muted-foreground hover:text-foreground")}>
-                  {l.label}
-                </Link>
+                {/^https?:\/\//.test(l.href) ? (
+                  // An outside page (Docs on kun.databayt.org) opens outside the app window.
+                  <a
+                    href={l.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(item, "text-muted-foreground hover:text-foreground")}
+                  >
+                    {l.label}
+                  </a>
+                ) : (
+                  <Link href={l.href} className={cn(item, "text-muted-foreground hover:text-foreground")}>
+                    {l.label}
+                  </Link>
+                )}
               </li>
             ))}
           </ul>

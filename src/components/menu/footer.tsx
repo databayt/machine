@@ -19,13 +19,11 @@ const item = "shrink-0 whitespace-nowrap transition-colors hover:text-foreground
 export function Footer({
   lang,
   inApp,
-  showCatalog,
   showEngine,
   health,
 }: {
   lang: Locale;
   inApp: boolean;
-  showCatalog: boolean;
   showEngine: boolean;
   health: HealthReport | null;
 }) {
@@ -88,7 +86,7 @@ export function Footer({
             <Link href={`/${lang}/repos/`} className={item}>{t(copy.repos)}</Link>
           </>
         )}
-        {showCatalog && <Link href={`/${lang}/catalog/`} title={t(copy.catalogHint)} className={`${item} lg:hidden`}>{t(copy.catalog)}</Link>}
+        <a href={`https://kun.databayt.org/${lang}/docs`} target="_blank" rel="noreferrer" className={`${item} lg:hidden`}>{t(copy.docs)}</a>
         {showEngine && <Link href={`/${lang}/engine/`} title={t(copy.engineHint)} className={item}>{t(copy.engine)}</Link>}
         <Link href={`/${lang}/settings/`} className={`${item} lg:hidden`}>{t(copy.settings)}</Link>
         <button

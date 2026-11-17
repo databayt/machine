@@ -16,6 +16,7 @@ export const copy = {
   },
   settings: { en: "Settings", ar: "الإعدادات" },
   catalog: { en: "Catalog", ar: "الكتالوج" },
+  docs: { en: "Docs", ar: "التوثيق" },
   catalogHint: { en: "Browse and install Kun, item by item", ar: "تصفّح كن وثبّته عنصراً عنصراً" },
   engine: { en: "Engine", ar: "المحرك" },
   engineHint: { en: "Version, updates and health", ar: "الإصدار والتحديثات والصحة" },

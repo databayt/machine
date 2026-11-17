@@ -156,7 +156,6 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     return () => document.removeEventListener("keydown", key);
   }, [mounted, close]);
 
-  const showCatalog = !profile || profile.access.catalog === "all" || profile.access.catalog === "profile";
   const showEngine = inApp === true && (!profile || profile.access.engine);
   const current = profile?.departments.find((d) => d.name === dept);
   const queue = useMemo(() => upcoming(tasks, profile?.login), [tasks, profile?.login]);
@@ -222,7 +221,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   first={firstDept}
                   links={[
                     { href: `/${lang}/settings/`, label: t(copy.settings) },
-                    ...(showCatalog ? [{ href: `/${lang}/catalog/`, label: t(copy.catalog) }] : []),
+                    { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },
                     { href: `/${lang}/sessions/`, label: t(copy.sessions) },
                     { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },
                   ]}
@@ -239,7 +238,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
               </p>
             )}
           </nav>
-          <Footer lang={lang} inApp={inApp === true} showCatalog={showCatalog} showEngine={showEngine} health={health} />
+          <Footer lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />
         </div>
       )}
     </>
