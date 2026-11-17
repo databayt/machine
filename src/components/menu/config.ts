@@ -24,6 +24,12 @@ export const copy = {
   tasksOffline: { en: "Tasks load when the machine is connected.", ar: "تظهر المهام حين يتصل الجهاز." },
   noSprintTasks: { en: "No sprint tasks for this department yet.", ar: "لا مهام في هذه الدورة بعد" },
   continue: { en: "Continue", ar: "تابع" },
+  pillOpen: { en: "Open", ar: "افتح" },
+  acknowledge: { en: "Acknowledge", ar: "اطلعت" },
+  howItWorks: { en: "How it works", ar: "كيف تعمل؟" },
+  workflows: { en: "Workflows", ar: "المسارات" },
+  prev: { en: "Previous", ar: "السابق" },
+  next: { en: "Next", ar: "التالي" },
   addRepo: { en: "Add repos", ar: "أضف المستودعات" },
   openIssue: { en: "Open on GitHub", ar: "افتح على GitHub" },
   todayHint: { en: "Suggested for today — tap to start", ar: "مقترحات اليوم — اضغط للبدء" },
@@ -50,6 +56,10 @@ export function repoName(repo: string, isAr: boolean): string {
   const n = repoNames[repo]
   return n ? (isAr ? n.ar : n.en) : repo
 }
+
+/** Asks the agent to walk through one skill. */
+export const howStarter = (name: string, isAr: boolean) =>
+  isAr ? `اشرح كيف تعمل مهارة ${name} خطوة بخطوة` : `Explain how the ${name} skill works, step by step`
 
 /** Starter for one skill. */
 export const skillStarter = (title: string, isAr: boolean) => (isAr ? `أريد استخدام مهارة ${title}: ` : `Use the ${title} skill to `)
