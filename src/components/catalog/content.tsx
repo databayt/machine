@@ -37,7 +37,7 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
       {!canInstallHere && (
         <div className="bg-muted mt-6 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 text-sm">
           <span>{t(copy.getMachine)}</span>
-          <Link href={`/${lang}/machine`} className="text-primary font-medium underline-offset-4 hover:underline">
+          <Link href={`/${lang}/`} className="text-primary font-medium underline-offset-4 hover:underline">
             {t(copy.getMachineButton)}
           </Link>
         </div>
@@ -73,7 +73,7 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
             <div>
               <div className="flex items-center justify-between gap-2">
                 <Link
-                  href={`/${lang}/machine/catalog/${item.id.split(":")[0]}/${item.name}`}
+                  href={`/${lang}/catalog/item/?id=${encodeURIComponent(item.id)}`}
                   className="font-medium hover:underline"
                 >
                   {(isAr && item.title_ar) || item.title}

@@ -2,7 +2,7 @@
 // machine app there are no clones, so reads return nothing and writes throw.
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
-import type { OrgRepo } from "@/lib/machine/contract"
+import type { OrgRepo } from "@/lib/contract"
 
 import type { RepoFailure, RepoMode, RepoRow, SweepReport, SyncEvent } from "./types"
 

@@ -59,7 +59,7 @@ export function OpenInMachine({ lang }: { lang: Locale }) {
       <h1 className="text-balance text-[26px] font-semibold leading-tight tracking-tight sm:text-3xl">{t(copy.openTitle)}</h1>
       <p className="max-w-md text-balance text-muted-foreground">{t(copy.openText)}</p>
       <Link
-        href={`/${lang}/machine/catalog`}
+        href={`/${lang}/catalog/`}
         className="mt-3 flex h-12 items-center rounded-full bg-foreground px-6 text-[17px] font-medium text-background transition-colors hover:bg-foreground/90"
       >
         {t(copy.openButton)}

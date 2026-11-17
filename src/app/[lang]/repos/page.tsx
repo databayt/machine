@@ -1,4 +1,4 @@
-import ReposContent from "@/components/machine/repos/content"
+import ReposContent from "@/components/repos/content"
 import { type Locale } from "@/components/local/config"
 
 export const metadata = {

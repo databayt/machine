@@ -24,7 +24,7 @@ export function storeLang(lang: Locale) {
   }
 }
 
-/** `/ar/machine/catalog` + `?x=1` → `/en/machine/catalog?x=1`: only the locale segment changes. */
+/** `/ar/catalog` + `?x=1` → `/en/catalog?x=1`: only the locale segment changes. */
 export function swapLocale(pathname: string, search: string, to: Locale): string {
   const parts = pathname.split("/")
   if (isLocale(parts[1])) parts[1] = to

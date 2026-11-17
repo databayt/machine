@@ -42,7 +42,7 @@ export function Know({
           <ul>
             {repos.map((r) => (
               <li key={r}>
-                <Link href={`/${lang}/machine/repos`} className={`${smallRow} transition-colors hover:text-muted-foreground`}>
+                <Link href={`/${lang}/repos/`} className={`${smallRow} transition-colors hover:text-muted-foreground`}>
                   <Dot kind={local.has(r) ? "solid" : "ring"} />
                   <span dir="auto" className="min-w-0 flex-1 truncate">{repoName(r, isAr)}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{local.has(r) ? t(copy.local) : t(copy.remote)}</span>

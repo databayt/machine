@@ -1,4 +1,4 @@
-import CatalogContent from "@/components/machine/catalog/content"
+import CatalogContent from "@/components/catalog/content"
 import { type Locale } from "@/components/local/config"
 
 export const metadata = {

@@ -1,4 +1,4 @@
-import SettingsContent from "@/components/machine/settings/content"
+import SettingsContent from "@/components/settings/content"
 import type { Locale } from "@/components/local/config"
 
 export const metadata = { title: "Settings" }

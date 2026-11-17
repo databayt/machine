@@ -1,4 +1,4 @@
-import EngineContent from "@/components/machine/engine/content"
+import EngineContent from "@/components/engine/content"
 import type { Locale } from "@/components/local/config"
 
 export const metadata = { title: "Engine" }

@@ -58,7 +58,7 @@ export function Footer({
       <div className="mx-auto flex max-w-7xl items-center flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         {inApp && (
           <>
-            <Link href={`/${lang}/machine`} onClick={() => window.dispatchEvent(new Event(NEW_CHAT_EVENT))} className={item}>
+            <Link href={`/${lang}/`} onClick={() => window.dispatchEvent(new Event(NEW_CHAT_EVENT))} className={item}>
               {t(copy.newChat)}
             </Link>
             <span data-chats className="relative shrink-0">
@@ -73,7 +73,7 @@ export function Footer({
                     {chats?.map((s) => (
                       <li key={s.id}>
                         <Link
-                          href={`/${lang}/machine?s=${encodeURIComponent(s.id)}`}
+                          href={`/${lang}/?s=${encodeURIComponent(s.id)}`}
                           dir="auto"
                           className="block truncate rounded-lg px-2 py-1.5 text-sm text-foreground transition-colors hover:bg-muted"
                         >
@@ -85,12 +85,12 @@ export function Footer({
                 </div>
               )}
             </span>
-            <Link href={`/${lang}/machine/repos`} className={item}>{t(copy.repos)}</Link>
+            <Link href={`/${lang}/repos/`} className={item}>{t(copy.repos)}</Link>
           </>
         )}
-        {showCatalog && <Link href={`/${lang}/machine/catalog`} title={t(copy.catalogHint)} className={item}>{t(copy.catalog)}</Link>}
-        {showEngine && <Link href={`/${lang}/machine/engine`} title={t(copy.engineHint)} className={item}>{t(copy.engine)}</Link>}
-        <Link href={`/${lang}/machine/settings`} className={item}>{t(copy.settings)}</Link>
+        {showCatalog && <Link href={`/${lang}/catalog/`} title={t(copy.catalogHint)} className={item}>{t(copy.catalog)}</Link>}
+        {showEngine && <Link href={`/${lang}/engine/`} title={t(copy.engineHint)} className={item}>{t(copy.engine)}</Link>}
+        <Link href={`/${lang}/settings/`} className={item}>{t(copy.settings)}</Link>
         <button
           type="button"
           lang={other}

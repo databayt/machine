@@ -12,7 +12,7 @@ import type { Readiness, TasksView } from "./data";
 import { runStart } from "./data";
 import { bigClass, Column, Dot, quiet, smallRow, subClass } from "./ui";
 
-const taskHref = (lang: string, id: string) => `/${lang}/machine?task=${encodeURIComponent(id)}`;
+const taskHref = (lang: string, id: string) => `/${lang}/?task=${encodeURIComponent(id)}`;
 
 function readinessOf(view: TasksView, t: Task): Readiness {
   return view.readiness?.[t.id] ?? { state: t.afterOpen.length ? "blocked" : "ready", missing: [] };

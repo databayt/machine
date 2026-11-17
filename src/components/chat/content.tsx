@@ -183,7 +183,7 @@ export default function ChatContent({
     setMessages([]);
     setSession(null);
     setResumed(null);
-    if (resume) router.replace(`/${lang}/machine`);
+    if (resume) router.replace(`/${lang}/`);
   };
 
   // The menu's "New chat" and its delete both reach the open chat through window events.

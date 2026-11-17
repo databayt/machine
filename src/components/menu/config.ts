@@ -97,7 +97,7 @@ export function repoStarters(repo: string, isAr: boolean): { label: string; prom
 export const skillStarter = (title: string, isAr: boolean) => (isAr ? `أريد استخدام مهارة ${title}: ` : `Use the ${title} skill to `)
 export const skillHow = (name: string) => `اشرح كيف تعمل مهارة ${name} خطوة بخطوة`
 
-export const promptHref = (lang: string, prompt: string) => `/${lang}/machine?prompt=${encodeURIComponent(prompt)}`
+export const promptHref = (lang: string, prompt: string) => `/${lang}/?prompt=${encodeURIComponent(prompt)}`
 
 /** Window events that tie the menu to the open chat. */
 export const NEW_CHAT_EVENT = "kun:new-chat"

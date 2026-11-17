@@ -18,7 +18,7 @@ export default function CatalogDetail({ lang, type, name }: { lang: Locale; type
   const item = items?.find((i) => i.id === `${type}:${name}`)
 
   return (
-    <PageShell lang={lang} title={(item && ((isAr && item.title_ar) || item.title)) || t(copy.title)} backHref={`/${lang}/machine/catalog`} backLabel={t(copy.back)}>
+    <PageShell lang={lang} title={(item && ((isAr && item.title_ar) || item.title)) || t(copy.title)} backHref={`/${lang}/catalog/`} backLabel={t(copy.back)}>
       {error && <p className="text-destructive mt-6 text-sm">{error}</p>}
       {!items && !error && <p className="text-muted-foreground mt-6">{t(copy.loading)}</p>}
       {items && !item && <p className="mt-6">{t(copy.notFound)}</p>}
@@ -42,7 +42,7 @@ export default function CatalogDetail({ lang, type, name }: { lang: Locale; type
                   const [dt, dn] = d.split(":")
                   return (
                     <li key={d}>
-                      <Link href={`/${lang}/machine/catalog/${dt}/${dn}`}>
+                      <Link href={`/${lang}/catalog/item/?id=${encodeURIComponent(d)}`}>
                         <Badge variant="secondary">{d}</Badge>
                       </Link>
                     </li>
