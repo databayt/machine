@@ -13,6 +13,7 @@ import { copy, promptHref, DEPT_KEY } from "./config";
 import { loadHealth, loadTasks, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
+import { Tools } from "./tools";
 import { MorphButton } from "./morph-button";
 import { Issues, upcoming } from "./issues";
 import { Banner } from "./banner";
@@ -225,6 +226,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                     { href: `/${lang}/sessions/`, label: t(copy.sessions) },
                     { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },
                   ]}
+                  tools={<Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />}
                 />
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
                   <Banner items={spotlight} lang={lang} onNavigate={close} />

@@ -29,6 +29,7 @@ export function Departments({
   onSelect,
   first,
   links = [],
+  tools,
 }: {
   isAr: boolean;
   profile: MachineProfile;
@@ -38,6 +39,8 @@ export function Departments({
   first: React.Ref<HTMLButtonElement>;
   /** Under a divider, after the departments: Settings, Catalog, Sessions… */
   links?: { href: string; label: string }[];
+  /** Under a second divider, the last row: the icon tools (replaces the footer on large screens). */
+  tools?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <section className="min-w-0 lg:flex lg:flex-col">
@@ -103,6 +106,12 @@ export function Departments({
               </li>
             ))}
           </ul>
+          {tools && (
+            <>
+              <hr className="my-4 border-foreground/10" />
+              {tools}
+            </>
+          )}
         </nav>
       )}
     </section>

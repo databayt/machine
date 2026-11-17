@@ -52,7 +52,7 @@ export function Footer({
   const hText = !health ? copy.healthUnknown : bad.length ? copy.healthBad : copy.healthOk;
 
   return (
-    <footer className="shrink-0 px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-6 lg:px-16">
+    <footer className="shrink-0 px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-6 lg:hidden">
       <div className="mx-auto flex max-w-7xl items-center flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
         {inApp && (
           <>
