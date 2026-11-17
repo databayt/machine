@@ -36,7 +36,7 @@ export function PageShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="h-full overflow-y-auto overscroll-contain bg-background">
+    <div className="h-full overflow-y-auto overscroll-contain">
       <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))]">
         {backHref && (
           <Link href={backHref} className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">

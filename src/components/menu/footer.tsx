@@ -61,7 +61,7 @@ export function Footer({
             <Link href={`/${lang}/`} onClick={() => window.dispatchEvent(new Event(NEW_CHAT_EVENT))} className={item}>
               {t(copy.newChat)}
             </Link>
-            <span data-chats className="relative shrink-0">
+            <span data-chats className="relative shrink-0 lg:hidden">
               <button type="button" aria-expanded={panel} onClick={() => setPanel((p) => !p)} className={item}>
                 {t(copy.chats)}
               </button>
@@ -88,9 +88,9 @@ export function Footer({
             <Link href={`/${lang}/repos/`} className={item}>{t(copy.repos)}</Link>
           </>
         )}
-        {showCatalog && <Link href={`/${lang}/catalog/`} title={t(copy.catalogHint)} className={item}>{t(copy.catalog)}</Link>}
+        {showCatalog && <Link href={`/${lang}/catalog/`} title={t(copy.catalogHint)} className={`${item} lg:hidden`}>{t(copy.catalog)}</Link>}
         {showEngine && <Link href={`/${lang}/engine/`} title={t(copy.engineHint)} className={item}>{t(copy.engine)}</Link>}
-        <Link href={`/${lang}/settings/`} className={item}>{t(copy.settings)}</Link>
+        <Link href={`/${lang}/settings/`} className={`${item} lg:hidden`}>{t(copy.settings)}</Link>
         <button
           type="button"
           lang={other}

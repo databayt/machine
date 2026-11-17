@@ -35,7 +35,7 @@ export function workflowsFor({
   }
   for (const q of dept.quick_actions) {
     const title = isAr ? q.label_ar : q.label_en
-    add({ key: `qa:${q.prompt}`, category, title, description: q.prompt, href: promptHref(lang, q.prompt), howHref: promptHref(lang, howStarter(title, isAr)) })
+    add({ key: `qa:${q.prompt}`, category, title, description: (isAr ? q.description_ar : q.description_en) || title, href: promptHref(lang, q.prompt), howHref: promptHref(lang, howStarter(title, isAr)) })
   }
   for (const s of dept.skills) {
     if (hidden.includes(`skill:${s.name}`)) continue

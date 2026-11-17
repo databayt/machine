@@ -171,7 +171,11 @@ export function MachineMenu({ lang }: { lang: Locale }) {
         login: profile?.login,
         unread,
         health,
-        lanes: (current?.quick_actions ?? []).map((q) => ({ label: lang === "ar" ? q.label_ar : q.label_en, prompt: q.prompt })),
+        lanes: (current?.quick_actions ?? []).map((q) => ({
+          label: lang === "ar" ? q.label_ar : q.label_en,
+          prompt: q.prompt,
+          detail: (lang === "ar" ? q.description_ar : q.description_en) || "",
+        })),
         department: (lang === "ar" && current?.title_ar) || current?.title || "",
       }),
     [lang, tasks, queue, profile?.login, unread, health, current],
@@ -214,6 +218,11 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   label={t(copy.title)}
                   onSelect={choose}
                   first={firstDept}
+                  links={[
+                    { href: `/${lang}/settings/`, label: t(copy.settings) },
+                    ...(showCatalog ? [{ href: `/${lang}/catalog/`, label: t(copy.catalog) }] : []),
+                    { href: `/${lang}/sessions/`, label: t(copy.sessions) },
+                  ]}
                 />
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
                   <Banner items={spotlight} lang={lang} onNavigate={close} />

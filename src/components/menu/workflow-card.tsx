@@ -60,7 +60,7 @@ const ICONS: [RegExp, Icon][] = [
 export const iconFor = (name: string): Icon => ICONS.find(([re]) => re.test(name))?.[1] ?? Sparkle
 
 /**
- * One workflow: a white tile with a large filled icon and the workflow's name — nothing else. The
+ * One workflow: a white tile with a large filled icon, the workflow's name and two lines on what it does. The
  * whole tile is one link to the composer starter.
  */
 export function WorkflowCard({ w }: { w: Workflow; isAr: boolean }): React.JSX.Element {
@@ -69,13 +69,17 @@ export function WorkflowCard({ w }: { w: Workflow; isAr: boolean }): React.JSX.E
   return (
     <Link
       href={w.href}
-      title={w.description}
       className="group flex min-h-[240px] flex-col justify-between rounded-3xl bg-background p-7 text-start text-foreground outline-none transition-transform focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.99]"
     >
       <Glyph aria-hidden weight="fill" className="size-14 text-foreground/85 transition-colors group-hover:text-foreground" />
-      <h3 dir="auto" className="text-xl font-semibold leading-[1.15] tracking-tight lg:text-2xl">
-        {w.title}
-      </h3>
+      <div>
+        <h3 dir="auto" className="text-xl font-semibold leading-[1.15] tracking-tight lg:text-2xl">
+          {w.title}
+        </h3>
+        <p dir="auto" className="mt-2 line-clamp-2 min-h-[2.5rem] text-sm leading-5 text-muted-foreground">
+          {w.description}
+        </p>
+      </div>
     </Link>
   )
 }

@@ -68,6 +68,11 @@ pub struct QuickAction {
     pub label_ar: String,
     pub label_en: String,
     pub prompt: String,
+    /// One or two lines saying what the action does, per language (the menu's workflow cards).
+    #[serde(default)]
+    pub description_en: String,
+    #[serde(default)]
+    pub description_ar: String,
 }
 
 /// What the UI shows about a department's pack.
@@ -89,6 +94,10 @@ struct RawQuick {
     label_en: String,
     #[serde(default)]
     prompt: String,
+    #[serde(default)]
+    description_en: String,
+    #[serde(default)]
+    description_ar: String,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -270,6 +279,8 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
                 label_ar: q.label_ar,
                 label_en: q.label_en,
                 prompt: q.prompt,
+                description_en: q.description_en,
+                description_ar: q.description_ar,
             })
             .collect(),
     })

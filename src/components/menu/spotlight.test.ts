@@ -86,7 +86,7 @@ test("a missing repo becomes one Clone item pointing at Repos", () => {
   assert.equal(clone.length, 1)
   assert.equal(clone[0].mark, "hogwarts")
   assert.equal(clone[0].href, "/repos/")
-  assert.match(clone[0].template, /#5$/)
+  assert.match(clone[0].template, /#5\b/)
 })
 
 test("tasks held by someone else, and blocked ones, are not offered", () => {
@@ -144,4 +144,22 @@ test("never empty: no tasks and no live sprint → the department's lanes, then 
   assert.equal(items[0].mark, "Quote a school")
   assert.equal(items[2].mark, "Sales")
   assert.equal(items[2].href, "/settings/")
+})
+
+test("every sentence fits the banner's two lines", () => {
+  const long = "A very long task title that goes on and on about drafting the quarterly sprint report"
+  const items = rankSpotlight({
+    lang: "en",
+    view: { sprint: { title: "Sprint 14", goal: long, endsAt: null }, mine: [], board: [], inProgress: 0, wipLimit: 1, readiness: {} } as unknown as SpotlightInput["view"],
+    tasks: [task(9, { title: long, holder: "me" }), task(10, { title: long })],
+    login: "me",
+    unread: 3,
+    health: null,
+    lanes: [{ label: "Quote a school", prompt: "q", detail: long }],
+  })
+  assert.ok(items.length > 0)
+  for (const i of items) {
+    const sentence = i.template.replace(/\*\*/g, "").replace("{mark}", i.mark)
+    assert.ok(sentence.length <= 80, `${sentence.length}: ${sentence}`)
+  }
 })

@@ -8,6 +8,7 @@ export const copy = {
   newChat: { en: "New chat", ar: "محادثة جديدة" },
   chats: { en: "Chats", ar: "المحادثات" },
   noChats: { en: "No chats yet. Ask something and it is kept here.", ar: "لا محادثات بعد. اسأل شيئاً وستُحفظ هنا." },
+  sessions: { en: "Sessions", ar: "الجلسات" },
   settings: { en: "Settings", ar: "الإعدادات" },
   catalog: { en: "Catalog", ar: "الكتالوج" },
   catalogHint: { en: "Browse and install Kun, item by item", ar: "تصفّح كن وثبّته عنصراً عنصراً" },

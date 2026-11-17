@@ -35,7 +35,7 @@ export interface SpotlightInput {
   unread: number
   health: HealthReport | null
   /** The selected department's quick actions — the banner's to-do when no task is waiting. */
-  lanes?: { label: string; prompt: string }[]
+  lanes?: { label: string; prompt: string; detail?: string }[]
   /** The department's name, for the "connect" line. */
   department?: string
 }
@@ -43,19 +43,40 @@ export interface SpotlightInput {
 /** The sentence is split on `**` and `{mark}`: a title must not be able to reopen either. */
 const clean = (s: string) => s.replace(/[*{}]/g, "").replace(/\s+/g, " ").trim()
 
+/**
+ * Two lines of the banner's headline hold about this many characters at its width; every sentence
+ * is fitted to it, so the fixed two-line box never clips a third line.
+ */
+export const SENTENCE_MAX = 80
+
+/** A title cut at a word near `max` characters, so the banner's two lines are never clipped. */
+const short = (s: string, max = 44) => {
+  if (max < 8) return ""
+  const c = clean(s)
+  if (c.length <= max) return c
+  const cut = c.slice(0, max)
+  return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), max - 12)).trim()}…`
+}
+
 const T = {
-  continue: { en: "**Continue {mark}** — ", ar: "**تابع {mark}** — " },
-  start: { en: "**Start {mark}** — ", ar: "**ابدأ {mark}** — " },
-  clone: { en: "**Clone {mark}** to start ", ar: "**انسخ {mark}** لتبدأ " },
-  sprint: { en: "**{mark}** is the current sprint", ar: "**{mark}** هي الدورة الحالية" },
-  notes: { en: "**{mark}** from the CEO", ar: "**{mark}** من المدير" },
+  continue: { en: "**Continue {mark}** — {title}; it's yours this sprint.", ar: "**تابع {mark}** — {title}؛ المهمة لك في هذه الدورة." },
+  start: { en: "**Start {mark}** — {title}; it's next and ready to go.", ar: "**ابدأ {mark}** — {title}؛ هي التالية وجاهزة." },
+  clone: { en: "**Clone {mark}** to start {title}; the task needs this repo here.", ar: "**انسخ {mark}** لتبدأ {title}؛ المهمة تحتاج المستودع هنا." },
+  sprint: { en: "**{mark}** is the current sprint; everything here follows its plan.", ar: "**{mark}** هي الدورة الحالية؛ كل ما هنا يتبع خطتها." },
+  notes: { en: "**{mark}** from the CEO are waiting; read them before today's work.", ar: "**{mark}** من المدير بانتظارك؛ اقرأها قبل عمل اليوم." },
   health: { en: "**{mark}**", ar: "**{mark}**" },
-  lane: { en: "**{mark}** — a good start for today", ar: "**{mark}** — بداية جيدة لليوم" },
-  connect: { en: "**Connect this machine** to see {mark}'s sprint", ar: "**صِل هذا الجهاز** لترى دورة {mark}" },
+  lane: { en: "**{mark}** — {title}", ar: "**{mark}** — {title}" },
+  connect: { en: "**Connect this machine** to see {mark}'s sprint and the tasks assigned to you.", ar: "**صِل هذا الجهاز** لترى دورة {mark} والمهام المسندة إليك." },
 } as const
 
 const noteCount = (n: number, ar: boolean) =>
   ar ? (n === 1 ? "ملاحظة واحدة" : n === 2 ? "ملاحظتان" : n <= 10 ? `${n} ملاحظات` : `${n} ملاحظة`) : n === 1 ? "1 note" : `${n} notes`
+
+/** Fills `{title}` with as much of `text` as the 80-character sentence has room for. */
+export function fit(template: string, mark: string, text: string): string {
+  const rest = template.replace(/\*\*/g, "").replace("{mark}", mark).replace("{title}", "").length
+  return template.replace("{title}", () => short(text, SENTENCE_MAX - rest))
+}
 
 export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
   const { lang, view, tasks, login, unread, health, lanes = [], department = "" } = input
@@ -81,7 +102,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
         id: `continue:${t.id}`,
         side: "do",
         kind: "continue",
-        template: pick("continue") + clean(t.title),
+        template: fit(pick("continue"), num(t), t.title),
         mark: num(t),
         href: `/?task=${encodeURIComponent(t.id)}`,
         taskId: t.id,
@@ -94,7 +115,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
           id: `start:${t.id}`,
           side: "do",
           kind: "start",
-          template: pick("start") + clean(t.title),
+          template: fit(pick("start"), num(t), t.title),
           mark: num(t),
           href: `/?task=${encodeURIComponent(t.id)}`,
           taskId: t.id,
@@ -110,7 +131,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
         id: `clone:${repo}`,
         side: "do",
         kind: "clone",
-        template: pick("clone") + num(t),
+        template: pick("clone").replace("{title}", () => num(t)),
         mark: repo,
         href: "/repos/",
       })
@@ -124,7 +145,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
       id: "sprint",
       side: "know",
       kind: "sprint",
-      template: goal ? `**{mark}** — ${clean(goal)}` : pick("sprint"),
+      template: goal ? fit("**{mark}** — {title}", clean(title), goal) : pick("sprint"),
       mark: clean(title),
       href: null,
     })
@@ -150,7 +171,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
         id: `lane:${l.prompt}`,
         side: "do",
         kind: "lane",
-        template: pick("lane"),
+        template: fit(pick("lane"), clean(l.label), l.detail || (ar ? "بداية جيدة لليوم؛ افتحها ويرشدك كن." : "a good place to start today; Kun walks you through it.")),
         mark: clean(l.label),
         href: `/?prompt=${encodeURIComponent(l.prompt)}`,
       })
