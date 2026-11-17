@@ -5,7 +5,7 @@
   "version": "0.1.0",
   "identifier": "org.databayt.machine",
   "build": {
-    "devUrl": "http://localhost:3000/ar/",
+    "devUrl": "http://localhost:3000",
     "frontendDist": "../out",
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build"
@@ -23,7 +23,9 @@
       }
     ],
     "security": {
-      "capabilities": ["features"]
+      "capabilities": [
+        "features"
+      ]
     }
   },
   "bundle": {
@@ -33,9 +35,22 @@
       "entitlements": "Entitlements.plist"
     },
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "wix": { "language": ["en-US", "ar-SA"] }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      },
+      "wix": {
+        "language": [
+          "en-US",
+          "ar-SA"
+        ]
+      }
     },
-    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"]
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
   }
 }
