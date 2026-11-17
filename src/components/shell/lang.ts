@@ -7,6 +7,7 @@ export function isLocale(v: unknown): v is Locale {
   return typeof v === "string" && (i18n.locales as readonly string[]).includes(v)
 }
 
+/** The chosen language, or null when none was chosen (the app then stays in the default, English). */
 export function storedLang(): Locale | null {
   try {
     const v = window.localStorage.getItem(LANG_KEY)
