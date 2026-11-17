@@ -1,28 +1,14 @@
 name: Machine
 
-# The Rust/Tauri desktop app in machine/. Runs only when something it is built from changes.
+# The machine desktop app: Rust/Tauri shell in machine/, static Next.js UI in src/. Whole repo, no path filter.
 #   rust    — fmt, clippy -D warnings, tests (Linux: the cheapest runner, same code)
 #   windows — tests on Windows, then an UNSIGNED .msi uploaded as a build artifact.
 # It never creates a release: publishing the installer is outward-facing and stays a human step.
 
 on:
   pull_request:
-    paths:
-      - "machine/**"
-      - "src/components/machine/**/*.rs"
-      - "src/components/machine/**/capability.json"
-      - "departments/**"
-      - "machines/**"
-      - ".github/workflows/machine.yml"
   push:
     branches: [main]
-    paths:
-      - "machine/**"
-      - "src/components/machine/**/*.rs"
-      - "src/components/machine/**/capability.json"
-      - "departments/**"
-      - "machines/**"
-      - ".github/workflows/machine.yml"
   workflow_dispatch:
 
 concurrency:
@@ -100,8 +86,7 @@ jobs:
         working-directory: machine
         run: cargo test --locked
 
-      # Only the Tauri CLI is needed from node: the window loads a remote URL, so there is no
-      # frontend build here. --ignore-scripts skips the web app's postinstall hooks.
+      # The UI is a static export bundled into the app: `pnpm tauri build` runs `pnpm build` first.
       - uses: pnpm/action-setup@v4
         with:
           version: 10
@@ -111,10 +96,10 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - run: pnpm install --frozen-lockfile
 
       # Unsigned: Windows SmartScreen shows "More info -> Run anyway" once on first launch.
-      # Run from the repo root: the Tauri CLI finds machine/tauri.conf.json there (checked with `pnpm tauri info`).
+      # Run from the repo root: the Tauri CLI finds machine/tauri.conf.json there.
       - name: Build the .msi
         run: pnpm tauri build --bundles msi
 
