@@ -221,7 +221,7 @@ export default function ChatContent({
           className="relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
         >
           {empty ? (
-            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-4 pb-[12vh] pt-16">
+            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-24">
               <div className="text-center">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
                   {greeting(isAr, name)}
@@ -249,7 +249,7 @@ export default function ChatContent({
               />
             </div>
           ) : (
-            <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-4 pb-6 pt-16">
+            <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
               {messages.map((m, i) =>
                 m.role === "user" ? (
                   <UserTurn key={i} text={m.text} />
@@ -292,7 +292,7 @@ export default function ChatContent({
       </div>
 
       {!empty && (
-        <div className="relative mx-auto w-full max-w-3xl px-3 pb-[max(env(safe-area-inset-bottom),10px)] sm:px-4">
+        <div className="relative mx-auto w-full max-w-3xl px-6 pb-[max(env(safe-area-inset-bottom),20px)] lg:px-10 lg:pb-8">
           {away && (
             <button
               type="button"

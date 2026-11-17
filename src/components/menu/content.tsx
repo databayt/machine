@@ -130,10 +130,12 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     };
   }, [inApp]);
 
-  // Focus into the dialog on open.
+  // Focus into the dialog on open — once, not again on every department change (that moved focus
+  // to whichever button held the ref mid-render and lit a second department).
   useEffect(() => {
     if (visible) firstDept.current?.focus({ preventScroll: true });
-  }, [visible, dept, profile]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- open only, by design
+  }, [visible]);
 
   // Esc closes; Tab stays inside the dialog and the button that closes it.
   useEffect(() => {
@@ -207,7 +209,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
         >
           <nav
             aria-label={t(copy.title)}
-            className="flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-4 lg:content-center lg:items-center lg:gap-x-10 lg:py-16"
+            className="flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-4 lg:content-center lg:items-center lg:gap-x-14 lg:py-24 lg:ps-[46px] lg:pe-16"
           >
             {inApp && profile && profile.departments.length > 0 ? (
               <>
