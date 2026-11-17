@@ -2,7 +2,7 @@ import Link from "next/link"
 import {
   BarChart3Icon, BookOpenIcon, BriefcaseIcon, CalendarIcon, ClapperboardIcon, CodeIcon, FileTextIcon,
   MailIcon, MegaphoneIcon, MessageSquareIcon, PenLineIcon, SearchIcon, ShieldCheckIcon, SparklesIcon,
-  TargetIcon, UsersIcon, VideoIcon, type LucideIcon,
+  TargetIcon, UsersIcon, VideoIcon, FilterIcon, DatabaseIcon, type LucideIcon,
 } from "lucide-react"
 
 import { copy } from "./config"
@@ -25,7 +25,11 @@ const ICONS: [RegExp, LucideIcon][] = [
   [/video|film|edit|cut|reel|record|مونتاج|فيديو/i, VideoIcon],
   [/clip|shoot|motion|story/i, ClapperboardIcon],
   [/social|post|publish|carousel|campaign|brand|\bads?\b|منشور|حملة/i, MegaphoneIcon],
-  [/lead|prospect|scrape|sales|outreach|funnel|client|عميل|مبيعات/i, TargetIcon],
+  // Specific sales steps before the broad sales rule, so a department's cards don't all wear one icon.
+  [/funnel|qualif|nurture|stalled|قمع|تأهيل/i, FilterIcon],
+  [/scrap|enrich|crm|contact gap|اسحب/i, DatabaseIcon],
+  [/find|search|prospect|seek|ابحث/i, SearchIcon],
+  [/lead|sales|outreach|client|عميل|مبيعات/i, TargetIcon],
   [/mail|email|inbox|newsletter|بريد/i, MailIcon],
   [/chat|reply|message|support|whatsapp|رسالة/i, MessageSquareIcon],
   [/report|metric|measure|analytic|stat|dashboard|تقرير|أرقام/i, BarChart3Icon],
