@@ -9,7 +9,7 @@ import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
 import { getProfile, type MachineProfile } from "../profile/actions";
-import { copy, DEPT_KEY } from "./config";
+import { copy, promptHref, DEPT_KEY } from "./config";
 import { loadHealth, loadTasks, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
@@ -222,6 +222,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                     { href: `/${lang}/settings/`, label: t(copy.settings) },
                     ...(showCatalog ? [{ href: `/${lang}/catalog/`, label: t(copy.catalog) }] : []),
                     { href: `/${lang}/sessions/`, label: t(copy.sessions) },
+                    { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },
                   ]}
                 />
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">

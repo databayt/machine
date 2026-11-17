@@ -9,6 +9,11 @@ export const copy = {
   chats: { en: "Chats", ar: "المحادثات" },
   noChats: { en: "No chats yet. Ask something and it is kept here.", ar: "لا محادثات بعد. اسأل شيئاً وستُحفظ هنا." },
   sessions: { en: "Sessions", ar: "الجلسات" },
+  mathematics: { en: "Mathematics", ar: "الرياضيات" },
+  mathematicsStarter: {
+    en: "Walk me through the Mathematics curriculum we cover: grades, textbooks and how Hogwarts teaches it.",
+    ar: "اشرح لي منهج الرياضيات الذي نغطيه: الصفوف والكتب وكيف يدرّسه هوغورتس.",
+  },
   settings: { en: "Settings", ar: "الإعدادات" },
   catalog: { en: "Catalog", ar: "الكتالوج" },
   catalogHint: { en: "Browse and install Kun, item by item", ar: "تصفّح كن وثبّته عنصراً عنصراً" },
