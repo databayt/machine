@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 
 import { cn } from "@/lib/utils";
@@ -10,12 +10,14 @@ import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { copy, DEPT_KEY } from "./config";
-import { loadCatalog, loadHealth, loadTasks, type CatalogItem, type TasksView } from "./data";
+import { loadHealth, loadTasks, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
 import { MorphButton } from "./morph-button";
 import { Issues, upcoming } from "./issues";
-import { pillsFor, Today } from "./today";
+import { Banner } from "./banner";
+import { rankSpotlight } from "./spotlight";
+import { workflowsFor, Workflows } from "./workflows";
 import { quiet } from "./ui";
 
 const MS = 200;
@@ -23,7 +25,7 @@ const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefe
 
 /**
  * The machine's mega menu. A fixed two-line button morphs into an X; the full-screen dialog fades and
- * lifts in. Departments on the first column; the rest is the work area: upcoming issues as cards, then today's workflows and keywords. A footer strip below.
+ * lifts in. Departments on the first column; the rest is the work area: the banner, the department's workflows as a carousel, then the upcoming issues as cards. A footer strip below.
  */
 export function MachineMenu({ lang }: { lang: Locale }) {
   const isAr = lang === "ar";
@@ -41,8 +43,8 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   const [dept, setDept] = useState<string>("");
   const [tasks, setTasks] = useState<TasksView | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
-  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
   const [health, setHealth] = useState<HealthReport | null>(null);
+  const [unread, setUnread] = useState(0);
 
   const open = useCallback(() => {
     clearTimeout(timer.current);
@@ -96,7 +98,6 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   useEffect(() => {
     if (!visible || !inApp) return;
     loadHealth().then(setHealth);
-    loadCatalog().then(setCatalog);
   }, [visible, inApp]);
 
   useEffect(() => {
@@ -113,6 +114,21 @@ export function MachineMenu({ lang }: { lang: Locale }) {
       live = false;
     };
   }, [visible, inApp, dept]);
+
+  // Unread CEO notes: the network plugin emits `network:unread` after each heartbeat.
+  useEffect(() => {
+    if (!inApp) return;
+    let off: (() => void) | undefined;
+    let live = true;
+    import("@tauri-apps/api/event")
+      .then((m) => m.listen<{ count: number }>("network:unread", (e) => setUnread(e.payload?.count ?? 0)))
+      .then((f) => (live ? (off = f) : f()))
+      .catch(() => {});
+    return () => {
+      live = false;
+      off?.();
+    };
+  }, [inApp]);
 
   // Focus into the dialog on open.
   useEffect(() => {
@@ -141,8 +157,15 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   const showCatalog = !profile || profile.access.catalog === "all" || profile.access.catalog === "profile";
   const showEngine = inApp === true && (!profile || profile.access.engine);
   const current = profile?.departments.find((d) => d.name === dept);
-  const queue = upcoming(tasks, profile?.login);
-  const pills = pillsFor({ lang, dept: current, tasks: queue, catalog, hidden: profile?.hidden ?? [] });
+  const queue = useMemo(() => upcoming(tasks, profile?.login), [tasks, profile?.login]);
+  const workflows = useMemo(
+    () => workflowsFor({ lang, dept: current, hidden: profile?.hidden ?? [] }),
+    [lang, current, profile?.hidden],
+  );
+  const spotlight = useMemo(
+    () => rankSpotlight({ lang, view: tasks, tasks: queue, login: profile?.login, unread, health }),
+    [lang, tasks, queue, profile?.login, unread, health],
+  );
 
   return (
     <>
@@ -183,8 +206,9 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   first={firstDept}
                 />
                 <div className="flex min-w-0 flex-col gap-8 lg:col-span-3">
+                  <Banner items={spotlight} lang={lang} onNavigate={close} />
+                  <Workflows lang={lang} workflows={workflows} />
                   <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={close} />
-                  <Today lang={lang} pills={pills} />
                 </div>
               </>
             ) : (
