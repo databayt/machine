@@ -147,3 +147,19 @@
   .machine-dots > i, .machine-shimmer { animation: none; }
   .machine-shimmer { color: var(--muted-foreground); background-image: none; }
 }
+
+/* The banner headline's face — Thmanyah Sans 300 + 700. The files are fetched, never committed
+   (licence: no redistribution): scripts/fetch-thmanyah.mjs fills public/fonts/thmanyah/ on predev/prebuild.
+   Offline, the headline falls back to the sans stack. */
+@font-face {
+  font-family: "thmanyah sans";
+  src: url("/fonts/thmanyah/thmanyah-sans-300.woff2") format("woff2");
+  font-weight: 300;
+  font-display: swap;
+}
+@font-face {
+  font-family: "thmanyah sans";
+  src: url("/fonts/thmanyah/thmanyah-sans-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}
