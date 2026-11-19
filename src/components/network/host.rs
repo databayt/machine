@@ -45,7 +45,7 @@ pub trait Host: Send + Sync {
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = Command::new("git")
+    let out = driver::no_console(&mut Command::new("git"))
         .arg("-C")
         .arg(dir)
         .args(args)
@@ -67,7 +67,7 @@ fn behind_ahead(dir: &Path) -> Option<(u32, u32)> {
 }
 
 fn pull_ff(dir: &Path) -> Result<(), String> {
-    let out = Command::new("git")
+    let out = driver::no_console(&mut Command::new("git"))
         .arg("-C")
         .arg(dir)
         .args(["pull", "--ff-only", "--quiet"])

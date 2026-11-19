@@ -12,7 +12,7 @@ use tokio::{io::AsyncReadExt, process::Command};
 use super::model::{Loss, LossKind, RepoError};
 
 fn std_git(dir: &Path, args: &[&str]) -> Option<String> {
-    let out = StdCommand::new("git")
+    let out = crate::driver::no_console(&mut StdCommand::new("git"))
         .args(args)
         .current_dir(dir)
         .env("GIT_TERMINAL_PROMPT", "0")
@@ -123,6 +123,7 @@ pub(super) async fn run(
     if let Some(dir) = cwd {
         git.current_dir(dir);
     }
+    crate::driver::no_console(git.as_std_mut());
     let mut child = git.spawn().map_err(|e| format!("git: {e}"))?;
     let mut stderr = child.stderr.take().ok_or("git: no stderr")?;
     let (mut buf, mut pending, mut last) = ([0u8; 4096], String::new(), String::new());

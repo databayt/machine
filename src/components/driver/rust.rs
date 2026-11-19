@@ -179,9 +179,63 @@ fn windows_dirs(
     dirs
 }
 
+/// Keeps a child's console hidden: a Windows GUI app otherwise flashes a console window for
+/// every process it starts. A no-op elsewhere. Tokio commands pass `cmd.as_std_mut()`.
+pub fn no_console(cmd: &mut std::process::Command) -> &mut std::process::Command {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
+
+/// The script an npm `.cmd` shim runs, relative to the shim's folder: the last quoted
+/// `"%dp0%\…"` path that is not the optional bundled `node.exe`.
+fn shim_target(text: &str) -> Option<&str> {
+    text.match_indices("\"%dp0%\\")
+        .filter_map(|(i, m)| text[i + m.len()..].split('"').next())
+        .filter(|p| !p.is_empty() && !p.eq_ignore_ascii_case("node.exe"))
+        .last()
+}
+
+/// What to start for a CLI, plus arguments that go before its own. std refuses a multi-line
+/// argument to a `.cmd` file, so an npm shim is unwrapped to the `.exe` it names or to
+/// `node <script>`; a shim that cannot be read is run as it is.
+fn launcher(bin: PathBuf, dirs: &[PathBuf]) -> (PathBuf, Vec<PathBuf>) {
+    let is_cmd = bin
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("cmd"));
+    let Some(dir) = bin.parent().filter(|_| is_cmd) else {
+        return (bin, Vec::new());
+    };
+    let target = std::fs::read_to_string(&bin)
+        .ok()
+        .and_then(|text| shim_target(&text).map(|rel| dir.join(rel)))
+        .filter(|t| t.is_file());
+    let Some(target) = target else {
+        return (bin, Vec::new());
+    };
+    if target
+        .extension()
+        .is_some_and(|e| e.eq_ignore_ascii_case("exe"))
+    {
+        return (target, Vec::new());
+    }
+    let node = Some(dir.join("node.exe"))
+        .filter(|p| p.is_file())
+        .or_else(|| find_binary("node", dirs));
+    match node {
+        Some(node) => (node, vec![target]),
+        None => (bin, Vec::new()),
+    }
+}
+
 fn find_binary(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    // Never the bare name on Windows: npm puts an extensionless sh script beside the `.cmd`.
     let candidates: &[&str] = if cfg!(windows) {
-        &["", ".exe", ".cmd"]
+        &[".exe", ".cmd"]
     } else {
         &[""]
     };
@@ -396,20 +450,25 @@ pub fn parse_line(kind: DriverKind, line: &str) -> Vec<Event> {
 /// # Errors
 /// When the driver is missing, the job is invalid, the process cannot start, or it times out.
 pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), DriverError> {
-    let bin = find_binary(job.driver.binary(), &search_dirs())
+    let dirs = search_dirs();
+    let bin = find_binary(job.driver.binary(), &dirs)
         .ok_or(DriverError::NotInstalled(job.driver.binary()))?;
     let args = args_for(job)?;
     if !Path::new(&job.cwd).is_dir() {
         return Err(DriverError::Invalid("cwd is not a folder"));
     }
-    let mut child = Command::new(bin)
+    let (program, pre) = launcher(bin, &dirs);
+    let mut cmd = Command::new(program);
+    cmd.args(&pre)
         .args(&args)
         .current_dir(&job.cwd)
         .envs(job.env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
-        .kill_on_drop(true)
+        .kill_on_drop(true);
+    no_console(cmd.as_std_mut());
+    let mut child = cmd
         .spawn()
         .map_err(|e| DriverError::Spawn(job.driver.binary(), e))?;
 

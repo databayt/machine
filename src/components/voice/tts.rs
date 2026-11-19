@@ -113,11 +113,17 @@ fn which_espeak() -> Option<std::path::PathBuf> {
         .find(|p| p.is_file())
 }
 
-const WIN_SCRIPT: &str = r"Add-Type -AssemblyName System.Speech
-$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
-$v = $s.GetInstalledVoices() | Where-Object { $_.Enabled -and $_.VoiceInfo.Culture.Name.StartsWith($env:KUN_LANG) } | Select-Object -First 1
-if ($v) { $s.SelectVoice($v.VoiceInfo.Name) }
-$s.Speak($env:KUN_SAY)";
+/// Windows: the `WinRT` synthesizer, because Windows PowerShell's `System.Speech` sees only the
+/// English "Desktop" voices; the Arabic one (Microsoft Naayf, ar-SA) is a `OneCore` voice.
+const WIN_SCRIPT: &str = r"$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$T = [Windows.Media.SpeechSynthesis.SpeechSynthesizer, Windows.Media.SpeechSynthesis, ContentType = WindowsRuntime]
+$s = New-Object Windows.Media.SpeechSynthesis.SpeechSynthesizer
+$v = $T::AllVoices | Where-Object { $_.Language.StartsWith($env:KUN_LANG) } | Select-Object -First 1
+if ($v) { $s.Voice = $v }
+$asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.IsGenericMethod -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1' } | Select-Object -First 1
+$stream = $asTask.MakeGenericMethod([Windows.Media.SpeechSynthesis.SpeechSynthesisStream]).Invoke($null, @($s.SynthesizeTextToStreamAsync($env:KUN_SAY))).Result
+(New-Object System.Media.SoundPlayer ([System.IO.WindowsRuntimeStreamExtensions]::AsStreamForRead($stream))).PlaySync()";
 
 /// Speaks `text` (already validated language) and returns when it finishes or `stop` is called.
 ///
@@ -156,6 +162,7 @@ pub async fn speak(text: &str, lang: &str) -> Result<(), VoiceError> {
     .stdout(Stdio::null())
     .stderr(Stdio::null())
     .kill_on_drop(true);
+    crate::driver::no_console(cmd.as_std_mut());
     let mut child = cmd.spawn().map_err(|e| VoiceError::Speak(e.to_string()))?;
     if let (Some(text), Some(mut stdin)) = (stdin_text, child.stdin.take()) {
         stdin

@@ -2,7 +2,7 @@ name: Machine
 
 # The machine desktop app: Rust/Tauri shell in machine/, static Next.js UI in src/. Whole repo, no path filter.
 #   rust    — fmt, clippy -D warnings, tests (Linux: the cheapest runner, same code)
-#   windows — tests on Windows, then an UNSIGNED .msi uploaded as a build artifact.
+#   windows — clippy + tests on Windows, then an UNSIGNED .msi uploaded as a build artifact.
 # It never creates a release: publishing the installer is outward-facing and stays a human step.
 
 on:
@@ -63,6 +63,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: ${{ env.RUST_MSRV }}
+          components: clippy
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -81,6 +82,11 @@ jobs:
           if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
             choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
           }
+
+      # Windows-only code (cfg(windows)) is linted only here.
+      - name: cargo clippy
+        working-directory: machine
+        run: cargo clippy --locked --all-targets -- -D warnings
 
       - name: cargo test
         working-directory: machine

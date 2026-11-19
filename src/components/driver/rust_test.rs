@@ -213,3 +213,61 @@ fn windows_search_paths() {
     );
     assert!(windows_dirs(None, None, None).is_empty());
 }
+
+/// What `npm install -g @openai/codex` writes as `codex.cmd` (npm's cmd-shim).
+const NPM_SHIM: &str = r#"@ECHO off
+GOTO start
+:find_dp0
+SET dp0=%~dp0
+EXIT /b
+:start
+SETLOCAL
+CALL :find_dp0
+
+IF EXIST "%dp0%\node.exe" (
+  SET "_prog=%dp0%\node.exe"
+) ELSE (
+  SET "_prog=node"
+  SET PATHEXT=%PATHEXT:;.JS;=;%
+)
+
+endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & "%_prog%"  "%dp0%\node_modules\@openai\codex\bin\codex.js" %*
+"#;
+
+#[test]
+fn npm_shim_names_its_script() {
+    assert_eq!(
+        shim_target(NPM_SHIM),
+        Some(r"node_modules\@openai\codex\bin\codex.js")
+    );
+    assert_eq!(shim_target("@echo off\r\nsomething.exe %*"), None);
+}
+
+#[test]
+fn non_shims_run_as_they_are() {
+    let bin = PathBuf::from("claude.exe");
+    assert_eq!(launcher(bin.clone(), &[]), (bin, Vec::new()));
+    // An unreadable shim is run as it is.
+    let missing = PathBuf::from("no-such-dir/codex.cmd");
+    assert_eq!(launcher(missing.clone(), &[]), (missing, Vec::new()));
+}
+
+#[cfg(windows)]
+#[test]
+fn npm_shims_are_unwrapped_to_node_and_the_script() {
+    let dir = tempfile::tempdir().unwrap();
+    let script = dir.path().join(r"node_modules\@openai\codex\bin\codex.js");
+    std::fs::create_dir_all(script.parent().unwrap()).unwrap();
+    std::fs::write(&script, "").unwrap();
+    std::fs::write(dir.path().join("node.exe"), "").unwrap();
+    std::fs::write(dir.path().join("codex"), "#!/bin/sh").unwrap();
+    std::fs::write(dir.path().join("codex.cmd"), NPM_SHIM).unwrap();
+
+    let dirs = [dir.path().to_path_buf()];
+    let found = find_binary("codex", &dirs).unwrap();
+    assert_eq!(found, dir.path().join("codex.cmd"), "never the sh script");
+    assert_eq!(
+        launcher(found, &dirs),
+        (dir.path().join("node.exe"), vec![script])
+    );
+}
