@@ -423,17 +423,15 @@ async fn local_paths_lists_only_clones() {
     assert!(ops::local_paths(&root.path().join("absent")).is_empty());
 }
 
+#[cfg(unix)]
 #[test]
 fn remove_never_follows_a_symlink() {
     let root = tempfile::tempdir().unwrap();
     let outside = tempfile::tempdir().unwrap();
-    #[cfg(unix)]
-    {
         std::os::unix::fs::symlink(outside.path(), root.path().join("link")).unwrap();
         assert!(matches!(
             ops::remove_in(root.path(), "link"),
             Err(RepoError::BadName(_))
         ));
         assert!(outside.path().exists());
-    }
 }

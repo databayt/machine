@@ -30,8 +30,6 @@ pub enum EngineError {
     NoCheckout(String),
     #[error("{0} is not installed or not on a known path")]
     NotInstalled(&'static str),
-    #[error("{0}")]
-    Unsupported(&'static str),
     #[error("could not run {0}: {1}")]
     Spawn(&'static str, std::io::Error),
     #[error("{0} timed out after {1}s")]
@@ -242,6 +240,7 @@ async fn run_capture(
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("NO_COLOR", "1")
         .kill_on_drop(true);
+    crate::driver::no_console(cmd.as_std_mut());
     let out = tokio::time::timeout(limit, cmd.output())
         .await
         .map_err(|_| EngineError::Timeout(label, limit.as_secs()))?
@@ -365,20 +364,39 @@ pub async fn pull(dir: &Path) -> Result<UpdateReport, EngineError> {
 /// Runs the engine's health script.
 ///
 /// # Errors
-/// If bash is unavailable (Windows), the script is missing or it times out.
+/// If bash (or, on Windows, PowerShell) is unavailable, the script is missing or it times out.
 pub async fn run_health(dir: &Path) -> Result<HealthReport, EngineError> {
-    if cfg!(windows) {
-        return Err(EngineError::Unsupported(
-            "الفحص يحتاج bash ولا يعمل على ويندوز بعد · health needs bash, not supported on Windows yet",
-        ));
-    }
     check_checkout(dir)?;
-    let script = dir.join(".claude/scripts/health.sh");
+    // Windows runs kun's PowerShell twin: `bash` there may be WSL's, and `python3` the Store stub.
+    let name = if cfg!(windows) {
+        "health.ps1"
+    } else {
+        "health.sh"
+    };
+    let script = dir.join(".claude/scripts").join(name);
     if !script.is_file() {
         return Err(EngineError::NoCheckout(script.display().to_string()));
     }
-    let mut cmd = Command::new(find_tool("bash")?);
-    cmd.arg(&script).current_dir(dir);
+    let mut cmd;
+    if cfg!(windows) {
+        // Read as UTF-8 and dot-sourced: Windows PowerShell 5.1 reads a BOM-less `-File` as
+        // ANSI (the emoji break its parser), and `&` would hide the script's `$script:` scope.
+        cmd = Command::new("powershell");
+        cmd.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            "[Console]::OutputEncoding = [Text.Encoding]::UTF8; \
+             . ([scriptblock]::Create([IO.File]::ReadAllText($env:KUN_SCRIPT, [Text.Encoding]::UTF8)))",
+        ])
+        .env("KUN_SCRIPT", &script);
+    } else {
+        cmd = Command::new(find_tool("bash")?);
+        cmd.arg(&script);
+    }
+    cmd.current_dir(dir);
     let run = run_capture("health.sh", cmd, HEALTH_TIMEOUT).await?;
     let report = HealthReport {
         ok: run.ok,
