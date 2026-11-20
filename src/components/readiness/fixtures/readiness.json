@@ -1,0 +1,241 @@
+{
+  "version": 3,
+  "stages": [
+    "join",
+    "machine",
+    "tools",
+    "agents",
+    "repos",
+    "config",
+    "verify"
+  ],
+  "steps": [
+    {
+      "id": "claude.cli",
+      "stage": "agents",
+      "title": {
+        "ar": "ثبّت Claude Code",
+        "en": "Install Claude Code"
+      },
+      "os": [
+        "mac",
+        "linux"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [
+        "node"
+      ],
+      "human": false,
+      "check": {
+        "probe": "command -v claude",
+        "timeoutS": 10
+      },
+      "fix": {
+        "kind": "auto",
+        "cmd": "npm i -g @anthropic-ai/claude-code"
+      },
+      "update": {
+        "cmd": "claude update",
+        "cadence": "weekly",
+        "auto": true
+      }
+    },
+    {
+      "id": "node",
+      "stage": "tools",
+      "title": {
+        "ar": "ثبّت Node",
+        "en": "Install Node"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [
+        "brew"
+      ],
+      "human": false,
+      "check": {
+        "probe": "command -v node",
+        "timeoutS": 10
+      },
+      "fix": {
+        "kind": "terminal",
+        "cmd": "brew install node"
+      }
+    },
+    {
+      "id": "brew",
+      "stage": "machine",
+      "title": {
+        "ar": "Homebrew",
+        "en": "Homebrew"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [],
+      "human": false,
+      "check": {
+        "probe": "command -v brew",
+        "timeoutS": 10
+      },
+      "fix": {
+        "kind": "link",
+        "url": "https://brew.sh"
+      }
+    },
+    {
+      "id": "github.org",
+      "stage": "join",
+      "title": {
+        "ar": "انضم إلى منظمة databayt",
+        "en": "Join the databayt org"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [],
+      "human": true,
+      "check": {
+        "probe": "gh api orgs/databayt/memberships/$(gh api user -q .login)",
+        "timeoutS": 20
+      },
+      "fix": {
+        "kind": "request",
+        "message": "Please add me to the databayt GitHub org."
+      }
+    },
+    {
+      "id": "tool.blender",
+      "stage": "tools",
+      "title": {
+        "ar": "ثبّت Blender",
+        "en": "Install Blender"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "media"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [],
+      "human": false,
+      "check": {
+        "probe": "test -d /Applications/Blender.app",
+        "timeoutS": 5
+      },
+      "fix": {
+        "kind": "auto",
+        "cmd": "brew install --cask blender"
+      }
+    },
+    {
+      "id": "repo.hogwarts",
+      "stage": "repos",
+      "title": {
+        "ar": "استنسخ hogwarts",
+        "en": "Clone hogwarts"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "engineering"
+      ],
+      "roles": [
+        "engineer"
+      ],
+      "after": [
+        "github.org"
+      ],
+      "human": false,
+      "check": {
+        "probe": "test -d ~/hogwarts/.git",
+        "timeoutS": 5
+      },
+      "fix": {
+        "kind": "auto",
+        "cmd": "git clone https://github.com/databayt/hogwarts"
+      }
+    },
+    {
+      "id": "engine.notify",
+      "stage": "config",
+      "title": {
+        "ar": "إعداد الإشعارات",
+        "en": "Set up notifications"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [],
+      "human": false,
+      "check": {
+        "probe": "test -f ~/.claude/.kun-notify",
+        "timeoutS": 5
+      }
+    },
+    {
+      "id": "engine.health",
+      "stage": "verify",
+      "title": {
+        "ar": "فحص الصحة",
+        "en": "Health check"
+      },
+      "os": [
+        "mac"
+      ],
+      "departments": [
+        "*"
+      ],
+      "roles": [
+        "*"
+      ],
+      "after": [
+        "claude.cli",
+        "engine.notify"
+      ],
+      "human": false,
+      "check": {
+        "probe": "bash .claude/scripts/health.sh --json",
+        "timeoutS": 60
+      },
+      "fix": {
+        "kind": "auto",
+        "cmd": "bash .claude/scripts/health.sh"
+      }
+    }
+  ]
+}

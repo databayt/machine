@@ -48,6 +48,7 @@ fn a_healthy_machine_needs_no_heal() {
 #[test]
 fn plan_runs_kun_first_and_the_catalog_last_and_skips_dirty_repos() {
     let facts = Facts {
+        failing_steps: Vec::new(),
         driver_installed: true,
         outdated: vec!["skill:funnel".into()],
         repos: vec![
@@ -357,4 +358,28 @@ fn the_token_is_trimmed_validated_and_kept_per_login() {
     }
     token::store(&m, "", "dev").unwrap();
     assert_eq!(token::read(&m, "").unwrap().as_deref(), Some("dev"));
+}
+
+#[test]
+fn a_failing_auto_step_is_planned_and_executed_through_the_host() {
+    let facts = Facts {
+        failing_steps: vec!["gh.installed".into()],
+        workspace_ready: true,
+        driver_installed: true,
+        ..Facts::default()
+    };
+    assert_eq!(health::plan(&facts), vec![Heal::Step("gh.installed".into())]);
+    let host = FakeHost {
+        driver: true,
+        workspace: true,
+        steps: vec!["gh.installed".into()],
+        ..FakeHost::default()
+    };
+    let report = health::run_cycle(&host, "now");
+    assert_eq!(host.calls(), ["step:gh.installed"]);
+    let item = report.items.iter().find(|i| i.key == "step:gh.installed").unwrap();
+    assert!(item.ok && item.healed);
+    let failing = FakeHost { steps: vec!["x".into()], fail: vec!["step:x".into()], ..FakeHost::default() };
+    let report = health::run_cycle(&failing, "now");
+    assert!(!report.items.iter().find(|i| i.key == "step:x").unwrap().ok);
 }

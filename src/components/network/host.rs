@@ -42,6 +42,20 @@ pub trait Host: Send + Sync {
     fn pull_kun(&self) -> Result<(), String>;
     /// Removes clones whose sprint ended (only when nothing would be lost); returns what it did.
     fn sweep(&self) -> Vec<String>;
+    /// Failing readiness steps whose fix is `auto` and that are still under the attempt cap.
+    fn failing_steps(&self) -> Vec<String> {
+        Vec::new()
+    }
+    /// Fixes one readiness step through kun's provision script.
+    /// # Errors
+    /// When the step is still failing or the runner could not run.
+    fn heal_step(&self, _id: &str) -> Result<(), String> {
+        Err("readiness steps are not available here".to_owned())
+    }
+    /// The readiness summary the heartbeat carries.
+    fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {
+        None
+    }
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
@@ -278,8 +292,19 @@ impl Host for RealHost {
     fn sweep(&self) -> Vec<String> {
         Vec::new()
     }
-}
 
+    fn failing_steps(&self) -> Vec<String> {
+        crate::readiness::failing_auto_steps()
+    }
+
+    fn heal_step(&self, id: &str) -> Result<(), String> {
+        crate::readiness::heal_step(id)
+    }
+
+    fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {
+        crate::readiness::beat()
+    }
+}
 /// A scripted machine for the tests of `health`, `tasks` and `chat`.
 #[cfg(test)]
 pub mod fake {
@@ -303,6 +328,8 @@ pub mod fake {
         pub task: Option<String>,
         pub fail: Vec<String>,
         pub swept: Vec<String>,
+        /// Failing readiness steps the host reports as auto-fixable.
+        pub steps: Vec<String>,
         /// Every heal the host was asked to do, in order.
         pub calls: Mutex<Vec<String>>,
     }
@@ -375,6 +402,12 @@ pub mod fake {
         }
         fn sweep(&self) -> Vec<String> {
             self.swept.clone()
+        }
+        fn failing_steps(&self) -> Vec<String> {
+            self.steps.clone()
+        }
+        fn heal_step(&self, id: &str) -> Result<(), String> {
+            self.act(&format!("step:{id}"))
         }
     }
 }

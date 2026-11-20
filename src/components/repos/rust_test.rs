@@ -437,3 +437,150 @@ fn remove_never_follows_a_symlink() {
         assert!(outside.path().exists());
     }
 }
+
+// ---- the repos root is a setting --------------------------------------------------------------
+
+mod root_setting {
+    use std::{fs, path::Path};
+
+    use super::{cloned, git, origin, state};
+    use crate::repos::{
+        model::{RepoError, RepoMode, RootSource},
+        ops::{self, SyncState},
+        root,
+    };
+
+    const INSTALLER: &str = include_str!("fixtures/installer-state.json");
+
+    #[test]
+    fn the_installer_state_file_sets_the_default_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let installer = dir.path().join("installer-state.json");
+        fs::write(&installer, INSTALLER).unwrap();
+        let setting = dir.path().join("repos-root.json");
+        let default = dir.path().join("Kun/repos");
+        let (r, source) = root::resolve(&setting, Some(&installer), &default);
+        assert_eq!(r, Path::new("/Users/teammate"));
+        assert_eq!(source, RootSource::Installer);
+        // A choice made in the app wins over the installer.
+        root::save_setting(&setting, &dir.path().join("code")).unwrap();
+        let (r, source) = root::resolve(&setting, Some(&installer), &default);
+        assert_eq!((r, source), (dir.path().join("code"), RootSource::Setting));
+        // No installer file, no setting: the built-in default.
+        let none = tempfile::tempdir().unwrap();
+        let (r, source) = root::resolve(&none.path().join("a.json"), Some(&none.path().join("b.json")), &default);
+        assert_eq!((r, source), (default, RootSource::Default));
+        // A relative or empty reposDir is not adopted.
+        fs::write(&installer, r#"{"reposDir":"relative/dir"}"#).unwrap();
+        assert!(root::adopt_from_installer(&installer).is_none());
+    }
+
+    #[test]
+    fn the_state_file_never_lands_in_the_root() {
+        let app = Path::new("/home/u/.kun/machine");
+        let home = Path::new("/home/u");
+        let file = state::file_in(app, home);
+        assert!(file.starts_with(app) && !file.starts_with(home.join(".kun-repos.json")));
+        assert_ne!(file, state::file_in(app, Path::new("/home/u/code")), "one file per root");
+        // Written to the app folder, the root stays clean.
+        let app_dir = tempfile::tempdir().unwrap();
+        let root_dir = tempfile::tempdir().unwrap();
+        let mut st = state::State::new();
+        st.insert(
+            "demo".into(),
+            crate::repos::RepoEntry { mode: RepoMode::Sprint, sprint: Some("s1".into()), added_at: 1 },
+        );
+        state::save_with(Some(app_dir.path()), root_dir.path(), &st).unwrap();
+        assert_eq!(fs::read_dir(root_dir.path()).unwrap().count(), 0);
+        assert_eq!(state::load_with(Some(app_dir.path()), root_dir.path())["demo"].sprint.as_deref(), Some("s1"));
+        // An older root-local file is still read when there is no new one.
+        let old_root = tempfile::tempdir().unwrap();
+        state::save_with(None, old_root.path(), &st).unwrap();
+        assert!(state::load_with(Some(app_dir.path()), old_root.path()).contains_key("demo"));
+    }
+
+    #[tokio::test]
+    async fn an_existing_clone_is_adopted_never_cloned_again() {
+        let Some(o) = origin() else { return };
+        let root = tempfile::tempdir().unwrap();
+        cloned(&o, root.path()).await;
+        fs::write(root.path().join("demo/mine.txt"), "uncommitted").unwrap();
+        let head = std::process::Command::new("git")
+            .args(["-C", root.path().join("demo").to_str().unwrap(), "rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout;
+        // A base that has nothing: a re-clone would fail, so success means it was adopted.
+        let mut events = Vec::new();
+        ops::clone_or_adopt_in("file:///nowhere", root.path(), "demo", None, false, &mut |e| events.push(e))
+            .await
+            .unwrap();
+        assert_eq!(events.last().unwrap().state, SyncState::Done);
+        assert_eq!(fs::read_to_string(root.path().join("demo/mine.txt")).unwrap(), "uncommitted");
+        let head_after = std::process::Command::new("git")
+            .args(["-C", root.path().join("demo").to_str().unwrap(), "rev-parse", "HEAD"])
+            .output()
+            .unwrap()
+            .stdout;
+        assert_eq!(head, head_after);
+        assert_eq!(state::load(root.path())["demo"].mode, RepoMode::Keep);
+        // A plain folder that is not a clone is still refused.
+        fs::create_dir_all(root.path().join("plain")).unwrap();
+        let again = ops::clone_or_adopt_in("file:///nowhere", root.path(), "plain", None, false, &mut |_| {}).await;
+        assert!(matches!(again, Err(RepoError::AlreadyCloned(_))));
+    }
+
+    #[tokio::test]
+    async fn moving_the_root_carries_clean_clones_and_state() {
+        let Some(o) = origin() else { return };
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        cloned(&o, old.path()).await;
+        let moved = root::move_clones(old.path(), &new.path().join("deeper"), None).unwrap();
+        assert_eq!(moved, ["demo"]);
+        assert!(new.path().join("deeper/demo/.git").exists() && !old.path().join("demo").exists());
+        assert!(state::load(&new.path().join("deeper")).contains_key("demo"));
+        assert!(!state::load(old.path()).contains_key("demo"));
+    }
+
+    #[tokio::test]
+    async fn a_move_is_refused_when_a_clone_has_unsaved_work() {
+        let Some(o) = origin() else { return };
+        let old = tempfile::tempdir().unwrap();
+        let new = tempfile::tempdir().unwrap();
+        cloned(&o, old.path()).await;
+        fs::write(old.path().join("demo/README.md"), "edited").unwrap();
+        let blocks = root::move_blockers(old.path(), new.path(), None).unwrap();
+        assert_eq!(blocks.len(), 1);
+        assert_eq!(blocks[0].name, "demo");
+        assert!(!blocks[0].losses.is_empty());
+        let r = root::move_clones(old.path(), new.path(), None);
+        assert!(matches!(r, Err(RepoError::MoveRefused(n)) if n == ["demo"]));
+        assert!(old.path().join("demo/.git").exists(), "nothing moved");
+        assert!(!new.path().join("demo").exists());
+        // Unpushed commits block too.
+        fs::write(old.path().join("demo/README.md"), "two").unwrap();
+        assert!(git(&old.path().join("demo"), &["commit", "-qam", "local"]));
+        assert!(!root::move_blockers(old.path(), new.path(), None).unwrap().is_empty());
+        // "Leave in place": the setting changes, the clones stay.
+        let setting = old.path().join("repos-root.json");
+        let info = root::set_root(&setting, None, old.path(), new.path(), false, None).unwrap();
+        assert_eq!(info.source, RootSource::Setting);
+        assert!(old.path().join("demo/.git").exists());
+        // The kun checkout is pinned and does not move.
+        let clean = tempfile::tempdir().unwrap();
+        cloned(&o, clean.path()).await;
+        let pinned = clean.path().join("demo");
+        assert!(root::move_clones(clean.path(), &new.path().join("x"), Some(&pinned)).unwrap().is_empty());
+    }
+
+    #[test]
+    fn a_root_must_be_a_real_absolute_folder() {
+        for bad in ["relative", "/", "/a/../b", "./x"] {
+            assert!(matches!(root::validate(Path::new(bad)), Err(RepoError::BadRoot(_))), "{bad}");
+        }
+        let file = tempfile::NamedTempFile::new().unwrap();
+        assert!(root::validate(file.path()).is_err());
+        assert!(root::validate(Path::new("/tmp/ok-root")).is_ok());
+    }
+}

@@ -55,6 +55,9 @@ pub struct Heartbeat {
     pub health: HealthReport,
     pub repos: Vec<LocalRepo>,
     pub current_task: Option<String>,
+    /// How ready this computer is, from `~/.claude/state/readiness.json`; absent before a first run.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub readiness: Option<crate::readiness::ReadinessBeat>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

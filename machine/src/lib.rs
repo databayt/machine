@@ -11,7 +11,7 @@ pub fn run() {
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .init();
-    register(tauri::Builder::default())
+    register(tauri::Builder::default().plugin(tauri_plugin_updater::Builder::new().build()))
         .run(tauri::generate_context!())
         .expect("machine failed to start");
 }

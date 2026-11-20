@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "context7": { "command": "npx", "args": ["-y", "@upstash/context7-mcp"], "description": "Docs" },
+    "airtable": {
+      "command": "npx",
+      "args": ["-y", "airtable-mcp-server"],
+      "env": { "AIRTABLE_API_KEY": "${AIRTABLE_API_KEY}" },
+      "description": "Airtable",
+      "$skipRegistration": true
+    }
+  }
+}

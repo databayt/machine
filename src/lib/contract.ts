@@ -152,6 +152,14 @@ export const heartbeatSchema = z.object({
     )
     .max(200),
   currentTask: taskIdSchema.nullable(),
+  /** How ready this computer is (`~/.claude/state/readiness.json`); absent until a first run. */
+  readiness: z
+    .object({
+      percent: z.number().int().min(0).max(100),
+      failing: z.array(z.string().max(100)).max(200),
+      catalogVersion: z.union([z.string().max(40), z.number()]).nullable(),
+    })
+    .optional(),
 });
 export type Heartbeat = z.infer<typeof heartbeatSchema>;
 

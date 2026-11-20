@@ -1,0 +1,14 @@
+{
+  "catalogVersion": 3,
+  "at": "2026-11-20T10:00:00Z",
+  "percent": 62.5,
+  "failing": ["claude.cli", "engine.health"],
+  "human": ["github.org"],
+  "steps": [
+    { "id": "brew", "status": "pass", "detail": "brew 5.1", "at": "2026-11-20T10:00:01Z" },
+    { "id": "node", "status": "pass", "detail": "v24", "at": "2026-11-20T10:00:02Z" },
+    { "id": "claude.cli", "status": "fail", "detail": "claude not found", "at": "2026-11-20T10:00:03Z" },
+    { "id": "github.org", "status": "human", "detail": "waiting for an owner", "at": "2026-11-20T10:00:04Z" },
+    { "id": "engine.health", "status": "blocked", "detail": "after claude.cli", "at": "2026-11-20T10:00:05Z" }
+  ]
+}

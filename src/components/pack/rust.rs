@@ -8,7 +8,7 @@
 //! With a profile (`machines/<login>.json`) the run lives in `~/Kun/<login>/` instead
 //! (`workspace.rs`): CLAUDE.md, a generated KNOWLEDGE.md, the profile's skills, a `work/`
 //! folder and the `--settings` file that enforces read-only code. The profile's public repos
-//! are cloned into `~/Kun/repos/` and only ever fast-forwarded (the `repos` feature). Skill links
+//! are cloned into the repos root (a setting; `~/Kun/repos/` unless the installer chose another) and only ever fast-forwarded (the `repos` feature). Skill links
 //! (`link.rs`) use junctions on Windows.
 
 use std::{
@@ -33,7 +33,7 @@ mod link;
 mod workspace;
 
 pub use crate::repos::{SyncEvent, SyncState};
-pub use workspace::{Workspace, ensure_workspace_in, settings_json};
+pub use workspace::{Workspace, ensure_workspace_in, ensure_workspace_with, settings_json};
 
 #[derive(Debug, thiserror::Error)]
 pub enum PackError {
@@ -360,7 +360,8 @@ pub fn workspace_root() -> Result<PathBuf, PackError> {
 /// # Errors
 /// See [`ensure_workspace_in`].
 pub fn workspace(profile: &crate::profile::MachineProfile) -> Result<Workspace, PackError> {
-    ensure_workspace_in(&kun_dir()?, &workspace_root()?, profile)
+    let repos = crate::repos::repos_root().map_err(|e| PackError::Profile(e.to_string()))?;
+    ensure_workspace_with(&kun_dir()?, &workspace_root()?, &repos, profile)
 }
 
 /// `prepare` — builds the working folder and returns its path. A signed-in profile gets its
@@ -380,7 +381,7 @@ fn prepare(department: String) -> Result<String, PackError> {
 #[tauri::command]
 async fn sync_repos(channel: Channel<SyncEvent>) -> Result<(), PackError> {
     let resolved = crate::profile::current().map_err(|e| PackError::Profile(e.to_string()))?;
-    let root = workspace_root()?.join("repos");
+    let root = crate::repos::repos_root().map_err(|e| PackError::Profile(e.to_string()))?;
     crate::repos::sync_all(
         &root,
         &resolved.profile.repos,

@@ -1,0 +1,10 @@
+{"type":"start","mode":"complete","catalogVersion":3,"total":6}
+{"type":"progress","phase":"check","of":6,"label":"Checking 6 steps"}
+{"type":"step","id":"brew","stage":"machine","status":"pass","detail":"brew 5.1"}
+{"type":"step","id":"claude.cli","stage":"agents","status":"fixing","detail":"npm i -g"}
+{"type":"step","id":"claude.cli","stage":"agents","status":"fixed","detail":"claude 2.1"}
+{"type":"pass","n":1}
+{"type":"step","id":"github.org","stage":"join","status":"human","detail":"waiting for an owner"}
+{"type":"future-event","x":1}
+not json at all
+{"type":"done","percent":83.3,"passed":5,"applicable":6,"failing":["engine.health"],"human":["github.org"]}

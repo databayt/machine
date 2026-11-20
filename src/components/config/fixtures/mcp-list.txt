@@ -1,0 +1,7 @@
+Checking MCP server health…
+
+context7: npx -y @upstash/context7-mcp - ✓ Connected
+github: https://api.example.com/mcp (HTTP) - ! Needs authentication
+airtable: npx -y airtable-mcp-server AIRTABLE_API_KEY=patABCDEF1234567890abcdef1234 - ✗ Failed to connect
+ indented: ignored
+--bad: x

@@ -130,16 +130,18 @@ pub async fn sync_once<H: Host + 'static>(
         .await
         .map_err(|_| NetError::Join)?;
     let (h, repos_report) = (Arc::clone(host), report.clone());
-    let (repos, current_task, os) =
-        tokio::task::spawn_blocking(move || (h.repos(), h.current_task(), std::env::consts::OS))
-            .await
-            .map_err(|_| NetError::Join)?;
+    let (repos, current_task, os, readiness) = tokio::task::spawn_blocking(move || {
+        (h.repos(), h.current_task(), std::env::consts::OS, h.readiness())
+    })
+    .await
+    .map_err(|_| NetError::Join)?;
     let beat = Heartbeat {
         app_version: env!("CARGO_PKG_VERSION").to_owned(),
         os: os.to_owned(),
         health: repos_report,
         repos,
         current_task,
+        readiness,
     };
     let unread = api::post_json::<HeartbeatResponse>(api, "/api/machine/heartbeat", &beat)
         .await

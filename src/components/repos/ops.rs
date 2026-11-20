@@ -49,14 +49,43 @@ fn event(repo: &str, state: SyncState, message: Option<String>) -> SyncEvent {
     }
 }
 
-/// The root folder of every clone: `<workspace root>/repos`.
+/// The built-in root: `<workspace root>/repos`.
+///
+/// # Errors
+/// When there is no home folder and no `KUN_HOME`.
+pub(super) fn default_root() -> Result<PathBuf, RepoError> {
+    crate::pack::workspace_root()
+        .map(|p| p.join("repos"))
+        .map_err(|_| RepoError::NoHome)
+}
+
+/// machine's file for the chosen root.
+pub(super) fn setting_file() -> Result<PathBuf, RepoError> {
+    crate::pack::machine_dir()
+        .map(|d| d.join(super::root::SETTING_FILE))
+        .map_err(|_| RepoError::NoHome)
+}
+
+/// The installer's state file, when this computer has one. Not consulted under a `KUN_HOME`
+/// override, which is how tests and sandboxes keep to their own folder.
+pub(super) fn installer_file() -> Option<PathBuf> {
+    if std::env::var_os("KUN_HOME").is_some_and(|v| !v.is_empty()) {
+        return None;
+    }
+    let xdg = std::env::var_os("XDG_CONFIG_HOME")
+        .filter(|v| !v.is_empty())
+        .map(PathBuf::from);
+    super::root::installer_state_path(&dirs::home_dir()?, xdg.as_deref())
+}
+
+/// The root folder of every clone: the saved choice, else the installer's `reposDir`, else
+/// `~/Kun/repos`. Every caller (pack, chat, the heartbeat, tasks) asks here.
 ///
 /// # Errors
 /// When there is no home folder and no `KUN_HOME`.
 pub fn repos_root() -> Result<PathBuf, RepoError> {
-    crate::pack::workspace_root()
-        .map(|p| p.join("repos"))
-        .map_err(|_| RepoError::NoHome)
+    let default = default_root()?;
+    Ok(super::root::resolve(&setting_file()?, installer_file().as_deref(), &default).0)
 }
 
 fn valid(name: &str) -> Result<(), RepoError> {
@@ -75,8 +104,12 @@ fn remote_name(url: &str) -> Option<&str> {
 }
 
 /// The folders under `root` that are git clones, sorted by name. Agent chat adds these with `--add-dir`.
+///
+/// When the root is the home folder, only clones of a databayt repo count: the other repos there
+/// are the person's own and are neither listed nor reported.
 #[must_use]
 pub fn local_paths(root: &Path) -> Vec<PathBuf> {
+    let is_home = dirs::home_dir().is_some_and(|h| h == root);
     let mut paths: Vec<PathBuf> = fs::read_dir(root)
         .into_iter()
         .flatten()
@@ -85,6 +118,7 @@ pub fn local_paths(root: &Path) -> Vec<PathBuf> {
         .filter(|e| crate::pack::valid_name(&e.file_name().to_string_lossy()))
         .map(|e| e.path())
         .filter(|p| git::is_repo(p))
+        .filter(|p| !is_home || git::origin(p).as_deref().and_then(remote_name).is_some())
         .collect();
     paths.sort();
     paths
@@ -230,6 +264,28 @@ pub(super) async fn clone_in(
     })
     .await;
     finish(root, name, result, emit)
+}
+
+/// Like [`clone_in`], but a clone already at `<root>/<name>` is adopted: recorded as `keep` and left
+/// exactly as it is, never cloned again or touched.
+///
+/// # Errors
+/// As [`clone_in`]; a folder that is there but is not a git clone is still `AlreadyCloned`.
+pub(super) async fn clone_or_adopt_in(
+    base: &str,
+    root: &Path,
+    name: &str,
+    depth: Option<u32>,
+    progress: bool,
+    emit: &mut impl FnMut(SyncEvent),
+) -> Result<(), RepoError> {
+    valid(name)?;
+    if git::is_repo(&root.join(name)) {
+        state::ensure(root, name)?;
+        emit(event(name, SyncState::Done, Some("already on this computer".to_owned())));
+        return Ok(());
+    }
+    clone_in(base, root, name, depth, progress, emit).await
 }
 
 /// `git pull --ff-only` in an existing clone; nothing else ever moves a branch.

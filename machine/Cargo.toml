@@ -37,6 +37,8 @@ whisper-rs = { version = "=0.16.0", optional = true }
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
 # free disk space, portable (network health check).
 fs4 = { version = "1.1", features = ["sync"] }
+# self-update: checks GitHub releases (latest.json), verifies the minisign signature, installs on confirm.
+tauri-plugin-updater = "=2.14.1"
 
 [target.'cfg(windows)'.dependencies]
 # skill links without admin rights: symlink_dir, then a directory junction, then a copy.

@@ -1,8 +1,10 @@
-//! repos — the databayt repos on this computer, cloned into `~/Kun/repos/<name>`.
+//! repos — the databayt repos on this computer, cloned into `<root>/<name>`. The root is a setting
+//! (see `root.rs`): chosen in the app, else the installer's `reposDir`, else `~/Kun/repos`; clones
+//! already there are adopted, never cloned again.
 //!
 //! Clone is shallow (50) unless asked for full, pull is `--ff-only` and nothing else, and removal
 //! refuses when it would lose work. machine never pushes, never commits and never stores a git
-//! credential. The state (`keep` or `sprint` per clone) lives in `~/Kun/repos/.kun-repos.json`.
+//! credential. The state (`keep` or `sprint` per clone) lives in machine's data folder, never in the root.
 //! `pack` calls [`sync_all`] to sync a profile's repos; agent chat reads [`local_paths`] for `--add-dir`.
 
 use std::path::PathBuf;
@@ -19,14 +21,22 @@ mod git;
 mod model;
 #[path = "ops.rs"]
 mod ops;
+#[path = "root.rs"]
+mod root;
 #[path = "state.rs"]
 mod state;
 
 pub use model::LocalRepo;
 pub use model::{
-    Loss, LossKind, OrgRepoArg, RepoEntry, RepoError, RepoFailure, RepoMode, RepoRow, SweepReport,
+    Loss, LossKind, MoveBlock, OrgRepoArg, RepoEntry, RepoError, RepoFailure, RepoMode, RepoRow,
+    RootInfo, RootSource, SweepReport,
 };
 pub use ops::{GITHUB_BASE, SyncEvent, SyncState, local_paths, local_repos, repos_root, sync_all};
+
+/// Kun's own checkout, which a root move leaves where it is.
+fn pinned_kun() -> PathBuf {
+    crate::engine::kun_dir()
+}
 
 async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, RepoError> + Send + 'static,
@@ -66,7 +76,7 @@ async fn clone(
     depth: Option<u32>,
     channel: Channel<SyncEvent>,
 ) -> Result<(), RepoError> {
-    ops::clone_in(GITHUB_BASE, &repos_root()?, &name, depth, true, &mut |e| {
+    ops::clone_or_adopt_in(GITHUB_BASE, &repos_root()?, &name, depth, true, &mut |e| {
         let _ = channel.send(e);
     })
     .await
@@ -116,6 +126,43 @@ async fn sweep_sprint(current_sprint: String) -> Result<SweepReport, RepoError> 
     blocking(move || ops::sweep_in(&root, &current_sprint)).await
 }
 
+/// `get_root` — where the clones live and how that was decided.
+#[tauri::command]
+async fn get_root() -> Result<RootInfo, RepoError> {
+    let default = ops::default_root()?;
+    let setting = ops::setting_file()?;
+    blocking(move || Ok(root::info(&setting, ops::installer_file().as_deref(), &default))).await
+}
+
+/// `move_blockers` — the clones that would stop a move to `path` (unsaved work, a name already
+/// there). Empty means the move is safe.
+#[tauri::command]
+async fn move_blockers(path: String) -> Result<Vec<MoveBlock>, RepoError> {
+    let new = root::validate(std::path::Path::new(&path))?;
+    let old = repos_root()?;
+    blocking(move || root::move_blockers(&old, &new, Some(pinned_kun().as_path()))).await
+}
+
+/// `set_root` — switches the repos root. With `move_clones` the clones follow, but only when none
+/// would lose work; without it they stay where they are and the new root starts empty (clones
+/// already in it are adopted).
+#[tauri::command]
+async fn set_root(path: String, move_clones: bool) -> Result<RootInfo, RepoError> {
+    let default = ops::default_root()?;
+    let setting = ops::setting_file()?;
+    blocking(move || {
+        root::set_root(
+            &setting,
+            ops::installer_file().as_deref(),
+            &default,
+            std::path::Path::new(&path),
+            move_clones,
+            Some(pinned_kun().as_path()),
+        )
+    })
+    .await
+}
+
 /// The clones' folders, for callers that need them as paths (agent chat's `--add-dir`).
 #[must_use]
 pub fn local_dirs() -> Vec<PathBuf> {
@@ -133,7 +180,10 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             remove,
             set_remote,
             open_remote,
-            sweep_sprint
+            sweep_sprint,
+            get_root,
+            move_blockers,
+            set_root
         ])
         .build()
 }

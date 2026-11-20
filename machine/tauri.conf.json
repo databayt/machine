@@ -51,6 +51,15 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEQyQ0I5NUMxMkU5NzYzNDAKUldSQVk1Y3V3WlhMMHNscm5aUXpLT3BtUlZjVUlobStsZkNMS3E2dVhlY0lEcDdKS2lqU01XOGkK",
+      "endpoints": [
+        "https://github.com/databayt/machine/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -16,6 +16,11 @@ export type Loss = { kind: LossKind, count: number, };
 export type LossKind = "dirty" | "untracked" | "unpushed" | "stash";
 
 /**
+ * A clone that stops a move because moving it could lose work, with what is at risk.
+ */
+export type MoveBlock = { name: string, losses: Array<Loss>, };
+
+/**
  * What the TS side passes in from kun's API (`OrgRepo` in the contract); extra fields are ignored.
  */
 export type OrgRepoArg = { name: string, description: string | null, private: boolean, };
@@ -51,6 +56,20 @@ export type RepoRow = { name: string, description: string | null, private: boole
  * `None` while the repo is not cloned.
  */
 mode: RepoMode | null, sprint: string | null, branch: string, behind: number, ahead: number, dirty: boolean, };
+
+/**
+ * Where the clones live.
+ */
+export type RootInfo = { root: string, source: RootSource, default_root: string, 
+/**
+ * Git clones found directly inside the root.
+ */
+clones: number, };
+
+/**
+ * Where the repos root came from.
+ */
+export type RootSource = "setting" | "installer" | "default";
 
 /**
  * What `sweep_sprint` did.

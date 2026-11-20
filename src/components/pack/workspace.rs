@@ -279,11 +279,31 @@ pub fn ensure_workspace_in(
     root: &Path,
     profile: &MachineProfile,
 ) -> Result<Workspace, PackError> {
+    ensure_workspace_with(kun, root, &root.join("repos"), profile)
+}
+
+/// [`ensure_workspace_in`] with the clones' folder given: the repos root is a setting, so it need
+/// not sit beside the workspace.
+///
+/// # Errors
+/// On a login or department that is not a plain name, or a filesystem failure.
+pub fn ensure_workspace_with(
+    kun: &Path,
+    root: &Path,
+    repos: &Path,
+    profile: &MachineProfile,
+) -> Result<Workspace, PackError> {
     if !valid_name(&profile.login) {
         return Err(PackError::BadName);
     }
     let dir = root.join(&profile.login);
-    let repos = root.join("repos");
+    // A repos root that contains the workspace (the home folder) would put the workspace under the
+    // read-only `repos/**` deny rule, so such a run keeps its own `<root>/repos` instead.
+    let repos = if root.starts_with(repos) {
+        root.join("repos")
+    } else {
+        repos.to_path_buf()
+    };
     let work = dir.join("work");
     let settings_file = dir.join(".claude-settings.json");
     fs::create_dir_all(&work).map_err(io_err(&work))?;

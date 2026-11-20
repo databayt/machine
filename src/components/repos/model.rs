@@ -124,6 +124,10 @@ pub enum RepoError {
     Io(String, std::io::Error),
     #[error("{0}")]
     Profile(String),
+    #[error("the folder cannot be the repos root: {0}")]
+    BadRoot(String),
+    #[error("move refused: it would lose work or collide in {}", .0.join(", "))]
+    MoveRefused(Vec<String>),
 }
 
 /// The serialized form of a [`RepoError`].
@@ -147,6 +151,8 @@ impl RepoError {
             Self::Git(_) => "git",
             Self::Io(..) => "io",
             Self::Profile(_) => "profile",
+            Self::BadRoot(_) => "bad_root",
+            Self::MoveRefused(_) => "move_refused",
         }
     }
 
@@ -173,4 +179,36 @@ impl Serialize for RepoError {
 /// The io error mapper: `.map_err(io_err(path))`.
 pub(crate) fn io_err(path: &std::path::Path) -> impl FnOnce(std::io::Error) -> RepoError + '_ {
     move |e| RepoError::Io(path.display().to_string(), e)
+}
+
+/// A clone that stops a move because moving it could lose work, with what is at risk.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "repos/types.ts")]
+pub struct MoveBlock {
+    pub name: String,
+    pub losses: Vec<Loss>,
+}
+
+/// Where the repos root came from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "repos/types.ts")]
+pub enum RootSource {
+    /// Chosen in the app.
+    Setting,
+    /// Adopted from the installer's `installer-state.json` (`reposDir`).
+    Installer,
+    /// The built-in default, `~/Kun/repos`.
+    Default,
+}
+
+/// Where the clones live.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "repos/types.ts")]
+pub struct RootInfo {
+    pub root: String,
+    pub source: RootSource,
+    pub default_root: String,
+    /// Git clones found directly inside the root.
+    pub clones: u32,
 }

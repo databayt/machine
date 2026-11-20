@@ -23,6 +23,8 @@ pub struct Facts {
     pub disk_free_bytes: Option<u64>,
     /// `None` when kun is not a git checkout here.
     pub kun_behind: Option<u32>,
+    /// Failing readiness steps with an `auto` fix, under the 3-per-day attempt cap.
+    pub failing_steps: Vec<String>,
 }
 
 /// One safe fix.
@@ -32,6 +34,8 @@ pub enum Heal {
     Repo(String),
     Workspace,
     Catalog(String),
+    /// A failing readiness step, fixed by kun's provision script.
+    Step(String),
 }
 
 /// Reads the facts from the host.
@@ -44,6 +48,7 @@ pub fn gather(host: &impl Host) -> Facts {
         workspace_ready: host.workspace_ready(),
         disk_free_bytes: host.disk_free_bytes(),
         kun_behind: host.kun_behind(),
+        failing_steps: host.failing_steps(),
     }
 }
 
@@ -71,6 +76,7 @@ pub fn plan(facts: &Facts) -> Vec<Heal> {
         heals.push(Heal::Workspace);
     }
     heals.extend(facts.outdated.iter().cloned().map(Heal::Catalog));
+    heals.extend(facts.failing_steps.iter().cloned().map(Heal::Step));
     heals
 }
 
@@ -94,6 +100,7 @@ fn outcome<'a>(outcomes: &'a Outcomes, heal: &Heal) -> Option<&'a Result<(), Str
     outcomes.iter().find(|(h, _)| h == heal).map(|(_, r)| r)
 }
 
+#[allow(clippy::too_many_lines)]
 /// The report: every fact as an item, marked healed when its fix worked.
 #[must_use]
 pub fn report_items(facts: &Facts, outcomes: &Outcomes) -> Vec<HealthItem> {
@@ -170,6 +177,15 @@ pub fn report_items(facts: &Facts, outcomes: &Outcomes) -> Vec<HealthItem> {
         });
     }
 
+    for id in &facts.failing_steps {
+        let key = format!("step:{id}");
+        items.push(match outcome(outcomes, &Heal::Step(id.clone())) {
+            Some(Ok(())) => item(&key, true, "fixed by the provision script", true),
+            Some(Err(e)) => item(&key, false, e.clone(), false),
+            None => item(&key, false, "failing", false),
+        });
+    }
+
     for r in &facts.repos {
         let key = format!("repo:{}", r.name);
         items.push(if r.behind == 0 {
@@ -206,6 +222,7 @@ fn apply_one(host: &impl Host, heal: &Heal) -> Result<(), String> {
         Heal::Repo(name) => host.pull_repo(name),
         Heal::Workspace => host.prepare_workspace(),
         Heal::Catalog(id) => host.reinstall(id),
+        Heal::Step(id) => host.heal_step(id),
     }
 }
 
