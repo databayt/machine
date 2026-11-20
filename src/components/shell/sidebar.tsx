@@ -6,9 +6,7 @@ import { usePathname } from "next/navigation";
 import type { Locale } from "@/components/local/config";
 import { tr } from "../chat/config";
 import { copy } from "../menu/config";
-import { loadHealth, type HealthReport } from "../menu/data";
 import { Departments } from "../menu/departments";
-import { Tools } from "../menu/tools";
 import { useDepartment } from "../menu/use-department";
 import { readinessState } from "../readiness/actions";
 import { getProfile, type MachineProfile } from "../profile/actions";
@@ -16,8 +14,8 @@ import { useInMachine } from "./content";
 
 /**
  * The persistent app sidebar: the menu's Departments column (same component, same look) kept on
- * screen beside every page. Departments, then a link to each page with the current one highlighted,
- * then the tools. Large screens only; below `lg` the mega menu is the way around. Outside the app
+ * screen beside every page. Departments, then a few links with the current one highlighted; the
+ * hamburger menu (on every screen size) carries every page. Large screens only. Outside the app
  * (a plain browser) there is no profile, so only the links show.
  */
 export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
@@ -26,18 +24,15 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   const inApp = useInMachine();
   const pathname = usePathname() ?? "";
   const [profile, setProfile] = useState<MachineProfile | null>(null);
-  const [health, setHealth] = useState<HealthReport | null>(null);
   const [readyPct, setReadyPct] = useState<number | null>(null);
   const { dept, choose } = useDepartment(profile);
 
   useEffect(() => {
     if (!inApp) return;
     getProfile().then(setProfile).catch(() => setProfile(null));
-    loadHealth().then(setHealth);
     readinessState().then((v) => setReadyPct(v && v.hasState ? Math.round(v.percent) : null)).catch(() => setReadyPct(null));
   }, [inApp]);
 
-  const showEngine = inApp === true && (!profile || profile.access.engine);
   const base = `/${lang}`;
   const is = (path: string) => {
     const here = pathname.replace(/\/+$/, "");
@@ -50,18 +45,12 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   });
 
   const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
+  // A few links only; the hamburger menu carries every page.
   const links = [
     { href: `${base}/`, label: t(copy.home), active: is("") },
     ...(inApp ? [page("/readiness", copy.readiness, notReady)] : []),
     page("/sessions", copy.sessions),
-    ...(inApp ? [page("/repos", copy.repositories)] : []),
-    ...(inApp ? [page("/agents", copy.agents)] : []),
-    page("/catalog", copy.catalog),
-    ...(inApp ? [page("/config", copy.configuration)] : []),
-    ...(inApp ? [page("/health", copy.healthUpdates)] : []),
-    ...(showEngine ? [page("/engine", copy.engine)] : []),
     page("/settings", copy.settings),
-    { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },
   ];
 
   return (
@@ -73,7 +62,6 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
         label={t(copy.title)}
         onSelect={choose}
         links={links}
-        tools={inApp ? <Tools lang={lang} inApp showEngine={showEngine} health={health} /> : undefined}
       />
     </aside>
   );
