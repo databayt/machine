@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 
-use super::model::{Readiness, ReadyState, Task, TasksResponse, TasksView};
+use super::model::{Context, Readiness, ReadyState, Task, TaskStatus, TasksResponse, TasksView};
 use crate::{catalog::ItemStatus, network::model::LocalRepo};
 
 /// What this machine looks like, gathered once per question.
@@ -99,6 +99,20 @@ pub fn view(tasks: TasksResponse, facts: &Facts) -> TasksView {
     }
 }
 
+/// The first auto-run task this machine may pick up: `run:auto`, free, unblocked, still to do, and
+/// only when `held` has nothing in progress (one at a time). `board` is in queue order.
+#[must_use]
+pub fn next_auto_task<'a>(board: &'a [Task], held: &[Task]) -> Option<&'a Task> {
+    if held.iter().any(|t| t.status == TaskStatus::InProgress) {
+        return None;
+    }
+    let mut queue: Vec<&Task> = board.iter().collect();
+    queue.sort_by_key(|t| t.order);
+    queue.into_iter().find(|t| {
+        t.auto && t.holder.is_none() && t.status == TaskStatus::Todo && t.after_open.is_empty()
+    })
+}
+
 /// The seed file's first line: names the task and the repos to open with it.
 #[must_use]
 pub fn seed_header(task: &Task) -> String {
@@ -106,9 +120,35 @@ pub fn seed_header(task: &Task) -> String {
     format!("<!-- kun-task: {} repos={} -->", task.id, repos.join(","))
 }
 
-/// `TASK.md`: what a run needs to start the task without asking.
+/// Lines of the machine-wide state file that mention one of the task's repos (case-insensitive),
+/// at most 40. `None` when nothing matches.
+#[must_use]
+pub fn aware_excerpt(text: &str, repos: &[String]) -> Option<String> {
+    let names: Vec<String> = repos.iter().map(|r| repo_name(r).to_lowercase()).collect();
+    if names.is_empty() {
+        return None;
+    }
+    let lines: Vec<&str> = text
+        .lines()
+        .filter(|l| {
+            let lower = l.to_lowercase();
+            names.iter().any(|n| lower.contains(n.as_str()))
+        })
+        .take(40)
+        .collect();
+    (!lines.is_empty()).then(|| lines.join("\n"))
+}
+
+/// `TASK.md` with no extra context.
 #[must_use]
 pub fn seed_text(task: &Task) -> String {
+    seed_text_with(task, &Context::default())
+}
+
+/// `TASK.md`: the issue, the last comments (receipts marked) and the state excerpt, so a run can
+/// start the task without asking.
+#[must_use]
+pub fn seed_text_with(task: &Task, ctx: &Context) -> String {
     let list = |v: &[String]| {
         if v.is_empty() {
             "none".to_owned()
@@ -116,7 +156,7 @@ pub fn seed_text(task: &Task) -> String {
             v.join(", ")
         }
     };
-    format!(
+    let mut text = format!(
         "{header}\n# {title}\n\n{id} · {url}\n\nDepartment: {dept} · Sprint: {sprint} · Priority: {prio}\n\n\
          Read KNOWLEDGE.md in this folder first if it exists.\n\n## The issue\n\n{body}\n\n\
          ## Kun block\n\n- Repos (opened with the session): {repos}\n- Items: {items}\n- After: {after}\n",
@@ -137,7 +177,29 @@ pub fn seed_text(task: &Task) -> String {
         repos = list(&task.kun.repos),
         items = list(&task.kun.items),
         after = list(&task.kun.after),
-    )
+    );
+    if let Some(d) = &task.kun.driver {
+        text.push_str(&format!("- Driver: {d}\n"));
+    }
+    if !ctx.comments.is_empty() {
+        text.push_str("\n## Recent comments\n");
+        for c in &ctx.comments {
+            let mark = if c.receipt { " [run receipt]" } else { "" };
+            text.push_str(&format!(
+                "\n### {} · {}{mark}\n\n{}\n",
+                c.author,
+                c.created_at,
+                c.body.trim()
+            ));
+        }
+    }
+    if let Some(a) = ctx.aware.as_deref().filter(|a| !a.trim().is_empty()) {
+        text.push_str(&format!(
+            "\n## Machine state (lines about this task's repos)\n\n{}\n",
+            a.trim_end()
+        ));
+    }
+    text
 }
 
 /// The repos named by a seed's first line, if it is the seed of `id`.

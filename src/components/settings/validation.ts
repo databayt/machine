@@ -11,6 +11,8 @@ export const settingsSchema = z.object({
     .refine((s) => !/\p{Cc}/u.test(s)),
   department: z.string().regex(/^[A-Za-z0-9_][A-Za-z0-9_.-]{0,63}$/).refine((s) => !s.includes("..")),
   driver: z.enum(["claude", "codex", "opencode"]),
+  // Opt-in pickup of `run:auto` tasks (settings/rust.rs `auto_run`, serialized as autoRun).
+  autoRun: z.boolean(),
 })
 
 export type SettingsInput = z.infer<typeof settingsSchema>

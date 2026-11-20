@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use super::{
-    model::{KunBlock, Readiness, ReadyState, Task, TaskStatus, TasksResponse},
+    model::{Context, KunBlock, Readiness, ReadyState, Task, TaskComment, TaskStatus, TasksResponse},
     readiness::{self, Facts, readiness as verdict},
     *,
 };
@@ -9,7 +9,7 @@ use crate::{
     catalog::ItemStatus,
     network::{
         host::fake::FakeHost,
-        model::{LocalRepo, RepoMode},
+        model::{LocalRepo, Receipt, RepoMode},
     },
 };
 
@@ -26,10 +26,12 @@ fn task(id_n: u32) -> Task {
         priority: Some(1),
         sprint: Some("Sprint 3".into()),
         order: 0,
+        auto: false,
         kun: KunBlock {
             repos: vec!["hogwarts".into()],
             items: vec!["skill:proposal".into()],
             after: Vec::new(),
+            driver: None,
         },
         after_open: Vec::new(),
         body: "Quote Al-Ibda.".into(),
@@ -159,11 +161,15 @@ fn the_seed_round_trips_and_names_its_task() {
 struct Server {
     tasks: TasksResponse,
     claim: Result<String, (u16, String)>,
+    detail: Result<String, (u16, String)>,
     posts: Mutex<Vec<(String, String)>>,
 }
 
 impl Api for Server {
     async fn get(&self, path: &str) -> Result<String, ApiError> {
+        if path.starts_with("/api/machine/task?id=") {
+            return self.detail.clone().map_err(|(status, body)| ApiError::Status { status, body });
+        }
         assert!(path.starts_with("/api/machine/tasks?department="), "{path}");
         Ok(serde_json::to_string(&self.tasks).unwrap())
     }
@@ -186,6 +192,7 @@ fn server(board: Vec<Task>, in_progress: u32) -> Server {
             wip_limit: 1,
         },
         claim: Ok(String::new()),
+        detail: Err((404, "no detail".into())),
         posts: Mutex::new(Vec::new()),
     }
 }
@@ -200,7 +207,7 @@ async fn start_claims_then_writes_the_seed() {
     let mut s = server(vec![t.clone()], 0);
     s.claim = Ok(serde_json::json!({ "ok": true, "task": { "id": t.id, "repo": "hogwarts", "number": 10, "title": "Draft the pilot proposal", "url": "u",
         "department": "sales", "status": "in-progress", "holder": "ali", "priority": 1, "sprint": null, "order": 0,
-        "kun": { "repos": ["hogwarts"], "items": [], "after": [] }, "afterOpen": [], "body": "b", "updatedAt": "t" } }).to_string());
+        "kun": { "repos": ["hogwarts"], "items": [], "after": [], "driver": null }, "afterOpen": [], "body": "b", "updatedAt": "t" } }).to_string());
     let dir = tempfile::tempdir().unwrap();
     let started = start_with(&s, &ready_facts(), &depts(), dir.path(), &t.id)
         .await
@@ -336,4 +343,177 @@ fn a_tasks_repo_dirs_are_the_matching_local_clones() {
     };
     let dirs = task_repo_dirs(&host, &["hogwarts".into(), "kun".into()]);
     assert_eq!(dirs, vec![PathBuf::from("/w/repos/hogwarts")]);
+}
+
+fn comment(body: &str, receipt: bool) -> TaskComment {
+    TaskComment {
+        author: "ali".into(),
+        body: body.into(),
+        created_at: "2026-11-19".into(),
+        receipt,
+    }
+}
+
+#[test]
+fn the_kun_block_reads_a_known_driver_and_ignores_an_unknown_one() {
+    let k: KunBlock = serde_json::from_str(r#"{"repos":[],"driver":"Codex"}"#).unwrap();
+    assert_eq!(k.driver.as_deref(), Some("codex"));
+    let k: KunBlock = serde_json::from_str(r#"{"driver":"gpt9"}"#).unwrap();
+    assert_eq!(k.driver, None);
+    let k: KunBlock = serde_json::from_str(r#"{"driver":null}"#).unwrap();
+    assert_eq!(k.driver, None);
+    let k: KunBlock = serde_json::from_str("{}").unwrap();
+    assert_eq!(k.driver, None);
+    // An older server without `auto` still decodes.
+    let t = serde_json::to_value(task(1)).unwrap();
+    let mut t = t.as_object().unwrap().clone();
+    t.remove("auto");
+    assert!(!serde_json::from_value::<Task>(t.into()).unwrap().auto);
+}
+
+#[test]
+fn a_blocked_task_is_blocked_by_its_open_afters_even_when_first_in_the_queue() {
+    let mut t = task(20);
+    t.order = 0;
+    t.after_open = vec!["databayt/hogwarts#19".into()];
+    let r = run(&t, &ready_facts());
+    assert_eq!(
+        (r.state, r.missing),
+        (ReadyState::Blocked, vec!["after:databayt/hogwarts#19".to_owned()])
+    );
+}
+
+fn auto(n: u32, order: u32) -> Task {
+    let mut t = task(n);
+    t.auto = true;
+    t.order = order;
+    t
+}
+
+#[test]
+fn next_auto_task_takes_the_first_free_unblocked_auto_task_in_queue_order() {
+    let mut blocked = auto(30, 0);
+    blocked.after_open = vec!["databayt/hogwarts#1".into()];
+    let mut held = auto(31, 1);
+    held.holder = Some("sara".into());
+    let manual = task(32); // not run:auto
+    let late = auto(33, 4);
+    let first = auto(34, 3);
+    let board = vec![blocked, held, manual, late.clone(), first.clone()];
+    assert_eq!(readiness::next_auto_task(&board, &[]), Some(&first));
+    // Sorted by `order`, not by position.
+    let shuffled = vec![late, first.clone()];
+    assert_eq!(readiness::next_auto_task(&shuffled, &[]), Some(&first));
+    assert_eq!(readiness::next_auto_task(&[task(35)], &[]), None);
+}
+
+#[test]
+fn next_auto_task_waits_while_one_is_in_progress() {
+    let mut mine = auto(40, 0);
+    mine.status = TaskStatus::InProgress;
+    mine.holder = Some("ali".into());
+    let board = vec![auto(41, 1)];
+    assert_eq!(readiness::next_auto_task(&board, &[mine]), None);
+    let mut in_review = auto(42, 0);
+    in_review.status = TaskStatus::Review;
+    assert!(readiness::next_auto_task(&board, &[in_review]).is_some());
+}
+
+#[test]
+fn the_aware_excerpt_keeps_only_lines_about_the_repos_and_at_most_forty() {
+    let text = "Hogwarts deploy green\nmkan queue 3\nunrelated\n";
+    assert_eq!(
+        readiness::aware_excerpt(text, &["databayt/hogwarts".into()]).as_deref(),
+        Some("Hogwarts deploy green")
+    );
+    assert_eq!(readiness::aware_excerpt(text, &["kun".into()]), None);
+    assert_eq!(readiness::aware_excerpt(text, &[]), None);
+    let many = "kun line\n".repeat(60);
+    assert_eq!(
+        readiness::aware_excerpt(&many, &["kun".into()]).unwrap().lines().count(),
+        40
+    );
+}
+
+#[test]
+fn the_seed_carries_comments_with_receipts_marked_and_the_state_excerpt() {
+    let mut t = task(50);
+    t.kun.driver = Some("codex".into());
+    let ctx = Context {
+        comments: vec![comment("looks fine", false), comment("did it", true)],
+        aware: Some("hogwarts deploy green".into()),
+    };
+    let text = readiness::seed_text_with(&t, &ctx);
+    assert!(text.contains("- Driver: codex"));
+    assert!(text.contains("## Recent comments") && text.contains("looks fine"));
+    assert!(text.contains("ali · 2026-11-19 [run receipt]"));
+    assert!(text.contains("## Machine state") && text.contains("hogwarts deploy green"));
+    assert_eq!(readiness::seed_repos(&text, &t.id), Some(vec!["hogwarts".to_owned()]));
+    // No context: no extra sections.
+    let plain = readiness::seed_text(&t);
+    assert!(!plain.contains("Recent comments") && !plain.contains("Machine state"));
+}
+
+#[tokio::test]
+async fn start_writes_the_context_pack_when_kun_serves_it() {
+    let mut t = task(51);
+    t.holder = Some("ali".into());
+    t.status = TaskStatus::InProgress;
+    let mut s = server(vec![t.clone()], 1);
+    s.detail = Ok(serde_json::json!({ "task": t, "comments": [
+        { "author": "ceo", "body": "mind the VAT", "createdAt": "d", "receipt": false },
+        { "author": "ali", "body": "<!-- kun:receipt -->\nran it", "createdAt": "d2", "receipt": true } ] })
+    .to_string());
+    let dir = tempfile::tempdir().unwrap();
+    let aware = dir.path().join("aware.md");
+    fs::write(&aware, "hogwarts: 2 open\nother: x\n").unwrap();
+    start_with_aware(&s, &ready_facts(), &depts(), dir.path(), &t.id, Some(&aware))
+        .await
+        .unwrap();
+    let seed = fs::read_to_string(dir.path().join(SEED_FILE)).unwrap();
+    assert!(seed.contains("mind the VAT") && seed.contains("[run receipt]"));
+    assert!(seed.contains("hogwarts: 2 open") && !seed.contains("other: x"));
+    assert!(seed.contains("Quote Al-Ibda."), "the issue body is still there");
+}
+
+fn receipt(id: &str) -> Receipt {
+    Receipt {
+        id: id.into(),
+        driver: "claude".into(),
+        model: "opus".into(),
+        duration_ms: 90_000,
+        commits: vec!["abc123".into()],
+        artifacts: Vec::new(),
+        summary: "did it".into(),
+        next: None,
+    }
+}
+
+#[tokio::test]
+async fn a_receipt_is_validated_posted_and_a_refusal_surfaced() {
+    let mut s = server(Vec::new(), 0);
+    s.claim = Ok(r#"{"ok":true}"#.into());
+    receipt_with(&s, &receipt("databayt/kun#3")).await.unwrap();
+    {
+        let posts = s.posts.lock().unwrap();
+        assert_eq!(posts[0].0, "/api/machine/receipt");
+        let body: serde_json::Value = serde_json::from_str(&posts[0].1).unwrap();
+        assert_eq!(body["durationMs"], 90_000);
+        assert!(body.get("next").is_none(), "an absent next is not sent");
+    }
+    let mut bad = receipt("databayt/kun#3");
+    bad.summary = "x".repeat(4001);
+    assert!(matches!(receipt_with(&s, &bad).await, Err(TaskError::Invalid(_))));
+    bad = receipt("kun#3");
+    assert!(matches!(receipt_with(&s, &bad).await, Err(TaskError::Invalid(_))));
+    bad = receipt("databayt/kun#3");
+    bad.driver = "gpt9".into();
+    assert!(matches!(receipt_with(&s, &bad).await, Err(TaskError::Invalid(_))));
+    assert_eq!(s.posts.lock().unwrap().len(), 1, "invalid receipts never reach the wire");
+
+    let mut no = server(Vec::new(), 0);
+    no.claim = Err((409, r#"{"ok":false,"error":"held","detail":"you do not hold it"}"#.into()));
+    assert!(
+        matches!(receipt_with(&no, &receipt("databayt/kun#3")).await, Err(TaskError::Refused(m)) if m == "held: you do not hold it")
+    );
 }

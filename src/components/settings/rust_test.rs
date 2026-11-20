@@ -16,6 +16,7 @@ fn round_trips_and_trims() {
             department: "video".into(),
             driver: DriverKind::Opencode,
             login: " moed ".into(),
+            auto_run: true,
         },
     )
     .unwrap();

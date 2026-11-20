@@ -100,6 +100,21 @@ export function SettingsForm({ isAr, initial, drivers, departments, lockedDriver
         )}
       </fieldset>
 
+      <label className="bg-muted/70 flex items-start gap-3 rounded-2xl p-3 text-sm">
+        <input
+          type="checkbox"
+          className="mt-1"
+          checked={values.autoRun}
+          onChange={(e) => setValues({ ...values, autoRun: e.target.checked })}
+        />
+        <span>
+          <span className="font-medium">{isAr ? "التقاط المهام تلقائيًا" : "Pick up auto tasks"}</span>
+          <span className="text-muted-foreground block text-xs">
+            {isAr ? "المهام الموسومة run:auto فقط. لا يبدأ شيء دون موافقتك بعد." : "Only tasks labelled run:auto. Nothing starts unattended yet."}
+          </span>
+        </span>
+      </label>
+
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={busy} className="h-12 rounded-full px-6 text-base">{isAr ? "حفظ" : "Save"}</Button>
         {message && <span className={cn("text-sm", message.ok ? "text-muted-foreground" : "text-destructive")}>{message.text}</span>}

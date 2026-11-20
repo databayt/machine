@@ -4,6 +4,8 @@
 use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
+use crate::network::model::DRIVERS;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "tasks/types.ts")]
 pub enum TaskStatus {
@@ -17,7 +19,15 @@ pub enum TaskStatus {
     Done,
 }
 
-/// The parsed `<!-- kun: repos=…; items=…; after=… -->` block of an issue.
+/// An agent CLI name from the block's `driver=`; anything unknown reads as `None`.
+fn known_driver<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    let raw = Option::<String>::deserialize(d)?;
+    Ok(raw
+        .map(|s| s.trim().to_lowercase())
+        .filter(|s| DRIVERS.contains(&s.as_str())))
+}
+
+/// The parsed `<!-- kun: repos=…; items=…; after=…; driver=… -->` block of an issue.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(export, export_to = "tasks/types.ts")]
@@ -25,6 +35,9 @@ pub struct KunBlock {
     pub repos: Vec<String>,
     pub items: Vec<String>,
     pub after: Vec<String>,
+    /// `claude`, `codex`, `opencode`, `agy` or `hermes`; `None` = the machine profile's default.
+    #[serde(deserialize_with = "known_driver")]
+    pub driver: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -43,7 +56,11 @@ pub struct Task {
     pub holder: Option<String>,
     pub priority: Option<u8>,
     pub sprint: Option<String>,
+    /// Queue position: priority (P0 first), then milestone (current sprint first), then age.
     pub order: u32,
+    /// The `run:auto` label: eligible for opt-in automatic pickup.
+    #[serde(default)]
+    pub auto: bool,
     #[serde(default)]
     pub kun: KunBlock,
     /// The `after` ids still open: non-empty means blocked.
@@ -107,4 +124,32 @@ pub struct TasksView {
     #[serde(flatten)]
     pub tasks: TasksResponse,
     pub readiness: std::collections::BTreeMap<String, Readiness>,
+}
+
+/// One issue comment, as `GET /api/machine/task?id=` returns it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "tasks/types.ts")]
+pub struct TaskComment {
+    pub author: String,
+    pub body: String,
+    pub created_at: String,
+    /// The body starts with `<!-- kun:receipt -->`.
+    #[serde(default)]
+    pub receipt: bool,
+}
+
+/// GET `/api/machine/task?id=<id>`: the task plus its last comments.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TaskDetail {
+    pub task: Task,
+    #[serde(default)]
+    pub comments: Vec<TaskComment>,
+}
+
+/// What `TASK.md` adds to the issue: the recent comments and the machine-wide state excerpt.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Context {
+    pub comments: Vec<TaskComment>,
+    pub aware: Option<String>,
 }

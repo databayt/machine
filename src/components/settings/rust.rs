@@ -24,6 +24,9 @@ pub struct Settings {
     pub driver: DriverKind,
     /// The machine profile to load (`machines/<login>.json`); empty means full access.
     pub login: String,
+    /// Opt-in: pick up `run:auto` tasks without being asked. Off by default; nothing spawns yet.
+    #[serde(rename = "autoRun")]
+    pub auto_run: bool,
 }
 
 impl Default for Settings {
@@ -33,6 +36,7 @@ impl Default for Settings {
             department: "sales".into(),
             driver: DriverKind::Claude,
             login: String::new(),
+            auto_run: false,
         }
     }
 }

@@ -31,6 +31,16 @@ export type MessageKind = "note" | "job" | "nudge";
 export type MessagesResponse = { messages: Array<MachineMessage>, };
 
 /**
+ * POST `/api/machine/receipt`: what a run did. Only the task's holder may post it; kun comments
+ * it on the issue (marker `<!-- kun:receipt -->`) and sets `status:review`.
+ */
+export type Receipt = { id: string, driver: string, model: string, durationMs: number, commits: Array<string>, artifacts: Array<string>, 
+/**
+ * 1 to 4000 characters.
+ */
+summary: string, next?: string | null, };
+
+/**
  * Whether a clone is kept or swept when its sprint ends.
  */
 export type RepoMode = "keep" | "sprint";

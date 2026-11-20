@@ -64,6 +64,21 @@ pub async fn post_json<T: DeserializeOwned>(
     serde_json::from_str(&text).map_err(|e| ApiError::Decode(e.to_string()))
 }
 
+/// POST a run receipt. kun answers 409 `{ ok: false, error }` unless the caller holds the task.
+///
+/// # Errors
+/// [`ApiError::Decode`] when the receipt breaks the schema (nothing is sent), else from the
+/// transport; a refusal is a 409 [`ApiError::Status`].
+pub async fn post_receipt(
+    api: &impl Api,
+    receipt: &super::model::Receipt,
+) -> Result<serde_json::Value, ApiError> {
+    receipt
+        .validate()
+        .map_err(|e| ApiError::Decode(e.to_owned()))?;
+    post_json(api, "/api/machine/receipt", receipt).await
+}
+
 /// The real transport: reqwest + rustls, the token read from the OS store on every call.
 pub struct HttpApi {
     base: String,

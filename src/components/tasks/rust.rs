@@ -20,6 +20,7 @@ use crate::{
     network::{
         api::{self, Api, ApiError, HttpApi},
         host::{self, Host, RealHost},
+        model::Receipt,
         valid_task_id,
     },
     pack, profile, settings,
@@ -30,7 +31,7 @@ pub mod model;
 #[path = "readiness.rs"]
 pub mod readiness;
 
-use model::{ReadyState, Task, TasksResponse, TasksView};
+use model::{Context, ReadyState, Task, TaskDetail, TasksResponse, TasksView};
 use readiness::Facts;
 
 /// The seed's file name, in the working folder.
@@ -157,16 +158,53 @@ async fn find_task(
     Err(TaskError::NotFound)
 }
 
-/// Re-checks the gate, claims on the server, writes the seed into `dir`. Returns the task.
+/// The machine-wide state file a run's seed quotes from: `KUN_AWARE`, else `~/.claude/state/aware.md`.
+fn aware_path() -> Option<PathBuf> {
+    match std::env::var_os("KUN_AWARE") {
+        Some(p) if !p.is_empty() => Some(PathBuf::from(p)),
+        _ => dirs::home_dir().map(|h| h.join(".claude/state/aware.md")),
+    }
+}
+
+/// [`start_with_aware`] without the state excerpt.
 ///
 /// # Errors
-/// [`TaskError::NotReady`] when the gate says no, [`TaskError::Refused`] when the server does.
+/// As [`start_with_aware`].
 pub async fn start_with(
     api: &impl Api,
     facts: &Facts,
     departments: &[String],
     dir: &Path,
     id: &str,
+) -> Result<Task, TaskError> {
+    start_with_aware(api, facts, departments, dir, id, None).await
+}
+
+/// The context pack, best effort: the last comments from kun and the `aware` lines about the repos.
+/// A failure only means a thinner `TASK.md`.
+async fn gather_context(api: &impl Api, task: &Task, aware: Option<&Path>) -> Context {
+    let comments = api::get_json::<TaskDetail>(api, &format!("/api/machine/task?id={}", task.id.replace('#', "%23")))
+        .await
+        .map(|d| d.comments)
+        .unwrap_or_default();
+    let aware = aware
+        .and_then(|p| fs::read_to_string(p).ok())
+        .and_then(|t| readiness::aware_excerpt(&t, &task.kun.repos));
+    Context { comments, aware }
+}
+
+/// Re-checks the gate, claims on the server, writes the seed (with the context pack) into `dir`.
+/// Returns the task.
+///
+/// # Errors
+/// [`TaskError::NotReady`] when the gate says no, [`TaskError::Refused`] when the server does.
+pub async fn start_with_aware(
+    api: &impl Api,
+    facts: &Facts,
+    departments: &[String],
+    dir: &Path,
+    id: &str,
+    aware: Option<&Path>,
 ) -> Result<Task, TaskError> {
     if !valid_task_id(id) {
         return Err(TaskError::Invalid("task id is invalid"));
@@ -196,7 +234,8 @@ pub async fn start_with(
             .and_then(|t| serde_json::from_value(t.clone()).ok())
             .unwrap_or(task)
     };
-    fs::write(dir.join(SEED_FILE), readiness::seed_text(&task))
+    let ctx = gather_context(api, &task, aware).await;
+    fs::write(dir.join(SEED_FILE), readiness::seed_text_with(&task, &ctx))
         .map_err(|e| TaskError::Local(e.to_string()))?;
     Ok(task)
 }
@@ -245,6 +284,25 @@ pub async fn finish_with(api: &impl Api, id: &str, summary: &str) -> Result<(), 
     .await
 }
 
+/// Posts the run receipt: kun comments it on the issue and moves the task to review. Only the
+/// holder may; the token stays inside the HTTP edge.
+///
+/// # Errors
+/// [`TaskError::Invalid`] when the receipt breaks the schema (nothing is sent),
+/// [`TaskError::Refused`] on a 409.
+pub async fn receipt_with(api: &impl Api, receipt: &Receipt) -> Result<(), TaskError> {
+    receipt.validate().map_err(TaskError::Invalid)?;
+    let answer = api::post_receipt(api, receipt).await.map_err(refusal)?;
+    if answer.get("ok").and_then(serde_json::Value::as_bool) == Some(false) {
+        let why = answer
+            .get("error")
+            .and_then(|e| e.as_str())
+            .unwrap_or("refused");
+        return Err(TaskError::Refused(why.to_owned()));
+    }
+    Ok(())
+}
+
 /// Forgets the held task and its seed, when they are `id`'s.
 fn clear_held(id: &str) {
     if host::held_task().as_deref() == Some(id) {
@@ -283,12 +341,13 @@ async fn start(id: String) -> Result<Task, TaskError> {
     let dir = tokio::task::spawn_blocking(work_dir)
         .await
         .map_err(|e| TaskError::Local(e.to_string()))??;
-    let task = start_with(
+    let task = start_with_aware(
         &HttpApi::from_process()?,
         &facts,
         &departments_to_search(),
         &dir,
         &id,
+        aware_path().as_deref(),
     )
     .await?;
     host::set_held_task(Some(&task.id)).map_err(TaskError::Local)?;
@@ -311,10 +370,17 @@ async fn done(id: String, summary: String) -> Result<(), TaskError> {
     Ok(())
 }
 
+/// `post_receipt` — sends the run receipt; the task goes to review. The chat keeps the task held
+/// until `done` or `release`.
+#[tauri::command]
+async fn post_receipt(receipt: Receipt) -> Result<(), TaskError> {
+    receipt_with(&HttpApi::from_process()?, &receipt).await
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("tasks")
-        .invoke_handler(tauri::generate_handler![tasks, start, release, done])
+        .invoke_handler(tauri::generate_handler![tasks, start, release, done, post_receipt])
         .build()
 }
 

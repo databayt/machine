@@ -129,3 +129,56 @@ pub struct OutgoingMessage<'a> {
     pub kind: MessageKind,
     pub body: MessageBody,
 }
+
+/// The agent CLIs a task may name with `driver=` and a receipt may report.
+pub const DRIVERS: [&str; 5] = ["claude", "codex", "opencode", "agy", "hermes"];
+
+/// POST `/api/machine/receipt`: what a run did. Only the task's holder may post it; kun comments
+/// it on the issue (marker `<!-- kun:receipt -->`) and sets `status:review`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "camelCase")]
+#[ts(export, export_to = "network/types.ts")]
+pub struct Receipt {
+    pub id: String,
+    pub driver: String,
+    pub model: String,
+    #[ts(type = "number")]
+    pub duration_ms: u64,
+    pub commits: Vec<String>,
+    pub artifacts: Vec<String>,
+    /// 1 to 4000 characters.
+    pub summary: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next: Option<String>,
+}
+
+impl Receipt {
+    /// The server's schema, checked before the call: a valid task id, a known driver, a model,
+    /// a summary of 1 to 4000 characters and a `next` of at most 1000.
+    ///
+    /// # Errors
+    /// The first rule broken, as a short sentence.
+    pub fn validate(&self) -> Result<(), &'static str> {
+        if !super::valid_task_id(&self.id) {
+            return Err("task id is invalid");
+        }
+        if !DRIVERS.contains(&self.driver.as_str()) {
+            return Err("driver is unknown");
+        }
+        let model = self.model.trim().chars().count();
+        if model == 0 || model > 100 {
+            return Err("model must be 1 to 100 characters");
+        }
+        let summary = self.summary.trim().chars().count();
+        if summary == 0 || summary > 4000 {
+            return Err("summary must be 1 to 4000 characters");
+        }
+        if self.next.as_deref().is_some_and(|n| n.trim().chars().count() > 1000) {
+            return Err("next must be at most 1000 characters");
+        }
+        if self.commits.len() > 100 || self.artifacts.len() > 100 {
+            return Err("at most 100 commits and 100 artifacts");
+        }
+        Ok(())
+    }
+}

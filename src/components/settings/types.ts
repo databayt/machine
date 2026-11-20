@@ -5,4 +5,8 @@ export type Settings = { person: string, department: string, driver: DriverKind,
 /**
  * The machine profile to load (`machines/<login>.json`); empty means full access.
  */
-login: string, };
+login: string, 
+/**
+ * Opt-in: pick up `run:auto` tasks without being asked. Off by default; nothing spawns yet.
+ */
+autoRun: boolean, };
