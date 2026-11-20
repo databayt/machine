@@ -1,4 +1,4 @@
-import HealthContent from "@/components/updater/content"
+import HealthContent from "@/components/update/content"
 import type { Locale } from "@/components/local/config"
 
 export const metadata = { title: "Health & updates" }

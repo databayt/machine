@@ -9,7 +9,7 @@ import { isTauri } from "@tauri-apps/api/core"
 
 import type { Locale } from "@/components/local/config"
 
-import { useUpdateCheck } from "../updater/content"
+import { useUpdateCheck } from "../update/content"
 import { readinessState } from "./actions"
 
 const SEEN = "machine.readiness.launch"

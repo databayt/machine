@@ -1,4 +1,4 @@
-//! updater — Machine updates itself from GitHub releases.
+//! update — Machine updates itself from GitHub releases.
 //!
 //! The endpoint (`latest.json` of the newest release) and the minisign public key live in
 //! `tauri.conf.json`; the private key signs releases in CI and never enters the repo. The page
@@ -15,7 +15,7 @@ use ts_rs::TS;
 
 /// A newer version that is ready to install.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
-#[ts(export, export_to = "updater/types.ts")]
+#[ts(export, export_to = "update/types.ts")]
 pub struct UpdateInfo {
     pub version: String,
     pub current: String,
@@ -76,7 +76,7 @@ async fn update_install<R: Runtime>(app: AppHandle<R>) -> Result<(), UpdaterErro
 
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
-    Builder::new("updater")
+    Builder::new("update")
         .invoke_handler(tauri::generate_handler![update_check, update_install])
         .build()
 }
