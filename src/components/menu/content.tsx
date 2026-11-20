@@ -9,7 +9,8 @@ import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
 import { getProfile, type MachineProfile } from "../profile/actions";
-import { copy, promptHref, DEPT_KEY } from "./config";
+import { copy, promptHref } from "./config";
+import { useDepartment } from "./use-department";
 import { loadHealth, loadTasks, type TasksView } from "./data";
 import { Departments } from "./departments";
 import { Footer } from "./footer";
@@ -42,7 +43,6 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   const [mounted, setMounted] = useState(false);
   const [visible, setVisible] = useState(false);
   const [profile, setProfile] = useState<MachineProfile | null>(null);
-  const [dept, setDept] = useState<string>("");
   const [tasks, setTasks] = useState<TasksView | null>(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [health, setHealth] = useState<HealthReport | null>(null);
@@ -79,23 +79,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     getProfile().then(setProfile).catch(() => setProfile(null));
   }, [inApp]);
 
-  // Default = remembered choice if the profile still has it, else its first department.
-  useEffect(() => {
-    if (!profile?.departments.length) return;
-    let saved = "";
-    try {
-      saved = localStorage.getItem(DEPT_KEY) ?? "";
-    } catch {}
-    const names = profile.departments.map((d) => d.name);
-    setDept(names.includes(saved) ? saved : names[0]);
-  }, [profile]);
-
-  const choose = (name: string) => {
-    setDept(name);
-    try {
-      localStorage.setItem(DEPT_KEY, name);
-    } catch {}
-  };
+  const { dept, choose } = useDepartment(profile);
 
   useEffect(() => {
     if (!visible || !inApp) return;

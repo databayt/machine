@@ -28,18 +28,19 @@ export function Departments({
   tools,
 }: {
   isAr: boolean;
-  profile: MachineProfile;
+  profile: Pick<MachineProfile, "departments">;
   selected: string;
   label: string;
   onSelect: (name: string) => void;
-  first: React.Ref<HTMLButtonElement>;
+  first?: React.Ref<HTMLButtonElement>;
   /** Under a divider, after the departments: Settings, Catalog, Sessions… */
-  links?: { href: string; label: string }[];
+  links?: { href: string; label: string; active?: boolean }[];
   /** Under a second divider, the last row: the icon tools (replaces the footer on large screens). */
   tools?: React.ReactNode;
 }): React.JSX.Element {
   return (
     <section className="min-w-0 lg:flex lg:flex-col lg:self-start">
+      {profile.departments.length > 0 && (
       <ul
         role="listbox"
         aria-label={label}
@@ -68,12 +69,13 @@ export function Departments({
           );
         })}
       </ul>
+      )}
 
       {links.length > 0 && (
         // Right under the departments, the whole column aligned to the top of the work area; a
         // narrow block keeps the dividers short. Same type as above.
-        <nav className="hidden lg:mt-8 lg:block lg:w-36">
-          <hr className="mb-4 border-foreground/10" />
+        <nav className={cn("hidden lg:block lg:w-36", profile.departments.length > 0 && "lg:mt-8")}>
+          {profile.departments.length > 0 && <hr className="mb-4 border-foreground/10" />}
           <ul className="flex flex-col gap-1">
             {links.map((l) => (
               <li key={l.href}>
@@ -88,8 +90,17 @@ export function Departments({
                     {l.label}
                   </a>
                 ) : (
-                  <Link href={l.href} className={cn(item, "text-muted-foreground hover:text-foreground")}>
-                    {l.label}
+                  <Link
+                    href={l.href}
+                    aria-current={l.active ? "page" : undefined}
+                    className={cn(item, l.active ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+                  >
+                    <span className="relative inline-block">
+                      {l.active && (
+                        <span aria-hidden className="absolute -inset-x-px bottom-[20%] top-[21%] bg-background" />
+                      )}
+                      <span className="relative">{l.label}</span>
+                    </span>
                   </Link>
                 )}
               </li>

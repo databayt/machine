@@ -5,7 +5,8 @@ import Link from "next/link"
 import { Trash2Icon } from "lucide-react"
 
 import type { Locale } from "@/components/local/config"
-import { OpenInMachine, PageShell, useInMachine } from "../shell/content"
+import { PageShell, Section } from "../shell/page"
+import { OpenInMachine, useInMachine } from "../shell/content"
 import { listSessions, removeSession } from "./actions"
 import { groupSessions, type DayGroup } from "./group"
 import type { Session } from "./types"
@@ -39,7 +40,12 @@ export default function SessionsContent({ lang }: { lang: Locale }): React.JSX.E
   }, [inApp])
 
   if (inApp === null) return null
-  if (!inApp) return <OpenInMachine lang={lang} />
+  if (!inApp)
+    return (
+      <PageShell title={t(COPY.title)}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   const remove = async (id: string) => {
     await removeSession(id).catch(() => {})
@@ -48,7 +54,7 @@ export default function SessionsContent({ lang }: { lang: Locale }): React.JSX.E
   }
 
   return (
-    <PageShell lang={lang} title={t(COPY.title)}>
+    <PageShell title={t(COPY.title)}>
       {sessions?.length === 0 && <p className="text-muted-foreground">{t(COPY.empty)}</p>}
       {sessions === null && (
         <ul aria-hidden className="space-y-2">
@@ -57,10 +63,8 @@ export default function SessionsContent({ lang }: { lang: Locale }): React.JSX.E
           ))}
         </ul>
       )}
-      <div className="space-y-6">
-        {groupSessions(sessions ?? []).map(({ group, rows }) => (
-          <section key={group}>
-            <h2 className="pb-2 text-sm text-muted-foreground">{t(COPY.groups[group])}</h2>
+      {groupSessions(sessions ?? []).map(({ group, rows }) => (
+          <Section key={group} title={t(COPY.groups[group])}>
             <ul className="space-y-2">
               {rows.map((s) => (
                 <li key={s.id} className="flex min-h-14 items-center gap-2 rounded-2xl bg-background px-4">
@@ -92,9 +96,8 @@ export default function SessionsContent({ lang }: { lang: Locale }): React.JSX.E
                 </li>
               ))}
             </ul>
-          </section>
+          </Section>
         ))}
-      </div>
     </PageShell>
   )
 }

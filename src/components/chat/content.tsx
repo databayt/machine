@@ -217,7 +217,7 @@ export default function ChatContent({
           className="relative flex-1 overflow-y-auto overflow-x-hidden overscroll-contain"
         >
           {empty ? (
-            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-24">
+            <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-16">
               <div className="text-center">
                 <h1
                   className={`text-balance font-['thmanyah_serif_display',var(--font-sans)] font-bold leading-snug ${isAr ? "text-3xl sm:text-4xl" : "text-xl tracking-tight sm:text-2xl"}`}
@@ -247,7 +247,7 @@ export default function ChatContent({
               />
             </div>
           ) : (
-            <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
+            <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-16">
               {messages.map((m, i) =>
                 m.role === "user" ? (
                   <UserTurn key={i} text={m.text} />

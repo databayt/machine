@@ -8,6 +8,7 @@ export const copy = {
   newChat: { en: "New chat", ar: "محادثة جديدة" },
   chats: { en: "Chats", ar: "المحادثات" },
   noChats: { en: "No chats yet. Ask something and it is kept here.", ar: "لا محادثات بعد. اسأل شيئاً وستُحفظ هنا." },
+  home: { en: "Home", ar: "الرئيسية" },
   sessions: { en: "Sessions", ar: "الجلسات" },
   prevItem: { en: "Previous", ar: "السابق" },
   nextItem: { en: "Next", ar: "التالي" },

@@ -7,25 +7,22 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import type { Locale } from "@/components/local/config"
-import { OpenInMachine, PageShell, useInMachine } from "../shell/content"
+import { PageShell, Section } from "../shell/page"
+import { OpenInMachine, useInMachine } from "../shell/content"
 import { engineHealth, engineState, engineStatus, engineUpdate } from "./actions"
 import type { EngineStatus, HealthReport, LiveState, UpdateReport } from "./types"
 
 function Card({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="bg-muted/70 rounded-2xl p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold">{title}</h2>
-        {action}
-      </div>
-      {children}
-    </section>
+    <Section title={title} action={action}>
+      <div className="rounded-2xl bg-background p-4">{children}</div>
+    </Section>
   )
 }
 
 function Mono({ text }: { text: string }) {
   return (
-    <pre className="bg-background max-h-96 overflow-auto rounded-md p-3 text-xs leading-relaxed whitespace-pre-wrap" dir="ltr">
+    <pre className="bg-muted max-h-96 overflow-auto rounded-md p-3 text-xs leading-relaxed whitespace-pre-wrap" dir="ltr">
       {text}
     </pre>
   )
@@ -71,15 +68,14 @@ export default function EngineContent({ lang }: { lang: Locale }) {
   if (inApp === null) return null
   if (!inApp)
     return (
-      <PageShell lang={lang} title={isAr ? "المحرك" : "Engine"}>
+      <PageShell title={isAr ? "المحرك" : "Engine"}>
         <OpenInMachine lang={lang} />
       </PageShell>
     )
 
   const behind = status?.behind
   return (
-    <PageShell lang={lang} title={isAr ? "المحرك" : "Engine"}>
-      <div className="space-y-4">
+    <PageShell title={isAr ? "المحرك" : "Engine"}>
       <Card
         title={isAr ? "الإصدار والتحديث" : "Version & update"}
         action={
@@ -179,7 +175,6 @@ export default function EngineContent({ lang }: { lang: Locale }) {
       </Card>
 
       {error && <p className="text-destructive text-sm">{error}</p>}
-      </div>
     </PageShell>
   )
 }
