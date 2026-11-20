@@ -3,7 +3,10 @@
 //! profile allowing them, every `after` closed, nobody else holding it, and the WIP limit free.
 //! Pure: facts in, verdict out.
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::Write as _,
+};
 
 use super::model::{Context, Readiness, ReadyState, Task, TaskStatus, TasksResponse, TasksView};
 use crate::{catalog::ItemStatus, network::model::LocalRepo};
@@ -179,25 +182,27 @@ pub fn seed_text_with(task: &Task, ctx: &Context) -> String {
         after = list(&task.kun.after),
     );
     if let Some(d) = &task.kun.driver {
-        text.push_str(&format!("- Driver: {d}\n"));
+        let _ = writeln!(text, "- Driver: {d}");
     }
     if !ctx.comments.is_empty() {
         text.push_str("\n## Recent comments\n");
         for c in &ctx.comments {
             let mark = if c.receipt { " [run receipt]" } else { "" };
-            text.push_str(&format!(
+            let _ = write!(
+                text,
                 "\n### {} · {}{mark}\n\n{}\n",
                 c.author,
                 c.created_at,
                 c.body.trim()
-            ));
+            );
         }
     }
     if let Some(a) = ctx.aware.as_deref().filter(|a| !a.trim().is_empty()) {
-        text.push_str(&format!(
+        let _ = write!(
+            text,
             "\n## Machine state (lines about this task's repos)\n\n{}\n",
             a.trim_end()
-        ));
+        );
     }
     text
 }
