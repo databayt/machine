@@ -3,7 +3,7 @@
 /**
  * Which agent CLI runs the job.
  */
-export type DriverKind = "claude" | "codex" | "opencode";
+export type DriverKind = "claude" | "codex" | "opencode" | "agy" | "hermes";
 
 /**
  * Whether a driver is usable on this machine.

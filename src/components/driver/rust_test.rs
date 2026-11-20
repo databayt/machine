@@ -213,3 +213,58 @@ fn windows_search_paths() {
     );
     assert!(windows_dirs(None, None, None).is_empty());
 }
+
+#[test]
+fn agy_error_stream_normalizes() {
+    let got = events(DriverKind::Agy, include_str!("fixtures/agy.jsonl"));
+    assert_eq!(got.len(), 1);
+    assert!(matches!(&got[0], Event::Error { message } if message.starts_with("Eligibility check failed")));
+}
+
+#[test]
+fn agy_success_result_normalizes() {
+    let line = r#"{"event":"result","result":{"conversation_id":"c-1","status":"SUCCESS","response":"hi","error":""}}"#;
+    assert_eq!(
+        parse_line(DriverKind::Agy, line),
+        vec![
+            Event::Text { text: "hi".into() },
+            Event::Done { session: Some("c-1".into()), ok: true, result: Some("hi".into()) },
+        ]
+    );
+}
+
+#[test]
+fn agy_args_use_print_stream_json_and_conversation() {
+    let args = args_for(&job(DriverKind::Agy, "-hi", Some("c-1"))).unwrap();
+    assert_eq!(&args[..2], ["-p", "-hi"]);
+    assert!(args.windows(2).any(|w| w == ["--output-format", "stream-json"]));
+    assert!(args.windows(2).any(|w| w == ["--mode", "auto"]));
+    assert!(args.windows(2).any(|w| w == ["--conversation", "c-1"]));
+}
+
+#[test]
+fn hermes_plain_stdout_is_one_text_and_done() {
+    let got = hermes_events(include_str!("fixtures/hermes.txt"));
+    assert_eq!(got.len(), 2);
+    assert!(matches!(&got[0], Event::Text { text } if !text.is_empty() && !text.ends_with('\n')));
+    assert!(matches!(&got[1], Event::Done { ok: true, .. }));
+    assert!(matches!(hermes_events("")[0], Event::Done { ok: false, .. }));
+}
+
+#[test]
+fn hermes_args_attach_prompt_and_resume() {
+    let args = args_for(&job(DriverKind::Hermes, "-x", Some("s_1"))).unwrap();
+    assert_eq!(args, ["--resume", "s_1", "--oneshot=-x"]);
+}
+
+#[test]
+fn fable_models_are_refused_for_every_driver() {
+    for kind in DriverKind::ALL {
+        let mut j = job(kind, "hi", None);
+        j.env = vec![("ANTHROPIC_MODEL".into(), "claude-Fable-1".into())];
+        assert!(matches!(args_for(&j), Err(DriverError::Invalid("model"))), "{kind:?}");
+        let mut j = job(kind, "hi", None);
+        j.extra_args = vec!["--model".into(), "fable".into()];
+        assert!(matches!(args_for(&j), Err(DriverError::Invalid("model"))), "{kind:?}");
+    }
+}

@@ -1,7 +1,7 @@
 //! driver — runs a prompt through the agent CLI the teammate is already signed into.
 //!
 //! machine never proxies a model and never touches a login: it spawns the unmodified
-//! `claude`, `codex` or `opencode` binary on the owner's own machine and reads its JSON
+//! `claude`, `codex`, `opencode`, `agy` or `hermes` binary on the owner's own machine and reads its JSON
 //! event stream. The parsing is pure (`parse_line`) so it is tested against fixtures.
 
 use std::{
@@ -30,10 +30,20 @@ pub enum DriverKind {
     Claude,
     Codex,
     Opencode,
+    /// Google Antigravity CLI.
+    Agy,
+    /// Hermes agent, one-shot mode only.
+    Hermes,
 }
 
 impl DriverKind {
-    pub const ALL: [Self; 3] = [Self::Claude, Self::Codex, Self::Opencode];
+    pub const ALL: [Self; 5] = [
+        Self::Claude,
+        Self::Codex,
+        Self::Opencode,
+        Self::Agy,
+        Self::Hermes,
+    ];
 
     #[must_use]
     pub fn binary(self) -> &'static str {
@@ -41,6 +51,8 @@ impl DriverKind {
             Self::Claude => "claude",
             Self::Codex => "codex",
             Self::Opencode => "opencode",
+            Self::Agy => "agy",
+            Self::Hermes => "hermes",
         }
     }
 }
@@ -213,6 +225,12 @@ pub fn detect() -> Vec<DriverStatus> {
 /// Extra flags are `--add-dir <dir>` / `--settings <file>` pairs and only for claude; the
 /// environment may not touch the variables that decide which binary or config runs.
 fn validate_extras(job: &Job) -> Result<(), DriverError> {
+    // Fable bills usage credits with no consent prompt and never runs unattended (kun rule),
+    // so a model string naming it is refused for every driver, wherever it hides.
+    let fable = |a: &String| a.to_ascii_lowercase().contains("fable");
+    if job.extra_args.iter().any(fable) || job.env.iter().any(|(k, v)| fable(k) || fable(v)) {
+        return Err(DriverError::Invalid("model"));
+    }
     if !job.extra_args.is_empty() {
         let tame = |a: &String| a.len() <= 4096 && !a.chars().any(char::is_control);
         if job.driver != DriverKind::Claude {
@@ -268,6 +286,32 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
         return Err(DriverError::Invalid("session id"));
     }
     validate_extras(job)?;
+    // agy and hermes take the prompt as the value of their own flag, so they return early
+    // (a value that starts with "-" is still read as the value, verified on both CLIs).
+    match job.driver {
+        // agy: `-p <prompt>` is print mode; stream-json is its NDJSON event stream.
+        DriverKind::Agy => {
+            let mut a: Vec<String> = ["-p", job.prompt.as_str(), "--output-format", "stream-json", "--mode", "auto"]
+                .map(String::from)
+                .to_vec();
+            if let Some(s) = &job.session {
+                a.extend(["--conversation".to_string(), s.clone()]);
+            }
+            return Ok(a);
+        }
+        // hermes: `--oneshot=<prompt>` prints only the final text. It is attached with `=` so
+        // a prompt starting with "-" is not read as a flag. Hermes only ever starts from the
+        // owner's own click, same policy as codex: oneshot auto-bypasses approvals.
+        DriverKind::Hermes => {
+            let mut a = Vec::new();
+            if let Some(s) = &job.session {
+                a.extend(["--resume".to_string(), s.clone()]);
+            }
+            a.push(format!("--oneshot={}", job.prompt));
+            return Ok(a);
+        }
+        _ => {}
+    }
     let mut args: Vec<String> = match job.driver {
         DriverKind::Claude => {
             let mut a: Vec<String> = [
@@ -299,6 +343,7 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
             }
             a
         }
+        DriverKind::Agy | DriverKind::Hermes => unreachable!("returned above"),
     };
     if let Some(s) = &job.session {
         match job.driver {
@@ -371,6 +416,29 @@ pub fn parse_line(kind: DriverKind, line: &str) -> Vec<Event> {
                 .collect(),
             _ => Vec::new(),
         },
+        // agy stream-json: `{"event":"result","result":{conversation_id,status,response,error,..}}`.
+        // Only the result line is verified against a real run (the account was ineligible, so
+        // the captured fixture is the ERROR form); other event names are ignored until seen.
+        DriverKind::Agy => {
+            if v["event"] != "result" {
+                return Vec::new();
+            }
+            let r = &v["result"];
+            let failed = r["status"] == "ERROR" || r["error"].as_str().is_some_and(|e| !e.is_empty());
+            if failed {
+                let message = s(&r["error"]).unwrap_or_else(|| "agy failed".into());
+                return vec![Event::Error { message }];
+            }
+            let session = s(&r["conversation_id"]).filter(|c| !c.is_empty());
+            let mut out = Vec::new();
+            if let Some(text) = s(&r["response"]).filter(|t| !t.is_empty()) {
+                out.push(Event::Text { text: text.clone() });
+            }
+            out.push(Event::Done { session, ok: true, result: s(&r["response"]) });
+            out
+        }
+        // hermes prints plain text, not JSON: `hermes_events` handles the whole stdout.
+        DriverKind::Hermes => Vec::new(),
         DriverKind::Opencode => match v["type"].as_str() {
             Some("error") => {
                 let message = s(&v["error"]["data"]["message"])
@@ -389,6 +457,19 @@ pub fn parse_line(kind: DriverKind, line: &str) -> Vec<Event> {
             _ => Vec::new(),
         },
     }
+}
+
+/// Hermes one-shot output is the final response as plain text with no events, so the whole
+/// stdout becomes one text event followed by done.
+#[must_use]
+pub fn hermes_events(stdout: &str) -> Vec<Event> {
+    let text = stdout.trim();
+    let mut out = Vec::new();
+    if !text.is_empty() {
+        out.push(Event::Text { text: text.to_owned() });
+    }
+    out.push(Event::Done { session: None, ok: !text.is_empty(), result: (!text.is_empty()).then(|| text.to_owned()) });
+    out
 }
 
 /// Runs a job to completion, calling `emit` for every event. Never panics on bad output.
@@ -421,14 +502,28 @@ pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), Dr
     let secs = job.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
     let mut finished = false;
     let read = async {
+        let mut plain = String::new();
         while let Ok(Some(line)) = lines.next_line().await {
+            if job.driver == DriverKind::Hermes {
+                plain.push_str(&line);
+                plain.push('\n');
+                continue;
+            }
             for event in parse_line(job.driver, &line) {
                 finished |= matches!(event, Event::Done { .. } | Event::Error { .. });
                 emit(event);
             }
         }
         let status = child.wait().await;
-        if !finished {
+        if job.driver == DriverKind::Hermes {
+            let ok = status.is_ok_and(|s| s.success());
+            for event in hermes_events(&plain) {
+                emit(match event {
+                    Event::Done { session, result, .. } => Event::Done { session, ok: ok && result.is_some(), result },
+                    e => e,
+                });
+            }
+        } else if !finished {
             let ok = status.is_ok_and(|s| s.success());
             emit(Event::Done {
                 session: None,
