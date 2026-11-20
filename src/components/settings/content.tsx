@@ -6,6 +6,7 @@ import type { Locale } from "@/components/local/config"
 import type { DriverStatus } from "../driver/types"
 import { departments as listDepartments } from "../pack/actions"
 import { getProfile, type MachineProfile } from "../profile/actions"
+import { ToolsPanel } from "../tools/content"
 import { OpenInMachine, PageShell, useInMachine } from "../shell/content"
 import { detectDrivers, loadSettings } from "./actions"
 import { SettingsForm } from "./form"
@@ -45,6 +46,7 @@ export default function SettingsContent({ lang }: { lang: Locale }) {
             </p>
             {error && <p className="text-destructive text-sm">{error}</p>}
             {state && <SettingsForm isAr={isAr} initial={state.settings} drivers={state.drivers} departments={state.departments} lockedDriver={profile?.driver} />}
+            <ToolsPanel isAr={isAr} />
           </>
         )}
       </div>
