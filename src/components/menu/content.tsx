@@ -207,14 +207,8 @@ export function MachineMenu({ lang }: { lang: Locale }) {
                   first={firstDept}
                   links={[
                     { href: `/${lang}/`, label: t(copy.home) },
-                    { href: `/${lang}/readiness/`, label: t(copy.readiness) },
                     { href: `/${lang}/sessions/`, label: t(copy.sessions) },
-                    { href: `/${lang}/repos/`, label: t(copy.repositories) },
-                    { href: `/${lang}/agents/`, label: t(copy.agents) },
                     { href: `/${lang}/catalog/`, label: t(copy.catalog) },
-                    { href: `/${lang}/config/`, label: t(copy.configuration) },
-                    { href: `/${lang}/health/`, label: t(copy.healthUpdates) },
-                    ...(showEngine ? [{ href: `/${lang}/engine/`, label: t(copy.engine) }] : []),
                     { href: `/${lang}/settings/`, label: t(copy.settings) },
                     { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },
                     { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },

@@ -11,6 +11,7 @@ import { useDepartment } from "../menu/use-department";
 import { readinessState } from "../readiness/actions";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { useInMachine } from "./content";
+import { inSettings, splitPath } from "./tabs";
 
 /**
  * The persistent app sidebar: the menu's Departments column (same component, same look) kept on
@@ -45,12 +46,12 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   });
 
   const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
-  // A few links only; the hamburger menu carries every page.
+  // Four parents; the machine pages are tabs inside Settings.
   const links = [
     { href: `${base}/`, label: t(copy.home), active: is("") },
-    ...(inApp ? [page("/readiness", copy.readiness, notReady)] : []),
     page("/sessions", copy.sessions),
-    page("/settings", copy.settings),
+    page("/catalog", copy.catalog),
+    { ...page("/settings", copy.settings, notReady), active: inSettings(splitPath(pathname).rest) },
   ];
 
   return (
