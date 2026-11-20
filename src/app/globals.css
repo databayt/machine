@@ -163,3 +163,10 @@
   font-weight: 700;
   font-display: swap;
 }
+/* The home line — Thmanyah Serif Display 700, fetched the same way. */
+@font-face {
+  font-family: "thmanyah serif display";
+  src: url("/fonts/thmanyah/thmanyah-serif-display-700.woff2") format("woff2");
+  font-weight: 700;
+  font-display: swap;
+}

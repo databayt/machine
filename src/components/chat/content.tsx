@@ -219,7 +219,9 @@ export default function ChatContent({
           {empty ? (
             <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-24">
               <div className="text-center">
-                <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
+                <h1
+                  className={`text-balance font-['thmanyah_serif_display',var(--font-sans)] font-bold leading-snug ${isAr ? "text-3xl sm:text-4xl" : "text-xl tracking-tight sm:text-2xl"}`}
+                >
                   {greeting(isAr)}
                 </h1>
                 {resumed && (

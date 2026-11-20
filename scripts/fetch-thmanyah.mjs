@@ -25,7 +25,7 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const outDir = path.resolve(__dirname, '..', 'public', 'fonts', 'thmanyah');
 
-// machine uses only Sans 300 (sentence) + 700 (emphasis) — the banner headline.
+// machine uses Sans 300 (sentence) + 700 (emphasis) for the banner headline, and Serif Display 700 for the home line.
 // Pinned from the @font-face rules on font.thmanyah.com (2026-07-13).
 // ORIGINAL generation — the families the specimen site itself typesets with
 // (its headlines are "thmanyah serif display" Black + ss01). The "1.2" files
@@ -36,6 +36,8 @@ const MANIFEST_VERSION = 'original-2026-07-13';
 const MANIFEST = {
   'thmanyah-sans-300.woff2': 'https://framerusercontent.com/assets/Lh8puxCFq405qBv7dKpg9NsHZNk.woff2',
   'thmanyah-sans-700.woff2': 'https://framerusercontent.com/assets/LZvgFRUsP7pGWYj3tKxMUrKuhSY.woff2',
+  // Serif Display 700 — the home line (a Darwish verse), set like the specimen's headlines.
+  'thmanyah-serif-display-700.woff2': 'https://framerusercontent.com/assets/AAY5hsAWwWmVC7qlScZUGjzCgE8.woff2',
 };
 
 async function main() {
