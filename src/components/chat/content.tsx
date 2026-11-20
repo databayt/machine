@@ -12,7 +12,6 @@ import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
 import { useReadAloud } from "../menu/use-read-aloud";
 import { getSession } from "../sessions/actions";
 import { loadSettings } from "../settings/actions";
-import type { Settings } from "../settings/types";
 import { OpenInMachine, useInMachine } from "../shell/content";
 import { storedLang, swapLocale } from "../shell/lang";
 import { speak } from "../voice/actions";
@@ -56,7 +55,6 @@ export default function ChatContent({
   const t = tr(isAr);
   const router = useRouter();
   const inApp = useInMachine();
-  const [settings, setSettings] = useState<Settings | null>(null);
   const [pack, setPack] = useState<PackInfo | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [session, setSession] = useState<string | null>(resume ?? null);
@@ -79,7 +77,6 @@ export default function ChatContent({
     if (!inApp) return;
     void (async () => {
       const s = await loadSettings();
-      setSettings(s);
       if (s) setPack(await packInfo(s.department).catch(() => null));
       if (resume)
         setResumed((await getSession(resume).catch(() => null))?.title ?? null);
@@ -209,7 +206,6 @@ export default function ChatContent({
   if (!inApp) return <OpenInMachine lang={lang} />;
 
   const empty = messages.length === 0;
-  const name = settings?.person.trim();
   const quick = pack?.quick_actions ?? [];
 
   return (
@@ -224,7 +220,7 @@ export default function ChatContent({
             <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-24">
               <div className="text-center">
                 <h1 className="text-balance text-4xl font-semibold leading-tight tracking-tight sm:text-5xl">
-                  {greeting(isAr, name)}
+                  {greeting(isAr)}
                 </h1>
                 {resumed && (
                   <p className="mt-2 text-sm text-muted-foreground">

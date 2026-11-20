@@ -35,8 +35,8 @@ export const words: { en: readonly string[]; ar: readonly string[] } = {
   ar: ["أوازن الأمر…", "أفكّر في الأمر…", "أجمع الخيوط…", "أربط الأفكار…", "أتأمّل الطلب…", "أعمل على الحل…"],
 }
 
-/** Greeting before the first message. */
-export const greeting = (isAr: boolean, name?: string) =>
-  isAr ? `أهلاً${name ? ` ${name}` : ""}، كيف أساعدك اليوم؟` : `Hello${name ? ` ${name}` : ""}, how can I help today?`
+/** Line shown before the first message. */
+export const greeting = (isAr: boolean) =>
+  isAr ? "سيكون لنا متسع من الموت للنوم" : "There will be time enough in death for sleep."
 
 export const tr = (isAr: boolean) => (k: Copy) => (isAr ? k.ar : k.en)
