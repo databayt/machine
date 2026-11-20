@@ -5,6 +5,7 @@ import Link from "next/link"
 
 import type { Locale } from "@/components/local/config"
 import { departments as listDepartments } from "../pack/actions"
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import { loadSettings } from "./actions"
 import { SettingsForm } from "./form"
@@ -30,14 +31,15 @@ export default function SettingsContent({ lang }: { lang: Locale }) {
   if (inApp === null) return null
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-      <h1 className="text-balance text-2xl font-semibold tracking-tight">{isAr ? "الإعدادات" : "Settings"}</h1>
+    <PageShell
+      title={isAr ? "الإعدادات" : "Settings"}
+      description={inApp ? (isAr ? "من أنت، وفي أي قسم تعمل." : "Who you are and which department you work in.") : undefined}
+    >
       <LanguageToggle lang={lang} />
       {!inApp ? (
         <OpenInMachine lang={lang} />
       ) : (
         <>
-          <p className="text-muted-foreground text-sm">{isAr ? "من أنت، وفي أي قسم تعمل." : "Who you are and which department you work in."}</p>
           {error && <p className="text-destructive text-sm">{error}</p>}
           {state && <SettingsForm isAr={isAr} initial={state.settings} departments={state.departments} />}
           <p className="text-muted-foreground text-sm">
@@ -45,6 +47,6 @@ export default function SettingsContent({ lang }: { lang: Locale }) {
           </p>
         </>
       )}
-    </div>
+    </PageShell>
   )
 }

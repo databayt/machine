@@ -1,11 +1,9 @@
 "use client"
 
-// The machine app shell: the page frame the secondary pages share (catalog, engine, settings),
-// and the "open in machine" state every machine page shows when it is loaded in a plain browser.
+// The machine app shell: the "open in machine" state every machine page shows when it is loaded in a plain browser.
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import { isTauri } from "@tauri-apps/api/core"
-import { ChevronLeftIcon } from "lucide-react"
 
 import type { Locale } from "@/components/local/config"
 import { copy, tr } from "../chat/config"
@@ -15,40 +13,6 @@ export function useInMachine(): boolean | null {
   const [inApp, setInApp] = useState<boolean | null>(null)
   useEffect(() => setInApp(isTauri()), [])
   return inApp
-}
-
-/**
- * A secondary page: no bar, only the floating menu button above it. A scrolling column as wide as the
- * chat's, the title as its first line, and an optional small link back (the catalog's item pages).
- */
-export function PageShell({
-  lang,
-  title,
-  backHref,
-  backLabel,
-  children,
-}: {
-  lang: Locale
-  title: string
-  /** A small link above the title (item page → catalog). None by default: the menu is the way around. */
-  backHref?: string
-  backLabel?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="h-full overflow-y-auto overscroll-contain">
-      <div className="mx-auto w-full max-w-3xl px-4 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))]">
-        {backHref && (
-          <Link href={backHref} className="mb-2 inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground">
-            <ChevronLeftIcon className="size-4 rtl:rotate-180" aria-hidden />
-            {backLabel}
-          </Link>
-        )}
-        <h1 className="mb-4 text-balance text-2xl font-semibold tracking-tight">{title}</h1>
-        {children}
-      </div>
-    </div>
-  )
 }
 
 /** Outside the app: the greeting's place, one sentence, one black pill. */

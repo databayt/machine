@@ -6,6 +6,7 @@ import { invoke, isTauri } from "@tauri-apps/api/core"
 import type { Locale } from "@/components/local/config"
 
 import type { HealthReport } from "../network/types"
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import { updateCheck, updateInstall, type UpdateInfo } from "./actions"
 
@@ -73,14 +74,17 @@ export default function HealthContent({ lang }: { lang: Locale }) {
   }
 
   if (inApp === null) return null
-  if (!inApp) return <OpenInMachine lang={lang} />
+  if (!inApp)
+    return (
+      <PageShell title={t("Health & updates", "الصحة والتحديثات")}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-      <h1 className="text-balance text-2xl font-semibold tracking-tight">{t("Health & updates", "الصحة والتحديثات")}</h1>
-
-      <section className="space-y-2 rounded-2xl bg-muted/70 p-4">
-        <h2 className="text-sm font-semibold">{t("This app", "هذا التطبيق")}</h2>
+    <PageShell title={t("Health & updates", "الصحة والتحديثات")}>
+      <Section title={t("This app", "هذا التطبيق")}>
+      <div className="space-y-2 rounded-2xl bg-background p-4">
         {update ? (
           <div className="space-y-2 text-sm">
             <p>
@@ -99,13 +103,14 @@ export default function HealthContent({ lang }: { lang: Locale }) {
         )}
         {failure && <p className="text-sm text-destructive">{failure}</p>}
         <button className={link} onClick={check}>{t("Check for updates", "ابحث عن تحديثات")}</button>
-      </section>
+      </div>
+      </Section>
 
-      <section className="space-y-2 rounded-2xl bg-muted/70 p-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">{t("Health", "الصحة")}</h2>
-          <button className={link} disabled={busy} onClick={runCheck}>{busy ? "…" : t("Check now", "افحص الآن")}</button>
-        </div>
+      <Section
+        title={t("Health", "الصحة")}
+        action={<button className={link} disabled={busy} onClick={runCheck}>{busy ? "…" : t("Check now", "افحص الآن")}</button>}
+      >
+      <div className="rounded-2xl bg-background p-4">
         {report ? (
           <ul className="divide-y divide-border text-sm">
             {report.items.map((i) => (
@@ -118,7 +123,8 @@ export default function HealthContent({ lang }: { lang: Locale }) {
         ) : (
           <p className="text-sm text-muted-foreground">{t("No health pass has finished yet.", "لم ينتهِ أي فحص صحة بعد.")}</p>
         )}
-      </section>
-    </div>
+      </div>
+      </Section>
+    </PageShell>
   )
 }

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { loadSettings, saveSettings } from "../settings/actions"
 import type { Settings } from "../settings/types"
 import { getProfile, type MachineProfile } from "../profile/actions"
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import { agentsTools, readinessFix, readinessRun, type AgentToolRow } from "./actions"
 import { statusWord, tone } from "./config"
@@ -66,20 +67,24 @@ export default function AgentsContent({ lang }: { lang: Locale }) {
   }
 
   if (inApp === null) return null
-  if (!inApp) return <OpenInMachine lang={lang} />
+  if (!inApp)
+    return (
+      <PageShell title={t("Agents & tools", "الوكلاء والأدوات")}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   const agents = (rows ?? []).filter((r) => r.kind === "agent")
   const tools = (rows ?? []).filter((r) => r.kind === "tool")
   const locked = profile?.driver
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-      <h1 className="text-balance text-2xl font-semibold tracking-tight">{t("Agents & tools", "الوكلاء والأدوات")}</h1>
+    <PageShell title={t("Agents & tools", "الوكلاء والأدوات")}>
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {settings && (
-        <section className="space-y-3 rounded-2xl bg-muted/70 p-4">
-          <h2 className="text-sm font-semibold">{t("Default agent", "الوكيل الافتراضي")}</h2>
+        <Section title={t("Default agent", "الوكيل الافتراضي")}>
+        <div className="space-y-3 rounded-2xl bg-background p-4">
           {locked ? (
             <p dir="ltr" className="text-sm font-medium">
               {locked} <span className="text-xs text-muted-foreground">· {t("set by this machine's profile", "يحدده ملف جهازك")}</span>
@@ -93,7 +98,7 @@ export default function AgentsContent({ lang }: { lang: Locale }) {
                   disabled={!a.installed}
                   aria-pressed={settings.driver === a.id}
                   onClick={() => change({ ...settings, driver: a.id as Settings["driver"] })}
-                  className={cn("rounded-full bg-background px-4 py-1.5 text-sm disabled:opacity-50", settings.driver === a.id && "bg-foreground text-background")}
+                  className={cn("rounded-full bg-muted px-4 py-1.5 text-sm disabled:opacity-50", settings.driver === a.id && "bg-foreground text-background")}
                 >
                   {a.label}
                 </button>
@@ -108,21 +113,21 @@ export default function AgentsContent({ lang }: { lang: Locale }) {
             </span>
           </label>
           {saved && <p className="text-xs text-muted-foreground">{t("Saved.", "تم الحفظ.")}</p>}
-        </section>
+        </div>
+        </Section>
       )}
 
       <Group title={t("Agents", "الوكلاء")} rows={agents} isAr={isAr} busy={busy} onAct={act} />
       <Group title={t("Production tools", "أدوات الإنتاج")} rows={tools} isAr={isAr} busy={busy} onAct={act} />
-    </div>
+    </PageShell>
   )
 }
 
 function Group({ title, rows, isAr, busy, onAct }: { title: string; rows: AgentToolRow[]; isAr: boolean; busy: string | null; onAct: (r: AgentToolRow, w: "fix" | "update") => void }) {
   if (rows.length === 0) return null
   return (
-    <section className="space-y-2">
-      <h2 className="text-sm font-semibold">{title}</h2>
-      <ul className="divide-y divide-border rounded-2xl bg-muted/70 text-sm">
+    <Section title={title}>
+      <ul className="divide-y divide-border rounded-2xl bg-background text-sm">
         {rows.map((r) => (
           <li key={r.id} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 px-4 py-3">
             <div className="min-w-0">
@@ -150,6 +155,6 @@ function Group({ title, rows, isAr, busy, onAct }: { title: string; rows: AgentT
           </li>
         ))}
       </ul>
-    </section>
+    </Section>
   )
 }

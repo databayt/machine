@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 
 import type { Locale } from "@/components/local/config"
 
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import { healWithAgent, readinessCancel, readinessFix, readinessRun, readinessState } from "./actions"
 import { copy, fixLabel, pick, statusMark, statusWord, tone } from "./config"
@@ -11,7 +12,7 @@ import type { Mode, ReadinessView, RunEvent, StepStatus, StepView } from "./type
 
 const button =
   "inline-flex h-9 items-center rounded-full bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
-const quiet = "inline-flex h-9 items-center rounded-full bg-background px-4 text-sm font-medium transition-colors hover:bg-background/70 disabled:opacity-50"
+const quiet = "inline-flex h-9 items-center rounded-full bg-muted px-4 text-sm font-medium transition-colors hover:bg-muted/70 disabled:opacity-50"
 const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
 
 type Live = Record<string, { status: StepStatus; detail: string }>
@@ -116,24 +117,25 @@ export default function ReadinessContent({ lang }: { lang: Locale }) {
   }, [view])
 
   if (inApp === null) return null
-  if (inApp === false) return <OpenInMachine lang={lang} />
+  if (inApp === false)
+    return (
+      <PageShell title={t(copy.title)}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   const pct = Math.round(percent ?? 0)
   const busy = running !== null
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-5 px-4 py-6">
-      <header className="space-y-1">
-        <h1 className="text-balance text-2xl font-semibold tracking-tight">{t(copy.title)}</h1>
-        <p className="text-sm text-muted-foreground">{t(copy.subtitle)}</p>
-      </header>
-
-      <section className="rounded-2xl bg-muted/70 p-4">
+    <PageShell title={t(copy.title)} description={t(copy.subtitle)}>
+      <Section>
+      <div className="rounded-2xl bg-background p-4">
         <div className="mb-2 flex items-baseline justify-between text-sm">
           <span className="font-medium">{view?.hasState === false ? t(copy.neverRun) : `${pct}% ${t(copy.done)}`}</span>
           {progress && <span className="text-muted-foreground" dir="ltr">{progress}</span>}
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-background" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
+        <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100}>
           <div className="h-full rounded-full bg-foreground transition-all" style={{ width: `${pct}%` }} />
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
@@ -145,32 +147,29 @@ export default function ReadinessContent({ lang }: { lang: Locale }) {
             <button className={quiet} onClick={() => readinessCancel()}>{t(copy.cancel)}</button>
           )}
         </div>
-      </section>
+      </div>
+      </Section>
 
       {error && <p className="text-sm text-destructive">{error}</p>}
       {notice && <p className="text-sm text-muted-foreground">{notice}</p>}
       {view && !view.catalogFound && <p className="text-sm text-muted-foreground">{t(copy.noCatalog)}</p>}
 
-      <ol className="space-y-5">
-        {stages.map(({ stage, steps }) => (
-          <li key={stage.id}>
-            <h2 className="mb-2 text-sm font-semibold">{pick(stage.title ?? undefined, isAr, stage.id)}</h2>
-            <ul className="space-y-1 rounded-2xl bg-muted/70 p-2">
-              {steps.map((s) => (
-                <Row key={s.id} step={s} live={live[s.id]} isAr={isAr} busy={busy} onFix={() => fix(s)} />
-              ))}
-            </ul>
-          </li>
-        ))}
-      </ol>
+      {stages.map(({ stage, steps }) => (
+        <Section key={stage.id} title={pick(stage.title ?? undefined, isAr, stage.id)}>
+          <ul className="space-y-2">
+            {steps.map((s) => (
+              <Row key={s.id} step={s} live={live[s.id]} isAr={isAr} busy={busy} onFix={() => fix(s)} />
+            ))}
+          </ul>
+        </Section>
+      ))}
 
       {agentText && (
-        <section className="space-y-2">
-          <h2 className="text-sm font-semibold">{t(copy.agentOut)}</h2>
-          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl bg-muted/70 p-3 text-xs" dir="ltr">{agentText}</pre>
-        </section>
+        <Section title={t(copy.agentOut)}>
+          <pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded-2xl bg-background p-4 text-xs" dir="ltr">{agentText}</pre>
+        </Section>
       )}
-    </div>
+    </PageShell>
   )
 }
 
@@ -185,7 +184,7 @@ function Row({ step, live, isAr, busy, onFix }: { step: StepView; live?: { statu
   const needsFix = status === "fail" || status === "blocked" || status === "human" || status === "update-available"
   const kind = step.fix?.kind
   return (
-    <li className="flex items-start gap-3 rounded-xl bg-background px-4 py-3">
+    <li className="flex items-start gap-3 rounded-2xl bg-background px-4 py-3">
       <span className={`mt-0.5 w-5 shrink-0 text-center font-semibold ${tone(status)}`} aria-hidden>{statusMark[status]}</span>
       <div className="min-w-0 flex-1">
         <p className="font-medium">{pick(step.title, isAr, step.id)}</p>

@@ -10,6 +10,7 @@ import { loadHealth, type HealthReport } from "../menu/data";
 import { Departments } from "../menu/departments";
 import { Tools } from "../menu/tools";
 import { useDepartment } from "../menu/use-department";
+import { readinessState } from "../readiness/actions";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { useInMachine } from "./content";
 
@@ -26,12 +27,14 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   const pathname = usePathname() ?? "";
   const [profile, setProfile] = useState<MachineProfile | null>(null);
   const [health, setHealth] = useState<HealthReport | null>(null);
+  const [readyPct, setReadyPct] = useState<number | null>(null);
   const { dept, choose } = useDepartment(profile);
 
   useEffect(() => {
     if (!inApp) return;
     getProfile().then(setProfile).catch(() => setProfile(null));
     loadHealth().then(setHealth);
+    readinessState().then((v) => setReadyPct(v && v.hasState ? Math.round(v.percent) : null)).catch(() => setReadyPct(null));
   }, [inApp]);
 
   const showEngine = inApp === true && (!profile || profile.access.engine);
@@ -40,17 +43,22 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
     const here = pathname.replace(/\/+$/, "");
     return path === "" ? here === base : here === base + path || here.startsWith(`${base}${path}/`);
   };
-  const page = (path: string, label: { en: string; ar: string }) => ({
+  const page = (path: string, label: { en: string; ar: string }, suffix = "") => ({
     href: `${base}${path}/`,
-    label: t(label),
+    label: t(label) + suffix,
     active: is(path),
   });
 
+  const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
   const links = [
     { href: `${base}/`, label: t(copy.home), active: is("") },
+    ...(inApp ? [page("/readiness", copy.readiness, notReady)] : []),
     page("/sessions", copy.sessions),
-    ...(inApp ? [page("/repos", copy.repos)] : []),
+    ...(inApp ? [page("/repos", copy.repositories)] : []),
+    ...(inApp ? [page("/agents", copy.agents)] : []),
     page("/catalog", copy.catalog),
+    ...(inApp ? [page("/config", copy.configuration)] : []),
+    ...(inApp ? [page("/health", copy.healthUpdates)] : []),
     ...(showEngine ? [page("/engine", copy.engine)] : []),
     page("/settings", copy.settings),
     { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },

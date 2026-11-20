@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from "react"
 import type { Locale } from "@/components/local/config"
 
 import { departments as listDepartments } from "../pack/actions"
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import { loadSettings, saveSettings } from "../settings/actions"
 import type { Settings } from "../settings/types"
@@ -23,8 +24,8 @@ import {
 } from "./actions"
 
 const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
-const field = "h-10 min-w-0 flex-1 rounded-full bg-background px-4 text-sm outline-none"
-const card = "space-y-3 rounded-2xl bg-muted/70 p-4"
+const field = "h-10 min-w-0 flex-1 rounded-full bg-muted px-4 text-sm outline-none"
+const card = "space-y-3 rounded-2xl bg-background p-4"
 
 /** The Configuration tab: department, notify line, personal settings keys, MCP servers, secrets. */
 export default function ConfigContent({ lang }: { lang: Locale }) {
@@ -86,36 +87,42 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
   }
 
   if (inApp === null) return null
-  if (!inApp) return <OpenInMachine lang={lang} />
+  if (!inApp)
+    return (
+      <PageShell title={t("Configuration", "التهيئة")}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
-      <h1 className="text-balance text-2xl font-semibold tracking-tight">{t("Configuration", "التهيئة")}</h1>
-      <p className="text-sm text-muted-foreground">
-        {t(
-          "Every change is backed up first and the engine's health check runs after; a RED result restores the backup.",
-          "كل تغيير يُنسخ احتياطياً أولاً ثم يُشغَّل فحص صحة المحرك؛ النتيجة الحمراء تستعيد النسخة.",
-        )}
-      </p>
+    <PageShell
+      title={t("Configuration", "التهيئة")}
+      description={t(
+        "Every change is backed up first and the engine's health check runs after; a RED result restores the backup.",
+        "كل تغيير يُنسخ احتياطياً أولاً ثم يُشغَّل فحص صحة المحرك؛ النتيجة الحمراء تستعيد النسخة.",
+      )}
+    >
       {message && <p className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}>{message.text}</p>}
 
       {settings && (
-        <section className={card}>
-          <h2 className="text-sm font-semibold">{t("Department", "القسم")}</h2>
+        <Section title={t("Department", "القسم")}>
+        <div className={card}>
           <select
             value={settings.department}
             onChange={(e) => saveSettings({ ...settings, department: e.target.value }).then(setSettings).catch((er) => setMessage({ ok: false, text: String(er) }))}
-            className="h-10 w-full rounded-full bg-background px-4 text-sm"
+            className="h-10 w-full rounded-full bg-muted px-4 text-sm"
           >
             {(departments.includes(settings.department) ? departments : [settings.department, ...departments]).map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
-        </section>
+        </div>
+        </Section>
       )}
 
-      <section className={card}>
-        <h2 className="text-sm font-semibold">{t("Notifications line", "سطر الإشعارات")} <span className="font-normal text-muted-foreground" dir="ltr">~/.claude/.kun-notify</span></h2>
+      <Section title={t("Notifications line", "سطر الإشعارات")}>
+      <div className={card}>
+        <p className="text-xs text-muted-foreground" dir="ltr">~/.claude/.kun-notify</p>
         <form
           className="flex items-center gap-3"
           onSubmit={(e) => {
@@ -126,10 +133,12 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
           <input dir="ltr" className={field} value={notify} maxLength={200} onChange={(e) => setNotifyText(e.target.value)} />
           <button type="submit" className={link} disabled={busy || !notify.trim()}>{t("Save", "حفظ")}</button>
         </form>
-      </section>
+      </div>
+      </Section>
 
-      <section className={card}>
-        <h2 className="text-sm font-semibold">{t("Personal settings", "إعدادات شخصية")} <span className="font-normal text-muted-foreground" dir="ltr">~/.claude/settings.json</span></h2>
+      <Section title={t("Personal settings", "إعدادات شخصية")}>
+      <div className={card}>
+        <p className="text-xs text-muted-foreground" dir="ltr">~/.claude/settings.json</p>
         <p className="text-xs text-muted-foreground">
           {view?.template_found
             ? t("Only model, voice and keys kun does not manage.", "النموذج والصوت والمفاتيح التي لا يديرها kun فقط.")
@@ -141,13 +150,14 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
           ))}
         </ul>
         <NewSetting busy={busy} isAr={isAr} onAdd={(k, v) => write(() => setSetting(k, v))} />
-      </section>
+      </div>
+      </Section>
 
-      <section className={card}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold">{t("MCP servers", "خوادم MCP")}</h2>
-          <button className={link} disabled={mcpBusy} onClick={loadMcp}>{mcpBusy ? "…" : t("Refresh", "حدّث")}</button>
-        </div>
+      <Section
+        title={t("MCP servers", "خوادم MCP")}
+        action={<button className={link} disabled={mcpBusy} onClick={loadMcp}>{mcpBusy ? "…" : t("Refresh", "حدّث")}</button>}
+      >
+      <div className={card}>
         <ul className="divide-y divide-border text-sm">
           {mcp?.installed.map((s) => (
             <li key={s.name} className="flex items-center justify-between gap-3 py-2">
@@ -170,10 +180,11 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
             </li>
           ))}
         </ul>
-      </section>
+      </div>
+      </Section>
 
-      <section className={card}>
-        <h2 className="text-sm font-semibold">{t("Team secrets", "أسرار الفريق")}</h2>
+      <Section title={t("Team secrets", "أسرار الفريق")}>
+      <div className={card}>
         <p className="text-sm">
           <span dir="ltr">~/.claude/.env</span> · {view?.env_present ? t("present", "موجود") : t("absent", "غير موجود")}
           <span className="block text-xs text-muted-foreground">{t("Values are never shown here.", "لا تُعرض القيم هنا أبداً.")}</span>
@@ -190,8 +201,9 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
           <input dir="ltr" className={field} value={gist} onChange={(e) => setGist(e.target.value)} placeholder="GIST_ID" aria-label="Gist id" />
           <button type="submit" className={link} disabled={!gist.trim()}>{t("Load secrets from Gist", "حمّل الأسرار من Gist")}</button>
         </form>
-      </section>
-    </div>
+      </div>
+      </Section>
+    </PageShell>
   )
 }
 
@@ -227,7 +239,7 @@ function NewSetting({ busy, isAr, onAdd }: { busy: boolean; isAr: boolean; onAdd
         setValue("")
       }}
     >
-      <input dir="ltr" className="h-10 w-36 shrink-0 rounded-full bg-background px-4 text-sm outline-none" value={key} onChange={(e) => setKey(e.target.value)} placeholder="key" aria-label="key" />
+      <input dir="ltr" className="h-10 w-36 shrink-0 rounded-full bg-muted px-4 text-sm outline-none" value={key} onChange={(e) => setKey(e.target.value)} placeholder="key" aria-label="key" />
       <input dir="ltr" className={field} value={value} onChange={(e) => setValue(e.target.value)} placeholder='"value" or {"json": true}' aria-label="value" />
       <button type="submit" className={link} disabled={busy || !key.trim() || !value.trim()}>{isAr ? "أضف" : "Add"}</button>
     </form>

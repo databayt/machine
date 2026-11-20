@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react"
 
 import type { Locale } from "@/components/local/config"
 
+import { PageShell, Section } from "../shell/page"
 import { OpenInMachine, useInMachine } from "../shell/content"
 import {
   cloneRepo,
@@ -44,24 +45,29 @@ export default function ReposContent({ lang }: { lang: Locale }) {
     if (inApp) reload()
   }, [inApp, reload])
 
-  if (inApp === false) return <OpenInMachine lang={lang} />
+  if (inApp === false)
+    return (
+      <PageShell title={isAr ? "المستودعات" : "Repositories"}>
+        <OpenInMachine lang={lang} />
+      </PageShell>
+    )
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6">
-      <h1 className="mb-4 text-balance text-2xl font-semibold tracking-tight">{t(copy.title)}</h1>
-      <p className="text-muted-foreground">{t(copy.subtitle)}</p>
+    <PageShell title={isAr ? "المستودعات" : "Repositories"} description={t(copy.subtitle)}>
       <RootPicker isAr={isAr} onChanged={reload} />
-      {error && <p className="mt-6 text-sm text-destructive">{error}</p>}
-      {!rows && !error && <p className="mt-6 text-muted-foreground">{t(copy.loading)}</p>}
-      {rows && rows.length === 0 && <p className="mt-6 text-muted-foreground">{t(copy.empty)}</p>}
+      {error && <p className="text-sm text-destructive">{error}</p>}
+      {!rows && !error && <p className="text-muted-foreground">{t(copy.loading)}</p>}
+      {rows && rows.length === 0 && <p className="text-muted-foreground">{t(copy.empty)}</p>}
       {rows && rows.length > 0 && (
-        <ul className="mt-6 flex flex-col gap-2 rounded-3xl bg-muted p-2">
-          {rows.map((r) => (
-            <Row key={r.name} row={r} isAr={isAr} onChanged={reload} />
-          ))}
-        </ul>
+        <Section>
+          <ul className="flex flex-col gap-2">
+            {rows.map((r) => (
+              <Row key={r.name} row={r} isAr={isAr} onChanged={reload} />
+            ))}
+          </ul>
+        </Section>
       )}
-    </div>
+    </PageShell>
   )
 }
 
@@ -248,18 +254,15 @@ function RootPicker({ isAr, onChanged }: { isAr: boolean; onChanged: () => void 
     }
   }
 
-  if (!info) return error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null
+  if (!info) return error ? <p className="text-sm text-destructive">{error}</p> : null
   return (
-    <section className="mt-6 rounded-2xl bg-muted p-4">
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <h2 className="text-sm font-semibold">{t(rootCopy.where)}</h2>
-        <p className="text-xs text-muted-foreground">{t(rootCopy.source[info.source])} · {info.clones} {t(rootCopy.clones)}</p>
-      </div>
+    <Section title={t(rootCopy.where)} action={<p className="text-xs text-muted-foreground">{t(rootCopy.source[info.source])} · {info.clones} {t(rootCopy.clones)}</p>}>
+    <div className="rounded-2xl bg-background p-4">
       <p className="mt-1 break-all text-sm" dir="ltr">{info.root}</p>
       <button className={`${link} mt-2`} onClick={() => setOpen((v) => !v)}>{t(rootCopy.change)}</button>
       {open && (
         <div className="mt-2 space-y-2">
-          <input dir="ltr" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t(rootCopy.hint)} aria-label={t(rootCopy.where)} className="h-9 w-full rounded-full bg-background px-4 text-sm outline-none" />
+          <input dir="ltr" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t(rootCopy.hint)} aria-label={t(rootCopy.where)} className="h-9 w-full rounded-full bg-muted px-4 text-sm outline-none" />
           <div className="flex flex-wrap gap-4">
             <button className={link} disabled={busy || !path.trim() || path.trim() === info.root} onClick={() => apply(true)}>{t(rootCopy.move)}</button>
             <button className={link} disabled={busy || !path.trim() || path.trim() === info.root} onClick={() => apply(false)}>{t(rootCopy.leave)}</button>
@@ -273,6 +276,7 @@ function RootPicker({ isAr, onChanged }: { isAr: boolean; onChanged: () => void 
         </div>
       )}
       {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
-    </section>
+    </div>
+    </Section>
   )
 }
