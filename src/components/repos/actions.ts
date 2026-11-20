@@ -4,9 +4,9 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { OrgRepo } from "@/lib/contract"
 
-import type { RepoFailure, RepoMode, RepoRow, SweepReport, SyncEvent } from "./types"
+import type { MoveBlock, RepoFailure, RepoMode, RepoRow, RootInfo, SweepReport, SyncEvent } from "./types"
 
-export type { RepoFailure, RepoMode, RepoRow, SweepReport, SyncEvent }
+export type { MoveBlock, RepoFailure, RepoMode, RepoRow, RootInfo, SweepReport, SyncEvent }
 
 /**
  * The repos: the org list when given (kun's API, from the network feature), else this profile's repos,
@@ -80,4 +80,22 @@ export async function sweepSprint(currentSprint: string): Promise<SweepReport> {
 export function failureOf(e: unknown): RepoFailure {
   if (e && typeof e === "object" && "code" in e && "message" in e) return e as RepoFailure
   return { code: "unknown", message: e instanceof Error ? e.message : String(e), losses: [] }
+}
+
+/** Where the clones live and how that was decided (setting, installer, default). */
+export async function getRoot(): Promise<RootInfo | null> {
+  if (!isTauri()) return null
+  return invoke<RootInfo>("plugin:repos|get_root")
+}
+
+/** The clones that would stop a move to `path` (unsaved or unpushed work, a name already there). */
+export async function moveBlockers(path: string): Promise<MoveBlock[]> {
+  need()
+  return invoke<MoveBlock[]>("plugin:repos|move_blockers", { path })
+}
+
+/** Switches the root; with `moveClones` the clones follow, only when none would lose work. */
+export async function setRoot(path: string, moveClones: boolean): Promise<RootInfo> {
+  need()
+  return invoke<RootInfo>("plugin:repos|set_root", { path, moveClones })
 }

@@ -1,55 +1,50 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import Link from "next/link"
 
 import type { Locale } from "@/components/local/config"
-import type { DriverStatus } from "../driver/types"
 import { departments as listDepartments } from "../pack/actions"
-import { getProfile, type MachineProfile } from "../profile/actions"
-import { ToolsPanel } from "../tools/content"
-import { OpenInMachine, PageShell, useInMachine } from "../shell/content"
-import { detectDrivers, loadSettings } from "./actions"
+import { OpenInMachine, useInMachine } from "../shell/content"
+import { loadSettings } from "./actions"
 import { SettingsForm } from "./form"
 import { LanguageToggle } from "./language"
 import type { Settings } from "./types"
 
+/** Who you are and which department you work in. The agent, auto tasks and tools moved to Agents & tools. */
 export default function SettingsContent({ lang }: { lang: Locale }) {
   const isAr = lang === "ar"
   const inApp = useInMachine()
-  const [state, setState] = useState<{ settings: Settings; drivers: DriverStatus[]; departments: string[] } | null>(null)
-  const [profile, setProfile] = useState<MachineProfile | null>(null)
+  const [state, setState] = useState<{ settings: Settings; departments: string[] } | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!inApp) return
-    getProfile().then(setProfile).catch(() => setProfile(null))
-    Promise.all([loadSettings(), detectDrivers(), listDepartments()])
-      .then(([settings, drivers, departments]) => {
-        if (settings) setState({ settings, drivers, departments })
+    Promise.all([loadSettings(), listDepartments()])
+      .then(([settings, departments]) => {
+        if (settings) setState({ settings, departments })
       })
       .catch((e) => setError(String(e)))
   }, [inApp])
 
   if (inApp === null) return null
 
-  const title = isAr ? "الإعدادات" : "Settings"
   return (
-    <PageShell lang={lang} title={title}>
-      <div className="space-y-6">
-        <LanguageToggle lang={lang} />
-        {!inApp ? (
-          <OpenInMachine lang={lang} />
-        ) : (
-          <>
-            <p className="text-muted-foreground text-sm">
-              {isAr ? "من أنت، وفي أي قسم تعمل، وأي وكيل يجيب." : "Who you are, which department you work in, and which agent answers."}
-            </p>
-            {error && <p className="text-destructive text-sm">{error}</p>}
-            {state && <SettingsForm isAr={isAr} initial={state.settings} drivers={state.drivers} departments={state.departments} lockedDriver={profile?.driver} />}
-            <ToolsPanel isAr={isAr} />
-          </>
-        )}
-      </div>
-    </PageShell>
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-4 py-6">
+      <h1 className="text-balance text-2xl font-semibold tracking-tight">{isAr ? "الإعدادات" : "Settings"}</h1>
+      <LanguageToggle lang={lang} />
+      {!inApp ? (
+        <OpenInMachine lang={lang} />
+      ) : (
+        <>
+          <p className="text-muted-foreground text-sm">{isAr ? "من أنت، وفي أي قسم تعمل." : "Who you are and which department you work in."}</p>
+          {error && <p className="text-destructive text-sm">{error}</p>}
+          {state && <SettingsForm isAr={isAr} initial={state.settings} departments={state.departments} />}
+          <p className="text-muted-foreground text-sm">
+            <Link href={`/${lang}/agents/`} className="underline underline-offset-4">{isAr ? "الوكيل الافتراضي والأدوات" : "Default agent, auto tasks and tools"}</Link>
+          </p>
+        </>
+      )}
+    </div>
   )
 }

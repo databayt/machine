@@ -4,17 +4,21 @@ import { useCallback, useEffect, useState } from "react"
 
 import type { Locale } from "@/components/local/config"
 
-import { OpenInMachine, PageShell, useInMachine } from "../shell/content"
+import { OpenInMachine, useInMachine } from "../shell/content"
 import {
   cloneRepo,
   failureOf,
+  getRoot,
+  moveBlockers,
   listRepos,
   openRemote,
   pullRepo,
   removeRepo,
   setMode,
+  setRoot,
   setRemote,
   type RepoRow,
+  type RootInfo,
 } from "./actions"
 import { copy, lossesText } from "./config"
 
@@ -43,8 +47,10 @@ export default function ReposContent({ lang }: { lang: Locale }) {
   if (inApp === false) return <OpenInMachine lang={lang} />
 
   return (
-    <PageShell lang={lang} title={t(copy.title)}>
+    <div className="mx-auto w-full max-w-3xl px-4 py-6">
+      <h1 className="mb-4 text-balance text-2xl font-semibold tracking-tight">{t(copy.title)}</h1>
       <p className="text-muted-foreground">{t(copy.subtitle)}</p>
+      <RootPicker isAr={isAr} onChanged={reload} />
       {error && <p className="mt-6 text-sm text-destructive">{error}</p>}
       {!rows && !error && <p className="mt-6 text-muted-foreground">{t(copy.loading)}</p>}
       {rows && rows.length === 0 && <p className="mt-6 text-muted-foreground">{t(copy.empty)}</p>}
@@ -55,7 +61,7 @@ export default function ReposContent({ lang }: { lang: Locale }) {
           ))}
         </ul>
       )}
-    </PageShell>
+    </div>
   )
 }
 
@@ -188,5 +194,85 @@ function Row({ row, isAr, onChanged }: { row: RepoRow; isAr: boolean; onChanged:
         </div>
       )}
     </li>
+  )
+}
+
+const rootCopy = {
+  where: { en: "Where the repos live", ar: "مكان المستودعات" },
+  source: { setting: { en: "chosen here", ar: "اخترته هنا" }, installer: { en: "from the installer", ar: "من المثبّت" }, default: { en: "default", ar: "الافتراضي" } },
+  clones: { en: "clones here", ar: "نسخة هنا" },
+  change: { en: "Change folder", ar: "غيّر المجلد" },
+  move: { en: "Move the clones", ar: "انقل النسخ" },
+  leave: { en: "Leave them in place", ar: "اتركها مكانها" },
+  hint: { en: "Absolute path, e.g. /Users/you/code", ar: "مسار مطلق مثل /Users/you/code" },
+  blocked: { en: "Not moved: these clones have unsaved or unpushed work, or the name is taken there:", ar: "لم يُنقل: هذه النسخ فيها عمل غير محفوظ أو غير مدفوع، أو الاسم موجود هناك:" },
+}
+
+/** The repos root: shown, and changed with "move the clones" (refused when work would be lost) or "leave them". */
+function RootPicker({ isAr, onChanged }: { isAr: boolean; onChanged: () => void }) {
+  const t = (k: { en: string; ar: string }) => (isAr ? k.ar : k.en)
+  const [info, setInfo] = useState<RootInfo | null>(null)
+  const [path, setPath] = useState("")
+  const [open, setOpen] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [blocked, setBlocked] = useState<string[]>([])
+
+  useEffect(() => {
+    getRoot().then((r) => {
+      setInfo(r)
+      if (r) setPath(r.root)
+    }).catch((e) => setError(failureOf(e).message))
+  }, [])
+
+  async function apply(moveClones: boolean) {
+    setBusy(true)
+    setError(null)
+    setBlocked([])
+    try {
+      if (moveClones) {
+        const b = await moveBlockers(path.trim())
+        if (b.length > 0) {
+          setBlocked(b.map((x) => `${x.name}${x.losses.length ? ` (${lossesText(x.losses, isAr).join(", ")})` : ""}`))
+          return
+        }
+      }
+      setInfo(await setRoot(path.trim(), moveClones))
+      setOpen(false)
+      onChanged()
+    } catch (e) {
+      const f = failureOf(e)
+      setError(f.message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!info) return error ? <p className="mt-4 text-sm text-destructive">{error}</p> : null
+  return (
+    <section className="mt-6 rounded-2xl bg-muted p-4">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+        <h2 className="text-sm font-semibold">{t(rootCopy.where)}</h2>
+        <p className="text-xs text-muted-foreground">{t(rootCopy.source[info.source])} · {info.clones} {t(rootCopy.clones)}</p>
+      </div>
+      <p className="mt-1 break-all text-sm" dir="ltr">{info.root}</p>
+      <button className={`${link} mt-2`} onClick={() => setOpen((v) => !v)}>{t(rootCopy.change)}</button>
+      {open && (
+        <div className="mt-2 space-y-2">
+          <input dir="ltr" value={path} onChange={(e) => setPath(e.target.value)} placeholder={t(rootCopy.hint)} aria-label={t(rootCopy.where)} className="h-9 w-full rounded-full bg-background px-4 text-sm outline-none" />
+          <div className="flex flex-wrap gap-4">
+            <button className={link} disabled={busy || !path.trim() || path.trim() === info.root} onClick={() => apply(true)}>{t(rootCopy.move)}</button>
+            <button className={link} disabled={busy || !path.trim() || path.trim() === info.root} onClick={() => apply(false)}>{t(rootCopy.leave)}</button>
+          </div>
+        </div>
+      )}
+      {blocked.length > 0 && (
+        <div className="mt-2 text-sm text-destructive">
+          <p className="font-medium">{t(rootCopy.blocked)}</p>
+          <ul className="list-disc ps-5">{blocked.map((b) => <li key={b}>{b}</li>)}</ul>
+        </div>
+      )}
+      {error && <p className="mt-2 text-sm text-destructive">{error}</p>}
+    </section>
   )
 }
