@@ -9,7 +9,9 @@ import {
   GlobeIcon,
   LightbulbIcon,
   PenLineIcon,
+  PlayIcon,
   VideoIcon,
+  WrenchIcon,
   XIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -18,6 +20,8 @@ import type { QuickAction } from "../pack/types";
 
 /** One icon per starter, by what it asks for; a neutral bulb otherwise. */
 const ICONS: [RegExp, LucideIcon][] = [
+  [/فحص الأدوات|tools check/i, WrenchIcon],
+  [/متابعة|continue/i, PlayIcon],
   [/تعريفي|intro|film/i, ClapperboardIcon],
   [/مكتب|desk|status|جاهزية/i, ActivityIcon],
   [/فيديو|ريلز|video|reel|لقطات|screenshot/i, VideoIcon],
@@ -33,7 +37,7 @@ const iconFor = (q: QuickAction): LucideIcon =>
 /**
  * The starters under the empty composer: a plain list, no borders, no dividers, no hover fill. The
  * end of a row is empty until it is hovered; then a ✕ appears that clears that starter. A tap on the
- * starter sends it. They come from the department pack's quick actions.
+ * starter writes its brief into the box to edit and send. They come from the department pack's quick actions.
  */
 export function Suggestions({
   actions,

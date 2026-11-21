@@ -19,7 +19,6 @@ import { ActivityRows, StatusLine } from "./activity";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
-import { Navigator } from "./navigator";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
@@ -278,27 +277,12 @@ export default function ChatContent({
                 />
                 {contextLine}
               </div>
-              {pack && pack.starters.length > 0 ? (
-                <Navigator
-                  starters={pack.starters}
-                  dept={ctx.dept}
-                  repo={ctx.repo}
-                  isAr={isAr}
-                  formula={pack.formula}
-                  onPick={(p) => void send(p)}
-                  onFill={(text, focus) =>
-                    setFill({ text, focus, n: ++fillN.current })
-                  }
-                  disabled={busy}
-                />
-              ) : (
-                <Suggestions
-                  actions={quick}
-                  isAr={isAr}
-                  onPick={(p) => void send(p)}
-                  disabled={busy}
-                />
-              )}
+              <Suggestions
+                actions={quick}
+                isAr={isAr}
+                onPick={(p) => setFill({ text: p, focus: true, n: ++fillN.current })}
+                disabled={busy}
+              />
             </div>
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
