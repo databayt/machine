@@ -9,6 +9,7 @@ import {
   CloudIcon,
   CodeXmlIcon,
   FlaskConicalIcon,
+  ImageIcon,
   HandCoinsIcon,
   LifeBuoyIcon,
   LoaderIcon,
@@ -90,6 +91,7 @@ const DEPT_ICONS: Record<string, LucideIcon> = {
   sales: HandCoinsIcon,
   marketing: MegaphoneIcon,
   video: ClapperboardIcon,
+  image: ImageIcon,
   support: LifeBuoyIcon,
   rnd: FlaskConicalIcon,
 };
