@@ -44,7 +44,7 @@ export function MorphButton({
       aria-haspopup="dialog"
       aria-expanded={open}
       className={cn(
-        "fixed start-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] lg:start-8 inline-flex size-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/5",
+        "fixed start-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] lg:start-8 lg:top-[max(2rem,env(safe-area-inset-top))] inline-flex size-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/5",
       )}
     >
       {/* Same mark as space: d="M4 8h16M4 16h16" — as two lines so each can move. */}
