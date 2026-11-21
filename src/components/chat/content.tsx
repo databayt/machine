@@ -267,6 +267,7 @@ export default function ChatContent({
                   busy={busy}
                   actions={quick}
                   initialText={prompt}
+                  repo={ctx.repo}
                   autoFocus
                 />
                 {contextLine}
@@ -339,6 +340,7 @@ export default function ChatContent({
             onStop={() => jobId && void stop(jobId)}
             busy={busy}
             actions={quick}
+            repo={ctx.repo}
             autoFocus
           />
           {contextLine}
