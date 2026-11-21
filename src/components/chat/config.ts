@@ -35,8 +35,7 @@ export const words: { en: readonly string[]; ar: readonly string[] } = {
   ar: ["أوازن الأمر…", "أفكّر في الأمر…", "أجمع الخيوط…", "أربط الأفكار…", "أتأمّل الطلب…", "أعمل على الحل…"],
 }
 
-/** Line shown before the first message — Mahmoud Darwish. */
-export const greeting = (isAr: boolean) =>
-  isAr ? "سيكون لنا متسع من الموت للنوم" : "We will have all of death to sleep."
+/** Line shown before the first message. */
+export const greeting = (isAr: boolean) => (isAr ? "أهلاً، يوم سعيد" : "Hey happy day")
 
 export const tr = (isAr: boolean) => (k: Copy) => (isAr ? k.ar : k.en)
