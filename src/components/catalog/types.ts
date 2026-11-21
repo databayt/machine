@@ -15,6 +15,34 @@ export type CatalogItem = { id: string, name: string, type: string, title: strin
 title_ar?: string, description_ar?: string, keywords: Array<string>, dependencies: Array<string>, files: Array<CatalogFile>, version: string, status: ItemStatus, installed_version: string | null, };
 
 /**
+ * One unit of the real `~/.claude` tree, merged with the registry. `id` is `<kind>:<name>`
+ * (`skill`, `agent`, `rule`, `hook`, `pack`).
+ */
+export type Entry = { id: string, 
+/**
+ * The folder under `~/.claude`.
+ */
+dir: "skills" | "agents" | "rules" | "hooks" | "departments", name: string, title: string, description: string, title_ar?: string, description_ar?: string, state: EntryState, owner: Owner, 
+/**
+ * Targets under `~/.claude`: the registry's for kun's units, what is on disk for the rest.
+ */
+files: Array<string>, dependencies: Array<string>, keywords: Array<string>, 
+/**
+ * The registry's version, or empty.
+ */
+version: string, can_install: boolean, can_uninstall: boolean, can_toggle: boolean, };
+
+/**
+ * What a unit under `~/.claude` is for this computer.
+ */
+export type EntryState = "installed" | "outdated" | "available" | "disabled" | "personal";
+
+/**
  * Where an item stands on this computer.
  */
 export type ItemStatus = "installed" | "available" | "outdated";
+
+/**
+ * Whose unit it is.
+ */
+export type Owner = "kun" | "you";

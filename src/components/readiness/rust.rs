@@ -6,7 +6,7 @@
 //! (open Terminal, open a link, message an owner). Nothing here probes the computer itself.
 //!
 //! Commands: `readiness_state`, `readiness_run`, `readiness_cancel`, `readiness_fix`,
-//! `heal_with_agent`, `readiness_agents_tools`.
+//! `readiness_uninstall`, `readiness_uninstall_terminal`, `heal_with_agent`, `readiness_agents_tools`.
 
 use std::path::PathBuf;
 
@@ -28,12 +28,14 @@ mod heal;
 pub mod model;
 #[path = "run.rs"]
 mod run;
+#[path = "uninstall.rs"]
+mod uninstall;
 
 use catalog::Scope;
 pub use model::ReadinessBeat;
 use model::{
     AgentToolRow, Catalog, FixKind, FixOutcome, Mode, ReadinessError, ReadinessState,
-    ReadinessView, RunEvent, RunSummary,
+    ReadinessView, RunEvent, RunSummary, UninstallOutcome,
 };
 
 /// The kun login readiness requests go to.
@@ -139,6 +141,11 @@ async fn readiness_run(
     only: Option<Vec<String>>,
     channel: Channel<RunEvent>,
 ) -> Result<RunSummary, ReadinessError> {
+    if mode == Mode::Uninstall {
+        return Err(ReadinessError::Invalid(
+            "uninstalling goes through readiness_uninstall",
+        ));
+    }
     let _guard = run::acquire()?;
     let scope = tokio::task::spawn_blocking(Scope::current)
         .await
@@ -153,6 +160,64 @@ async fn readiness_run(
         },
     )
     .await
+}
+
+/// `readiness_uninstall` — removes the steps in `ids` with `provision.mjs --uninstall --only …`,
+/// streaming its events, and sorts what happened per step. A terminal or keystone uninstall is
+/// never run: it comes back as a handoff for `readiness_uninstall_terminal`. One run at a time.
+#[tauri::command]
+async fn readiness_uninstall(
+    ids: Vec<String>,
+    channel: Channel<RunEvent>,
+) -> Result<UninstallOutcome, ReadinessError> {
+    if ids.is_empty() {
+        return Err(ReadinessError::Invalid("nothing to uninstall"));
+    }
+    if let Some(bad) = ids.iter().find(|i| !catalog::valid_id(i)) {
+        return Err(ReadinessError::BadId(bad.clone()));
+    }
+    let mut only: Vec<String> = Vec::with_capacity(ids.len());
+    for id in ids {
+        if !only.contains(&id) {
+            only.push(id);
+        }
+    }
+    let _guard = run::acquire()?;
+    let scope = tokio::task::spawn_blocking(Scope::current)
+        .await
+        .map_err(|e| ReadinessError::Other(e.to_string()))?;
+    let kun = crate::engine::kun_dir();
+    let mut seen: Vec<RunEvent> = Vec::new();
+    let summary = run::provision(&kun, Mode::Uninstall, &only, &scope, &mut |e| {
+        seen.push(e.clone());
+        let _ = channel.send(e);
+    })
+    .await?;
+    let catalog = catalog::load(&kun).ok();
+    Ok(uninstall::outcome(
+        &only,
+        &seen,
+        catalog.as_ref(),
+        summary.cancelled,
+    ))
+}
+
+/// `readiness_uninstall_terminal` — opens Terminal on one handoff. The command is the catalog's,
+/// read from disk here; the webview only names the step.
+#[tauri::command]
+async fn readiness_uninstall_terminal(id: String) -> Result<(), ReadinessError> {
+    if !catalog::valid_id(&id) {
+        return Err(ReadinessError::BadId(id));
+    }
+    let kun = crate::engine::kun_dir();
+    let catalog = catalog::load(&kun)?;
+    let step = catalog
+        .steps
+        .iter()
+        .find(|s| s.id == id)
+        .ok_or(ReadinessError::UnknownStep(id))?;
+    let line = fix::uninstall_line(&kun, step)?;
+    fix::open_terminal(&line).await
 }
 
 /// `readiness_cancel` — stops the run that is going; false when none is.
@@ -288,6 +353,8 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             readiness_run,
             readiness_cancel,
             readiness_fix,
+            readiness_uninstall,
+            readiness_uninstall_terminal,
             heal_with_agent,
             readiness_agents_tools
         ])

@@ -1,10 +1,16 @@
-//! catalog — browse, install and uninstall kun's skills, agents, rules, hooks and department packs.
+//! catalog — browse, install and uninstall kun's skills, agents, rules, hooks and department packs,
+//! see what is really under `~/.claude` (`tree`), and turn skills, agents and rules off and on
+//! without deleting them (`disable`, `enable`).
 //!
 //! The registry (`public/r/kun/index.json`, built by `pnpm kun:registry`) lists items and the
 //! sha256 of every file. Install never takes content from the webview: it copies from the local
 //! kun checkout, verifies each file against the registry hash, and writes atomically into
 //! `~/.claude`. What was installed is recorded in `~/.kun/machine/installed.json` so uninstall
 //! removes exactly those files and nothing the teammate made themselves.
+//!
+//! A unit switched off is moved to `<kun_home>/machine/disabled/` (same relative path) and noted in
+//! `<kun_home>/machine/disabled.json`, which kun's `setup.sh` reads too: it must not reinstall what
+//! a person disabled or removed on purpose.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -96,6 +102,146 @@ struct Lock {
     items: BTreeMap<String, Installed>,
 }
 
+/// What a unit under `~/.claude` is for this computer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "catalog/types.ts")]
+pub enum EntryState {
+    /// kun's, on disk, every file as the registry has it.
+    Installed,
+    /// kun's, on disk, but a file is missing or differs from the registry.
+    Outdated,
+    /// kun's, not on disk.
+    Available,
+    /// Moved aside by a person; waiting in the disabled store.
+    Disabled,
+    /// On disk and not in the registry: made by the person.
+    Personal,
+}
+
+/// Whose unit it is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "catalog/types.ts")]
+pub enum Owner {
+    /// The registry lists it.
+    Kun,
+    /// Made by the person.
+    You,
+}
+
+/// One unit of the real `~/.claude` tree, merged with the registry. `id` is `<kind>:<name>`
+/// (`skill`, `agent`, `rule`, `hook`, `pack`).
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "catalog/types.ts")]
+pub struct Entry {
+    pub id: String,
+    /// The folder under `~/.claude`.
+    #[ts(type = "\"skills\" | \"agents\" | \"rules\" | \"hooks\" | \"departments\"")]
+    pub dir: String,
+    pub name: String,
+    pub title: String,
+    pub description: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub title_ar: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub description_ar: Option<String>,
+    pub state: EntryState,
+    pub owner: Owner,
+    /// Targets under `~/.claude`: the registry's for kun's units, what is on disk for the rest.
+    pub files: Vec<String>,
+    pub dependencies: Vec<String>,
+    pub keywords: Vec<String>,
+    /// The registry's version, or empty.
+    pub version: String,
+    pub can_install: bool,
+    pub can_uninstall: bool,
+    pub can_toggle: bool,
+}
+
+/// One disabled unit in `disabled.json`.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct Held {
+    #[serde(default)]
+    files: Vec<String>,
+    /// Seconds since the epoch, as text.
+    #[serde(default)]
+    at: String,
+}
+
+/// `disabled.json`: what is moved aside, and what was removed on purpose.
+#[derive(Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+struct Disabled {
+    #[serde(default)]
+    disabled: BTreeMap<String, Held>,
+    #[serde(default)]
+    removed: Vec<String>,
+}
+
+/// The kinds of unit the tree shows (the registry's `machine` items are not among them).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    Skill,
+    Agent,
+    Rule,
+    Hook,
+    Pack,
+}
+
+impl Kind {
+    const ALL: [Self; 5] = [Self::Skill, Self::Agent, Self::Rule, Self::Hook, Self::Pack];
+
+    fn prefix(self) -> &'static str {
+        match self {
+            Self::Skill => "skill",
+            Self::Agent => "agent",
+            Self::Rule => "rule",
+            Self::Hook => "hook",
+            Self::Pack => "pack",
+        }
+    }
+
+    fn dir(self) -> &'static str {
+        match self {
+            Self::Skill => "skills",
+            Self::Agent => "agents",
+            Self::Rule => "rules",
+            Self::Hook => "hooks",
+            Self::Pack => "departments",
+        }
+    }
+
+    /// The path under `~/.claude` that moves as one: a folder or a single file.
+    fn unit(self, name: &str) -> String {
+        match self {
+            Self::Skill | Self::Pack => format!("{}/{name}", self.dir()),
+            Self::Agent | Self::Rule => format!("{}/{name}.md", self.dir()),
+            Self::Hook => format!("{}/{name}.sh", self.dir()),
+        }
+    }
+
+    /// Hooks are wired from `settings.json` (a missing file errors on every event) and packs are
+    /// many files: only skills, agents and rules switch off and on.
+    fn toggleable(self) -> bool {
+        matches!(self, Self::Skill | Self::Agent | Self::Rule)
+    }
+}
+
+/// `skill:funnel` into its kind and name.
+fn parse_id(id: &str) -> Option<(Kind, &str)> {
+    let (prefix, name) = id.split_once(':')?;
+    if name.is_empty() {
+        return None;
+    }
+    Kind::ALL
+        .into_iter()
+        .find(|k| k.prefix() == prefix)
+        .map(|k| (k, name))
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum CatalogError {
     #[error("invalid item name: use lowercase letters, digits, - and :")]
@@ -110,6 +256,12 @@ pub enum CatalogError {
     Unsafe(String),
     #[error("{0} is required by installed {1}")]
     InUse(String, String),
+    #[error("{0} cannot be switched off and on here")]
+    NotToggleable(String),
+    #[error("{0} is not from kun; this app never deletes what a person made")]
+    Personal(String),
+    #[error("{0}")]
+    Conflict(String),
     #[error("{0} is not part of this machine's profile")]
     OutsideProfile(String),
     #[error("profile: {0}")]
@@ -161,6 +313,16 @@ impl Env {
 
     fn lock_path(&self) -> PathBuf {
         self.kun_home.join("machine/installed.json")
+    }
+
+    /// Where disabled units wait, mirroring their path under `~/.claude`.
+    fn store_dir(&self) -> PathBuf {
+        self.kun_home.join("machine/disabled")
+    }
+
+    /// The record of what is disabled or removed on purpose; `setup.sh` reads it.
+    fn disabled_path(&self) -> PathBuf {
+        self.kun_home.join("machine/disabled.json")
     }
 }
 
@@ -265,6 +427,67 @@ fn atomic_write(dest: &Path, bytes: &[u8], mode_from: Option<&Path>) -> Res<()> 
 fn write_lock(env: &Env, lock: &Lock) -> Res<()> {
     let body = serde_json::to_string_pretty(lock).map_err(|e| CatalogError::Io(e.to_string()))?;
     atomic_write(&env.lock_path(), format!("{body}\n").as_bytes(), None)
+}
+
+fn read_disabled(env: &Env) -> Disabled {
+    fs::read_to_string(env.disabled_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn write_disabled(env: &Env, record: &Disabled) -> Res<()> {
+    let body = serde_json::to_string_pretty(record).map_err(|e| CatalogError::Io(e.to_string()))?;
+    atomic_write(&env.disabled_path(), format!("{body}\n").as_bytes(), None)
+}
+
+fn now_secs() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
+        .to_string()
+}
+
+/// Notes `id` as removed on purpose; true when that changed the record.
+fn mark_removed(record: &mut Disabled, id: &str) -> bool {
+    if record.removed.iter().any(|r| r == id) {
+        return false;
+    }
+    record.removed.push(id.to_owned());
+    record.removed.sort();
+    true
+}
+
+/// Deletes the unit the disabled store holds for `id` and forgets it; true when it held one.
+fn delete_held(env: &Env, id: &str, record: &mut Disabled) -> Res<bool> {
+    if !record.disabled.contains_key(id) {
+        return Ok(false);
+    }
+    if let Some((kind, name)) = parse_id(id) {
+        let store = env.store_dir();
+        let path = store.join(safe_rel(&kind.unit(name))?);
+        ensure_within(&store, &path)?;
+        match fs::symlink_metadata(&path) {
+            Ok(meta) if meta.file_type().is_dir() => fs::remove_dir_all(&path)?,
+            Ok(_) => fs::remove_file(&path)?,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    record.disabled.remove(id);
+    Ok(true)
+}
+
+/// A fresh install replaces whatever the store held and ends any "removed on purpose".
+fn settle_store_after_install(env: &Env, id: &str) -> Res<()> {
+    let mut record = read_disabled(env);
+    let held = delete_held(env, id, &mut record)?;
+    let was_removed = record.removed.iter().any(|r| r == id);
+    record.removed.retain(|r| r != id);
+    if held || was_removed {
+        write_disabled(env, &record)?;
+    }
+    Ok(())
 }
 
 fn status_of(env: &Env, item: &CatalogItem, lock: &Lock) -> (ItemStatus, Option<String>) {
@@ -460,15 +683,19 @@ pub fn install_item_scoped(
             continue;
         }
         install_one(env, item, &mut lock)?;
+        settle_store_after_install(env, &id)?;
         done.push(id);
     }
     Ok(done)
 }
 
-/// Remove the files the lockfile recorded for `name`, and only those.
+/// Remove an item kun put on disk: the files the lockfile recorded for it, or, when the engine's
+/// own installer shipped it, the files the registry lists; the held copy when it is disabled.
+/// Either way it is noted as removed on purpose.
 ///
 /// # Errors
-/// On an invalid or not-installed name, or when another installed item depends on it.
+/// On an invalid or unknown name, when another installed item depends on it, or
+/// [`CatalogError::Personal`] for what a person made: the app never deletes that.
 pub fn uninstall_item(env: &Env, name: &str) -> Res<()> {
     uninstall_item_scoped(env, name, None)
 }
@@ -483,25 +710,427 @@ pub fn uninstall_item_scoped(env: &Env, name: &str, allowed: Option<&BTreeSet<St
         return Err(CatalogError::OutsideProfile(name.to_string()));
     }
     let mut lock = read_lock(env);
-    let entry = lock
-        .items
-        .get(name)
-        .cloned()
-        .ok_or_else(|| CatalogError::UnknownItem(name.to_string()))?;
-    if let Some((other, _)) = lock
+    let mut record = read_disabled(env);
+    let held = record.disabled.contains_key(name);
+    if let Some(entry) = lock.items.get(name).cloned() {
+        check_in_use(&lock, name)?;
+        lock.items.remove(name);
+        for t in &entry.files {
+            if !owned_elsewhere(&lock, name, t) {
+                remove_target(env, t);
+            }
+        }
+        write_lock(env, &lock)?;
+    } else {
+        // Not in this app's lockfile: the engine's own installer may have shipped it.
+        let registry = registry_or_empty(env)?;
+        let Some(item) = registry.iter().find(|i| i.id == name) else {
+            let made_here = held
+                || parse_id(name).is_some_and(|(kind, n)| {
+                    safe_rel(&kind.unit(n))
+                        .is_ok_and(|rel| fs::symlink_metadata(env.claude_dir.join(rel)).is_ok())
+                });
+            return Err(if made_here {
+                CatalogError::Personal(name.to_owned())
+            } else {
+                CatalogError::UnknownItem(name.to_owned())
+            });
+        };
+        if parse_id(name).is_some_and(|(kind, _)| kind == Kind::Hook) {
+            return Err(CatalogError::Conflict(format!(
+                "{name} is wired from the engine's settings; removing the file would break every event"
+            )));
+        }
+        let on_disk = item.files.iter().any(|f| {
+            safe_rel(&f.target).is_ok_and(|t| fs::symlink_metadata(env.claude_dir.join(t)).is_ok())
+        });
+        if !on_disk && !held {
+            return Err(CatalogError::UnknownItem(name.to_owned()));
+        }
+        check_in_use(&lock, name)?;
+        for f in &item.files {
+            if !owned_elsewhere(&lock, name, &f.target) {
+                remove_target(env, &f.target);
+            }
+        }
+    }
+    delete_held(env, name, &mut record)?;
+    mark_removed(&mut record, name);
+    write_disabled(env, &record)
+}
+
+/// Refuses to remove `name` while another installed item needs it.
+fn check_in_use(lock: &Lock, name: &str) -> Res<()> {
+    match lock
         .items
         .iter()
         .find(|(id, e)| id.as_str() != name && e.dependencies.iter().any(|d| d == name))
     {
-        return Err(CatalogError::InUse(name.to_string(), other.clone()));
+        Some((other, _)) => Err(CatalogError::InUse(name.to_owned(), other.clone())),
+        None => Ok(()),
     }
-    lock.items.remove(name);
-    for t in &entry.files {
-        if !owned_elsewhere(&lock, name, t) {
-            remove_target(env, t);
+}
+
+/// A registry file's state on disk: how many of an item's files exist and how many match.
+fn file_state(env: &Env, item: &CatalogItem) -> EntryState {
+    let (mut present, mut matching) = (0, 0);
+    for f in &item.files {
+        let bytes = safe_rel(&f.target)
+            .ok()
+            .and_then(|t| fs::read(env.claude_dir.join(t)).ok());
+        if let Some(bytes) = bytes {
+            present += 1;
+            if sha256_hex(&bytes) == f.sha256 {
+                matching += 1;
+            }
         }
     }
-    write_lock(env, &lock)
+    if present == 0 {
+        EntryState::Available
+    } else if matching == item.files.len() {
+        EntryState::Installed
+    } else {
+        EntryState::Outdated
+    }
+}
+
+/// The registry, or nothing when kun has not built one here: the tree is about what is on disk.
+fn registry_or_empty(env: &Env) -> Res<Vec<CatalogItem>> {
+    match read_registry(env) {
+        Err(CatalogError::NoRegistry(_)) => Ok(Vec::new()),
+        other => other,
+    }
+}
+
+/// A unit found on disk.
+struct Found {
+    kind: Kind,
+    name: String,
+    files: Vec<String>,
+}
+
+/// The most files listed for one personal folder.
+const MAX_UNIT_FILES: usize = 1000;
+
+/// The plain files under `dir` as paths relative to `~/.claude`; dot-files and symlinks skipped.
+fn walk_files(dir: &Path, rel: &str, out: &mut Vec<String>) {
+    let Ok(read) = fs::read_dir(dir) else { return };
+    let mut entries: Vec<_> = read.filter_map(std::result::Result::ok).collect();
+    entries.sort_by_key(fs::DirEntry::file_name);
+    for entry in entries {
+        if out.len() >= MAX_UNIT_FILES {
+            return;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        let Ok(kind) = entry.file_type() else {
+            continue;
+        };
+        if name.starts_with('.') || kind.is_symlink() {
+            continue;
+        }
+        let path = format!("{rel}/{name}");
+        if kind.is_dir() {
+            walk_files(&entry.path(), &path, out);
+        } else if kind.is_file() {
+            out.push(path);
+        }
+    }
+}
+
+/// Scans `~/.claude` for every unit of every kind, by id.
+fn scan_disk(env: &Env) -> BTreeMap<String, Found> {
+    let mut found = BTreeMap::new();
+    let Ok(root) = env.claude_dir.canonicalize() else {
+        return found;
+    };
+    for kind in Kind::ALL {
+        let Ok(read) = fs::read_dir(env.claude_dir.join(kind.dir())) else {
+            continue;
+        };
+        for entry in read.filter_map(std::result::Result::ok) {
+            let file_name = entry.file_name().to_string_lossy().into_owned();
+            if file_name.starts_with('.') {
+                continue;
+            }
+            let path = entry.path();
+            // A link that leads out of `~/.claude` is not ours to list.
+            let linked = entry.file_type().is_ok_and(|t| t.is_symlink());
+            if linked && !path.canonicalize().is_ok_and(|p| p.starts_with(&root)) {
+                continue;
+            }
+            let name = match kind {
+                Kind::Skill => {
+                    (path.is_dir() && path.join("SKILL.md").is_file()).then(|| file_name.clone())
+                }
+                Kind::Pack => path.is_dir().then(|| file_name.clone()),
+                Kind::Agent | Kind::Rule => path
+                    .is_file()
+                    .then(|| file_name.strip_suffix(".md").map(str::to_owned))
+                    .flatten(),
+                Kind::Hook => path
+                    .is_file()
+                    .then(|| file_name.strip_suffix(".sh").map(str::to_owned))
+                    .flatten(),
+            };
+            let Some(name) = name.filter(|n| !n.is_empty()) else {
+                continue;
+            };
+            let unit = kind.unit(&name);
+            let files = if matches!(kind, Kind::Skill | Kind::Pack) {
+                let mut files = Vec::new();
+                walk_files(&path, &unit, &mut files);
+                files
+            } else {
+                vec![unit]
+            };
+            found.insert(
+                format!("{}:{name}", kind.prefix()),
+                Found { kind, name, files },
+            );
+        }
+    }
+    found
+}
+
+/// Builds one entry from its parts; the three `can_*` follow from state, owner and kind.
+fn make_entry(
+    kind: Kind,
+    name: &str,
+    state: EntryState,
+    item: Option<&CatalogItem>,
+    files: Vec<String>,
+) -> Entry {
+    let kun = item.is_some();
+    let present = matches!(
+        state,
+        EntryState::Installed | EntryState::Outdated | EntryState::Personal | EntryState::Disabled
+    );
+    Entry {
+        id: format!("{}:{name}", kind.prefix()),
+        dir: kind.dir().to_owned(),
+        name: name.to_owned(),
+        title: item.map_or_else(|| name.to_owned(), |i| i.title.clone()),
+        description: item.map(|i| i.description.clone()).unwrap_or_default(),
+        title_ar: item.and_then(|i| i.title_ar.clone()),
+        description_ar: item.and_then(|i| i.description_ar.clone()),
+        state,
+        owner: if kun { Owner::Kun } else { Owner::You },
+        files,
+        dependencies: item.map(|i| i.dependencies.clone()).unwrap_or_default(),
+        keywords: item.map(|i| i.keywords.clone()).unwrap_or_default(),
+        version: item.map(|i| i.version.clone()).unwrap_or_default(),
+        can_install: kun && matches!(state, EntryState::Available | EntryState::Outdated),
+        can_uninstall: kun
+            && matches!(
+                state,
+                EntryState::Installed | EntryState::Outdated | EntryState::Disabled
+            ),
+        can_toggle: kind.toggleable() && present && validate_name(name).is_ok(),
+    }
+}
+
+/// The real `~/.claude` tree merged with the registry.
+///
+/// # Errors
+/// When the registry exists but cannot be read.
+pub fn tree_entries(env: &Env) -> Res<Vec<Entry>> {
+    tree_entries_scoped(env, None)
+}
+
+/// [`tree_entries`], with kun's units limited to `allowed` when it is `Some`; units the person
+/// made are always listed.
+///
+/// # Errors
+/// When the registry exists but cannot be read.
+pub fn tree_entries_scoped(env: &Env, allowed: Option<&BTreeSet<String>>) -> Res<Vec<Entry>> {
+    let registry = registry_or_empty(env)?;
+    let kun_ids: BTreeSet<&str> = registry
+        .iter()
+        .filter(|i| parse_id(&i.id).is_some())
+        .map(|i| i.id.as_str())
+        .collect();
+    let disk = scan_disk(env);
+    let record = read_disabled(env);
+    let lock = read_lock(env);
+    let mut out = Vec::new();
+
+    for item in &registry {
+        let Some((kind, name)) = parse_id(&item.id) else {
+            continue;
+        };
+        if allowed.is_some_and(|a| !a.contains(&item.id)) {
+            continue;
+        }
+        let state = if record.disabled.contains_key(&item.id) {
+            EntryState::Disabled
+        } else {
+            file_state(env, item)
+        };
+        let files = item.files.iter().map(|f| f.target.clone()).collect();
+        let mut entry = make_entry(kind, name, state, Some(item), files);
+        // A hook the engine's own installer shipped is wired from `settings.json`: without the
+        // file every event would error. Only a hook this app installed can be removed here.
+        if kind == Kind::Hook && !lock.items.contains_key(&item.id) {
+            entry.can_uninstall = false;
+        }
+        out.push(entry);
+    }
+    for (id, found) in &disk {
+        if kun_ids.contains(id.as_str()) || record.disabled.contains_key(id) {
+            continue;
+        }
+        out.push(make_entry(
+            found.kind,
+            &found.name,
+            EntryState::Personal,
+            None,
+            found.files.clone(),
+        ));
+    }
+    for (id, held) in &record.disabled {
+        if kun_ids.contains(id.as_str()) {
+            continue;
+        }
+        if let Some((kind, name)) = parse_id(id) {
+            out.push(make_entry(
+                kind,
+                name,
+                EntryState::Disabled,
+                None,
+                held.files.clone(),
+            ));
+        }
+    }
+    out.sort_by(|a, b| (&a.dir, &a.name).cmp(&(&b.dir, &b.name)));
+    Ok(out)
+}
+
+/// Refuses a registry-backed `id` the profile does not list; a unit the person made is never
+/// outside the profile.
+fn check_scope(env: &Env, id: &str, allowed: Option<&BTreeSet<String>>) -> Res<()> {
+    let Some(allowed) = allowed else {
+        return Ok(());
+    };
+    if allowed.contains(id) || !registry_or_empty(env)?.iter().any(|i| i.id == id) {
+        return Ok(());
+    }
+    Err(CatalogError::OutsideProfile(id.to_owned()))
+}
+
+/// What `disable` and `enable` share: a valid id of a kind that may be toggled, inside the
+/// profile, and its path under `~/.claude`.
+fn toggle_target(
+    env: &Env,
+    id: &str,
+    allowed: Option<&BTreeSet<String>>,
+) -> Res<(String, PathBuf)> {
+    validate_name(id)?;
+    let (kind, name) = parse_id(id).ok_or_else(|| CatalogError::UnknownItem(id.to_owned()))?;
+    if !kind.toggleable() || validate_name(name).is_err() {
+        return Err(CatalogError::NotToggleable(id.to_owned()));
+    }
+    check_scope(env, id, allowed)?;
+    let unit = kind.unit(name);
+    let rel = safe_rel(&unit)?;
+    Ok((unit, rel))
+}
+
+/// Moves a skill, agent or rule out of `~/.claude` into the disabled store, keeping it.
+///
+/// # Errors
+/// [`CatalogError::NotToggleable`] for hooks, packs and bad names; `Unsafe` for a symlinked unit;
+/// `UnknownItem` when it is not on disk; `Conflict` when the store already holds it; or I/O.
+pub fn disable_item(env: &Env, id: &str) -> Res<()> {
+    disable_item_scoped(env, id, None)
+}
+
+/// [`disable_item`], refusing a registry-backed `id` the profile does not list.
+///
+/// # Errors
+/// As [`disable_item`], plus [`CatalogError::OutsideProfile`].
+pub fn disable_item_scoped(env: &Env, id: &str, allowed: Option<&BTreeSet<String>>) -> Res<()> {
+    let (unit, rel) = toggle_target(env, id, allowed)?;
+    let mut record = read_disabled(env);
+    if record.disabled.contains_key(id) {
+        return Err(CatalogError::Conflict(format!("{id} is already disabled")));
+    }
+    let src = env.claude_dir.join(&rel);
+    match fs::symlink_metadata(&src) {
+        Err(_) => return Err(CatalogError::UnknownItem(id.to_owned())),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(CatalogError::Unsafe(unit)),
+        Ok(_) => {}
+    }
+    ensure_within(&env.claude_dir, &src)?;
+    let store = env.store_dir();
+    let dest = store.join(&rel);
+    ensure_within(&store, &dest)?;
+    if fs::symlink_metadata(&dest).is_ok() {
+        return Err(CatalogError::Conflict(format!(
+            "the disabled store already holds {unit}"
+        )));
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::rename(&src, &dest)?;
+    record.disabled.insert(
+        id.to_owned(),
+        Held {
+            files: vec![unit],
+            at: now_secs(),
+        },
+    );
+    if let Err(e) = write_disabled(env, &record) {
+        let _ = fs::rename(&dest, &src); // keep the record and the disk telling the same story
+        return Err(e);
+    }
+    Ok(())
+}
+
+/// Moves a disabled unit back into `~/.claude`.
+///
+/// # Errors
+/// [`CatalogError::NotToggleable`] for hooks, packs and bad names; `UnknownItem` when the store
+/// holds nothing for it; `Conflict` when something already sits at the destination; or I/O.
+pub fn enable_item(env: &Env, id: &str) -> Res<()> {
+    enable_item_scoped(env, id, None)
+}
+
+/// [`enable_item`], refusing a registry-backed `id` the profile does not list.
+///
+/// # Errors
+/// As [`enable_item`], plus [`CatalogError::OutsideProfile`].
+pub fn enable_item_scoped(env: &Env, id: &str, allowed: Option<&BTreeSet<String>>) -> Res<()> {
+    let (unit, rel) = toggle_target(env, id, allowed)?;
+    let mut record = read_disabled(env);
+    if !record.disabled.contains_key(id) {
+        return Err(CatalogError::UnknownItem(id.to_owned()));
+    }
+    let store = env.store_dir();
+    let src = store.join(&rel);
+    ensure_within(&store, &src)?;
+    match fs::symlink_metadata(&src) {
+        Err(_) => return Err(CatalogError::UnknownItem(id.to_owned())),
+        Ok(meta) if meta.file_type().is_symlink() => return Err(CatalogError::Unsafe(unit)),
+        Ok(_) => {}
+    }
+    let dest = env.claude_dir.join(&rel);
+    ensure_within(&env.claude_dir, &dest)?;
+    if fs::symlink_metadata(&dest).is_ok() {
+        return Err(CatalogError::Conflict(format!(
+            "{unit} already exists in ~/.claude"
+        )));
+    }
+    if let Some(parent) = dest.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::rename(&src, &dest)?;
+    record.disabled.remove(id);
+    if let Err(e) = write_disabled(env, &record) {
+        let _ = fs::rename(&dest, &src);
+        return Err(e);
+    }
+    Ok(())
 }
 
 /// Installs and uninstalls rewrite the lockfile: one at a time.
@@ -543,10 +1172,31 @@ async fn uninstall(name: String) -> Res<()> {
     blocking(move |env| uninstall_item_scoped(env, &name, scope(env)?.as_ref())).await
 }
 
+/// `tree` — the real `~/.claude` (skills, agents, rules, hooks, packs) merged with the registry,
+/// limited to the profile for kun's units.
+#[tauri::command]
+async fn tree() -> Res<Vec<Entry>> {
+    blocking(|env| tree_entries_scoped(env, scope(env)?.as_ref())).await
+}
+
+/// `disable` — moves a skill, agent or rule aside without deleting it.
+#[tauri::command]
+async fn disable(id: String) -> Res<()> {
+    blocking(move |env| disable_item_scoped(env, &id, scope(env)?.as_ref())).await
+}
+
+/// `enable` — moves a disabled skill, agent or rule back.
+#[tauri::command]
+async fn enable(id: String) -> Res<()> {
+    blocking(move |env| enable_item_scoped(env, &id, scope(env)?.as_ref())).await
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("catalog")
-        .invoke_handler(tauri::generate_handler![list, install, uninstall])
+        .invoke_handler(tauri::generate_handler![
+            list, install, uninstall, tree, disable, enable
+        ])
         .build()
 }
 

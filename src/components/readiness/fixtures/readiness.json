@@ -43,6 +43,10 @@
         "cmd": "claude update",
         "cadence": "weekly",
         "auto": true
+      },
+      "uninstall": {
+        "kind": "auto",
+        "cmd": "npm rm -g @anthropic-ai/claude-code"
       }
     },
     {
@@ -99,6 +103,11 @@
       "fix": {
         "kind": "link",
         "url": "https://brew.sh"
+      },
+      "uninstall": {
+        "kind": "terminal",
+        "cmd": "bash uninstall-brew.sh",
+        "keystone": true
       }
     },
     {
@@ -153,6 +162,10 @@
       "fix": {
         "kind": "auto",
         "cmd": "brew install --cask blender"
+      },
+      "uninstall": {
+        "kind": "terminal",
+        "cmd": "brew uninstall --cask blender"
       }
     },
     {

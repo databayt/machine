@@ -82,6 +82,29 @@ pub struct Fix {
     pub message: Option<String>,
 }
 
+/// How a step is taken off a computer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "readiness/types.ts")]
+pub enum UninstallKind {
+    /// The runner removes it.
+    Auto,
+    /// A command the person runs in Terminal; the runner never runs it.
+    Terminal,
+}
+
+/// What removing a step means. The whole field is absent when a step cannot be uninstalled.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "readiness/types.ts")]
+pub struct Uninstall {
+    pub kind: UninstallKind,
+    #[serde(default)]
+    pub cmd: String,
+    /// Removing it breaks the computer's way of working: always handed to the person.
+    #[serde(default)]
+    pub keystone: bool,
+}
+
 /// A recurring update the `--maintain` run applies.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "readiness/types.ts")]
@@ -122,6 +145,8 @@ pub struct Step {
     pub fix: Option<Fix>,
     #[serde(default)]
     pub update: Option<Update>,
+    #[serde(default)]
+    pub uninstall: Option<Uninstall>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -152,6 +177,10 @@ pub enum StepStatus {
     Human,
     UpdateAvailable,
     Updated,
+    /// An uninstall is running.
+    Removing,
+    /// An uninstall finished.
+    Removed,
     /// A status a newer runner invented.
     #[serde(other)]
     Unknown,
@@ -189,9 +218,12 @@ pub struct ReadinessState {
     pub human: Vec<String>,
     #[serde(default)]
     pub steps: Vec<StateStep>,
+    /// Steps the person removed on purpose; the runner reports them `skip`.
+    #[serde(default)]
+    pub removed: Vec<String>,
 }
 
-/// What the runner does: look, look and fix, or update.
+/// What the runner does: look, look and fix, update, or uninstall.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(export, export_to = "readiness/types.ts")]
@@ -199,6 +231,8 @@ pub enum Mode {
     Check,
     Complete,
     Maintain,
+    /// Only through `readiness_uninstall`.
+    Uninstall,
 }
 
 impl Mode {
@@ -207,6 +241,7 @@ impl Mode {
             Self::Check => "--check",
             Self::Complete => "--complete",
             Self::Maintain => "--maintain",
+            Self::Uninstall => "--uninstall",
         }
     }
 }
@@ -311,6 +346,8 @@ pub struct ReadinessView {
     pub os: String,
     pub role: String,
     pub departments: Vec<String>,
+    /// Steps the person removed on purpose.
+    pub removed: Vec<String>,
 }
 
 /// What `readiness_fix` did.
@@ -320,6 +357,36 @@ pub struct FixOutcome {
     pub kind: FixKind,
     pub ok: bool,
     pub message: Option<String>,
+}
+
+/// One step and why it did not come out cleanly.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "readiness/types.ts")]
+pub struct StepNote {
+    pub id: String,
+    pub detail: String,
+}
+
+/// An uninstall the runner will not run: the person runs `cmd` in Terminal.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "readiness/types.ts")]
+pub struct Handoff {
+    pub id: String,
+    /// From the catalog, never from the event text.
+    pub cmd: String,
+    pub keystone: bool,
+}
+
+/// What `readiness_uninstall` did, per requested step.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "readiness/types.ts")]
+pub struct UninstallOutcome {
+    pub removed: Vec<String>,
+    /// Another installed step needs it.
+    pub blocked: Vec<StepNote>,
+    pub failed: Vec<StepNote>,
+    pub handoff: Vec<Handoff>,
+    pub cancelled: bool,
 }
 
 #[allow(clippy::struct_excessive_bools)]
@@ -363,6 +430,8 @@ pub enum ReadinessError {
     UnknownStep(String),
     #[error("step {0} has no fix")]
     NoFix(String),
+    #[error("step {0} has no uninstall to run in Terminal")]
+    NoUninstall(String),
     #[error("another readiness run is going; wait or cancel it")]
     Busy,
     #[error("node is not installed, so the provision script cannot run")]

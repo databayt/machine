@@ -43,6 +43,8 @@ export const statusMark: Record<StepStatus, string> = {
   fixing: "…",
   human: "☝",
   "update-available": "↑",
+  removing: "…",
+  removed: "–",
   unknown: "?",
 }
 
@@ -57,6 +59,8 @@ export const statusWord: Record<StepStatus, Text> = {
   fixing: { en: "fixing", ar: "قيد الإصلاح" },
   human: { en: "needs a person", ar: "يحتاج شخصاً" },
   "update-available": { en: "update available", ar: "تحديث متاح" },
+  removing: { en: "removing", ar: "قيد الإزالة" },
+  removed: { en: "removed", ar: "أُزيل" },
   unknown: { en: "unknown", ar: "غير معروف" },
 }
 

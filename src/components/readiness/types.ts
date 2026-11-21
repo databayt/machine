@@ -29,16 +29,29 @@ export type FixKind = "auto" | "terminal" | "link" | "request";
 export type FixOutcome = { kind: FixKind, ok: boolean, message: string | null, };
 
 /**
+ * An uninstall the runner will not run: the person runs `cmd` in Terminal.
+ */
+export type Handoff = { id: string, 
+/**
+ * From the catalog, never from the event text.
+ */
+cmd: string, keystone: boolean, };
+
+/**
  * Text in both languages.
  */
 export type Localized = { ar: string, en: string, };
 
 /**
- * What the runner does: look, look and fix, or update.
+ * What the runner does: look, look and fix, update, or uninstall.
  */
-export type Mode = "check" | "complete" | "maintain";
+export type Mode = "check" | "complete" | "maintain" | "uninstall";
 
-export type ReadinessState = { catalogVersion: string | number | null, at: string | number | null, percent: number, failing: Array<string>, human: Array<string>, steps: Array<StateStep>, };
+export type ReadinessState = { catalogVersion: string | number | null, at: string | number | null, percent: number, failing: Array<string>, human: Array<string>, steps: Array<StateStep>, 
+/**
+ * Steps the person removed on purpose; the runner reports them `skip`.
+ */
+removed: Array<string>, };
 
 /**
  * Everything the Readiness page draws.
@@ -55,7 +68,11 @@ hasState: boolean,
 /**
  * A state file at 100%.
  */
-complete: boolean, os: string, role: string, departments: Array<string>, };
+complete: boolean, os: string, role: string, departments: Array<string>, 
+/**
+ * Steps the person removed on purpose.
+ */
+removed: Array<string>, };
 
 /**
  * One line of the runner's NDJSON, plus two the app adds (`log`, `error`).
@@ -96,12 +113,17 @@ roles: Array<string>, after: Array<string>,
 /**
  * Only a person can do it.
  */
-human: boolean, check: Check | null, fix: Fix | null, update: Update | null, };
+human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, };
+
+/**
+ * One step and why it did not come out cleanly.
+ */
+export type StepNote = { id: string, detail: string, };
 
 /**
  * Where a step stands. `pending` is ours: no run has reported on it yet.
  */
-export type StepStatus = "pending" | "pass" | "fail" | "skip" | "blocked" | "fixing" | "fixed" | "human" | "update-available" | "updated" | "unknown";
+export type StepStatus = "pending" | "pass" | "fail" | "skip" | "blocked" | "fixing" | "fixed" | "human" | "update-available" | "updated" | "removing" | "removed" | "unknown";
 
 /**
  * A catalog step with where it stands.
@@ -122,7 +144,30 @@ roles: Array<string>, after: Array<string>,
 /**
  * Only a person can do it.
  */
-human: boolean, check: Check | null, fix: Fix | null, update: Update | null, };
+human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, };
+
+/**
+ * What removing a step means. The whole field is absent when a step cannot be uninstalled.
+ */
+export type Uninstall = { kind: UninstallKind, cmd: string, 
+/**
+ * Removing it breaks the computer's way of working: always handed to the person.
+ */
+keystone: boolean, };
+
+/**
+ * How a step is taken off a computer.
+ */
+export type UninstallKind = "auto" | "terminal";
+
+/**
+ * What `readiness_uninstall` did, per requested step.
+ */
+export type UninstallOutcome = { removed: Array<string>, 
+/**
+ * Another installed step needs it.
+ */
+blocked: Array<StepNote>, failed: Array<StepNote>, handoff: Array<Handoff>, cancelled: boolean, };
 
 /**
  * A recurring update the `--maintain` run applies.

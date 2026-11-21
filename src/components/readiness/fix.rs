@@ -5,7 +5,7 @@ use std::{path::Path, process::Stdio};
 
 use tokio::process::Command;
 
-use super::model::{Fix, FixKind, ReadinessError, Step};
+use super::model::{Fix, FixKind, ReadinessError, Step, UninstallKind};
 
 /// What a fix needs done, decided without doing it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -38,19 +38,51 @@ pub(super) fn has_placeholder(cmd: &str) -> bool {
 /// The line Terminal runs for a `terminal` fix: from the kun folder, or, when the command has a
 /// placeholder only the person can fill, a note showing what to run and why.
 pub(super) fn terminal_line(kun: &Path, fix: &Fix) -> Result<String, ReadinessError> {
-    let cmd = fix.cmd.as_deref().map(str::trim).filter(|c| !c.is_empty());
-    let cmd = cmd.ok_or(ReadinessError::Invalid("the fix has no command"))?;
+    command_line(
+        kun,
+        fix.cmd.as_deref(),
+        fix.message.as_deref(),
+        ["the fix has no command", "the fix command has control characters"],
+    )
+}
+
+/// The line Terminal runs for an uninstall handoff: the catalog's command from the kun folder.
+/// Only a `terminal` or keystone uninstall may be handed over; an `auto` one is the runner's.
+///
+/// # Errors
+/// When the step has no uninstall, it is plain `auto`, or its command is empty or has control
+/// characters.
+pub(super) fn uninstall_line(kun: &Path, step: &Step) -> Result<String, ReadinessError> {
+    let un = step
+        .uninstall
+        .as_ref()
+        .filter(|u| u.kind == UninstallKind::Terminal || u.keystone)
+        .ok_or_else(|| ReadinessError::NoUninstall(step.id.clone()))?;
+    command_line(
+        kun,
+        Some(&un.cmd),
+        None,
+        [
+            "the uninstall has no command",
+            "the uninstall command has control characters",
+        ],
+    )
+}
+
+fn command_line(
+    kun: &Path,
+    cmd: Option<&str>,
+    message: Option<&str>,
+    errors: [&'static str; 2],
+) -> Result<String, ReadinessError> {
+    let cmd = cmd.map(str::trim).filter(|c| !c.is_empty());
+    let cmd = cmd.ok_or(ReadinessError::Invalid(errors[0]))?;
     if cmd.chars().any(char::is_control) {
-        return Err(ReadinessError::Invalid(
-            "the fix command has control characters",
-        ));
+        return Err(ReadinessError::Invalid(errors[1]));
     }
     let dir = shell_quote(&kun.display().to_string());
     if has_placeholder(cmd) {
-        let note = fix
-            .message
-            .as_deref()
-            .unwrap_or("Fill in the value, then run:");
+        let note = message.unwrap_or("Fill in the value, then run:");
         return Ok(format!(
             "cd {dir} && printf '%s\\n' {} {}",
             shell_quote(note),

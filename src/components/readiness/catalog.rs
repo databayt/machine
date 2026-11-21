@@ -184,6 +184,7 @@ pub(super) fn view(
         os: scope.os.clone(),
         role: scope.role.clone(),
         departments: scope.departments.clone(),
+        removed: state.map(|s| s.removed.clone()).unwrap_or_default(),
     }
 }
 

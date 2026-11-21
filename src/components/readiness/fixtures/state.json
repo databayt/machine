@@ -4,6 +4,7 @@
   "percent": 62.5,
   "failing": ["claude.cli", "engine.health"],
   "human": ["github.org"],
+  "removed": ["tool.blender"],
   "steps": [
     { "id": "brew", "status": "pass", "detail": "brew 5.1", "at": "2026-11-20T10:00:01Z" },
     { "id": "node", "status": "pass", "detail": "v24", "at": "2026-11-20T10:00:02Z" },

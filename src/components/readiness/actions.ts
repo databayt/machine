@@ -6,13 +6,26 @@ import type { Event as DriverEvent } from "../driver/types"
 import type {
   AgentToolRow,
   FixOutcome,
+  Handoff,
   Mode,
   ReadinessView,
   RunEvent,
   RunSummary,
+  StepNote,
+  UninstallOutcome,
 } from "./types"
 
-export type { AgentToolRow, FixOutcome, Mode, ReadinessView, RunEvent, RunSummary }
+export type {
+  AgentToolRow,
+  FixOutcome,
+  Handoff,
+  Mode,
+  ReadinessView,
+  RunEvent,
+  RunSummary,
+  StepNote,
+  UninstallOutcome,
+}
 
 function need() {
   if (!isTauri()) throw new Error("readiness needs the machine app")
@@ -45,6 +58,18 @@ export async function readinessCancel(): Promise<boolean> {
 export async function readinessFix(id: string, onEvent?: (e: RunEvent) => void): Promise<FixOutcome> {
   need()
   return invoke<FixOutcome>("plugin:readiness|readiness_fix", { id, channel: stream(onEvent) })
+}
+
+/** Removes these steps with kun's runner; events stream to `onEvent`. Terminal and keystone uninstalls come back as `handoff`, never run. */
+export async function readinessUninstall(ids: string[], onEvent?: (e: RunEvent) => void): Promise<UninstallOutcome> {
+  need()
+  return invoke<UninstallOutcome>("plugin:readiness|readiness_uninstall", { ids, channel: stream(onEvent) })
+}
+
+/** Opens Terminal on one handoff; the command is read from kun's catalog, never sent from here. */
+export async function readinessUninstallTerminal(id: string): Promise<void> {
+  need()
+  return invoke<void>("plugin:readiness|readiness_uninstall_terminal", { id })
 }
 
 /** Starts Claude in the kun folder with the provision skill for these steps. */

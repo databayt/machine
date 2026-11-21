@@ -6,8 +6,11 @@ use super::{
     agents, catalog,
     catalog::Scope,
     fix, heal,
-    model::{Catalog, FixKind, Mode, ReadinessError, ReadinessState, RunEvent, StepStatus},
-    run,
+    model::{
+        Catalog, FixKind, Mode, ReadinessError, ReadinessState, RunEvent, StepStatus,
+        UninstallKind, UninstallOutcome,
+    },
+    run, uninstall,
 };
 
 const CATALOG: &str = include_str!("fixtures/readiness.json");
@@ -473,4 +476,175 @@ fn agents_and_tools_merge_with_their_catalog_steps() {
     assert_eq!(blender.step_id.as_deref(), Some("tool.blender"));
     // Without a catalog the rows still list what is installed.
     assert_eq!(agents::merge(&drivers, &tools, None, None).len(), 3);
+}
+
+fn step_event(id: &str, status: &str, detail: &str) -> RunEvent {
+    run::parse_line(&format!(
+        r#"{{"type":"step","id":"{id}","stage":"s","status":"{status}","detail":"{detail}"}}"#
+    ))
+    .unwrap()
+}
+
+#[test]
+fn the_uninstall_mode_builds_uninstall_and_only() {
+    let script = Path::new("/kun/.claude/skills/provision/scripts/provision.mjs");
+    let args = run::build_args(
+        script,
+        Mode::Uninstall,
+        &["tool.blender".into(), "node".into()],
+        &scope(&["media"], "engineer"),
+    )
+    .unwrap();
+    assert_eq!(
+        args,
+        [
+            script.to_str().unwrap(),
+            "--uninstall",
+            "--only",
+            "tool.blender,node",
+            "--departments",
+            "media",
+            "--role",
+            "engineer",
+            "--json"
+        ]
+    );
+    assert_eq!(
+        serde_json::from_str::<Mode>(r#""uninstall""#).unwrap(),
+        Mode::Uninstall
+    );
+}
+
+#[test]
+fn a_catalog_step_may_or_may_not_carry_an_uninstall() {
+    let c = catalog_fixture();
+    let get = |id: &str| c.steps.iter().find(|s| s.id == id).unwrap();
+    let auto = get("claude.cli").uninstall.as_ref().unwrap();
+    assert_eq!(auto.kind, UninstallKind::Auto);
+    assert!(!auto.keystone && auto.cmd.starts_with("npm rm"));
+    let term = get("tool.blender").uninstall.as_ref().unwrap();
+    assert_eq!(term.kind, UninstallKind::Terminal);
+    assert!(!term.keystone);
+    assert!(get("brew").uninstall.as_ref().unwrap().keystone);
+    assert!(get("node").uninstall.is_none());
+    // A catalog from before version 2 has no such field anywhere and still loads.
+    let old = catalog::parse(r#"{"version":1,"stages":["a"],"steps":[{"id":"x","stage":"a"}]}"#)
+        .unwrap();
+    assert!(old.steps[0].uninstall.is_none());
+}
+
+#[test]
+fn removing_and_removed_parse() {
+    assert!(matches!(
+        run::parse_line(r#"{"type":"step","id":"a","status":"removing","detail":"npm rm"}"#),
+        Some(RunEvent::Step {
+            status: StepStatus::Removing,
+            ..
+        })
+    ));
+    assert!(matches!(
+        run::parse_line(r#"{"type":"step","id":"a","status":"removed"}"#),
+        Some(RunEvent::Step {
+            status: StepStatus::Removed,
+            ..
+        })
+    ));
+    assert_eq!(
+        serde_json::to_string(&StepStatus::Removed).unwrap(),
+        r#""removed""#
+    );
+}
+
+#[test]
+fn removed_steps_reach_the_view() {
+    let v = catalog::view(
+        Some(&catalog_fixture()),
+        &scope(&[], "member"),
+        Some(&state_fixture()),
+    );
+    assert_eq!(v.removed, ["tool.blender"]);
+    let none = catalog::view(None, &scope(&[], "member"), None);
+    assert!(none.removed.is_empty());
+    // A state file from before `removed` existed still loads.
+    let old: ReadinessState = serde_json::from_str(r#"{"percent":10}"#).unwrap();
+    assert!(old.removed.is_empty());
+}
+
+#[test]
+fn the_outcome_sorts_events_into_removed_blocked_failed_handoff() {
+    let c = catalog_fixture();
+    let requested: Vec<String> = ["claude.cli", "node", "tool.blender", "brew", "github.org"]
+        .map(String::from)
+        .into();
+    let events = vec![
+        step_event("claude.cli", "removing", "npm rm"),
+        step_event("claude.cli", "removed", ""),
+        step_event("node", "blocked", "needed by: claude.cli"),
+        // The event text names another command; the catalog's wins.
+        step_event("tool.blender", "human", "rm -rf nothing"),
+        step_event("brew", "human", "bash uninstall-brew.sh"),
+        step_event("github.org", "fail", "no uninstaller"),
+        // Not requested: ignored.
+        step_event("engine.health", "removed", ""),
+        run::parse_line(r#"{"type":"pass","n":1}"#).unwrap(),
+        // The final check pass reports the removed step again; it must not undo the outcome.
+        step_event("claude.cli", "skip", "removed by you"),
+        step_event("node", "pass", "v24"),
+    ];
+    let out = uninstall::outcome(&requested, &events, Some(&c), false);
+    assert_eq!(out.removed, ["claude.cli"]);
+    assert_eq!(out.blocked.len(), 1);
+    assert_eq!(out.blocked[0].id, "node");
+    assert_eq!(out.blocked[0].detail, "needed by: claude.cli");
+    assert_eq!(out.failed.len(), 1);
+    assert_eq!(out.failed[0].detail, "no uninstaller");
+    assert_eq!(out.handoff.len(), 2);
+    assert_eq!(out.handoff[0].id, "tool.blender");
+    assert_eq!(out.handoff[0].cmd, "brew uninstall --cask blender");
+    assert!(!out.handoff[0].keystone);
+    assert_eq!(out.handoff[1].cmd, "bash uninstall-brew.sh");
+    assert!(out.handoff[1].keystone);
+    assert!(!out.cancelled);
+    // A cancelled run with nothing seen is an empty outcome.
+    let empty = uninstall::outcome(&requested, &[], None, true);
+    assert_eq!(
+        empty,
+        UninstallOutcome {
+            cancelled: true,
+            ..UninstallOutcome::default()
+        }
+    );
+}
+
+#[test]
+fn the_uninstall_terminal_line_comes_from_the_catalog() {
+    let kun = Path::new("/Users/x/kun");
+    let c = catalog_fixture();
+    let get = |id: &str| c.steps.iter().find(|s| s.id == id).unwrap();
+    assert_eq!(
+        fix::uninstall_line(kun, get("tool.blender")).unwrap(),
+        "cd '/Users/x/kun' && brew uninstall --cask blender"
+    );
+    // A keystone is handed over whatever its kind.
+    assert!(fix::uninstall_line(kun, get("brew")).is_ok());
+    // An auto uninstall is the runner's; a step without one has nothing to open.
+    assert!(matches!(
+        fix::uninstall_line(kun, get("claude.cli")),
+        Err(ReadinessError::NoUninstall(_))
+    ));
+    assert!(matches!(
+        fix::uninstall_line(kun, get("node")),
+        Err(ReadinessError::NoUninstall(_))
+    ));
+    let bad: super::model::Step = serde_json::from_str(
+        r#"{"id":"b","stage":"s","uninstall":{"kind":"terminal","cmd":"ls\nrm x"}}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        fix::uninstall_line(kun, &bad),
+        Err(ReadinessError::Invalid(_))
+    ));
+    let empty: super::model::Step =
+        serde_json::from_str(r#"{"id":"b","stage":"s","uninstall":{"kind":"terminal"}}"#).unwrap();
+    assert!(fix::uninstall_line(kun, &empty).is_err());
 }
