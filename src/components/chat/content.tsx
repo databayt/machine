@@ -210,7 +210,15 @@ export default function ChatContent({
   if (!inApp) return <OpenInMachine lang={lang} />;
 
   const empty = messages.length === 0;
-  const quick = pack?.quick_actions ?? [];
+  const allQuick = pack?.quick_actions ?? [];
+  const scopedQuick = ctx.repo
+    ? allQuick.filter((q) => q.repos.includes(ctx.repo))
+    : [];
+  const quick = (
+    scopedQuick.length
+      ? scopedQuick
+      : allQuick.filter((q) => q.repos.length === 0)
+  ).slice(0, 3);
   const contextLine = (
     <ContextLine
       lang={lang}

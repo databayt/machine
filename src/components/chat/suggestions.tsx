@@ -3,6 +3,8 @@
 import { useState } from "react";
 
 import {
+  ActivityIcon,
+  ClapperboardIcon,
   FileTextIcon,
   GlobeIcon,
   LightbulbIcon,
@@ -16,6 +18,8 @@ import type { QuickAction } from "../pack/types";
 
 /** One icon per starter, by what it asks for; a neutral bulb otherwise. */
 const ICONS: [RegExp, LucideIcon][] = [
+  [/تعريفي|intro|film/i, ClapperboardIcon],
+  [/مكتب|desk|status|جاهزية/i, ActivityIcon],
   [/فيديو|ريلز|video|reel|لقطات|screenshot/i, VideoIcon],
   [/منشور|اكتب|post|write|draft|سكربت|script/i, PenLineIcon],
   [/عرض|سعر|quote|proposal|pric/i, FileTextIcon],

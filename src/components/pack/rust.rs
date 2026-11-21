@@ -73,6 +73,9 @@ pub struct QuickAction {
     pub description_en: String,
     #[serde(default)]
     pub description_ar: String,
+    /// Repos this starter belongs to; empty = shown for any repo.
+    #[serde(default)]
+    pub repos: Vec<String>,
 }
 
 /// What the UI shows about a department's pack.
@@ -98,6 +101,8 @@ struct RawQuick {
     description_en: String,
     #[serde(default)]
     description_ar: String,
+    #[serde(default)]
+    repos: Vec<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -293,6 +298,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
                 prompt: q.prompt,
                 description_en: q.description_en,
                 description_ar: q.description_ar,
+                repos: q.repos.into_iter().filter(|r| valid_name(r)).collect(),
             })
             .collect(),
     })

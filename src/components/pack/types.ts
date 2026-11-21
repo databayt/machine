@@ -13,4 +13,8 @@ export type QuickAction = { label_ar: string, label_en: string, prompt: string,
 /**
  * One or two lines saying what the action does, per language (the menu's workflow cards).
  */
-description_en: string, description_ar: string, };
+description_en: string, description_ar: string, 
+/**
+ * Repos this starter belongs to; empty = shown for any repo.
+ */
+repos: Array<string>, };

@@ -321,3 +321,20 @@ fn copied_skill_folders_are_refreshed_and_pruned() {
         "an unwanted copy of ours is removed"
     );
 }
+
+#[test]
+fn quick_action_repos_parse_and_default_empty() {
+    let kun = kun_fixture();
+    let sales = meta_in(kun.path(), "sales").unwrap();
+    assert!(sales.quick_actions[0].repos.is_empty());
+
+    let dept = kun.path().join("departments/video");
+    fs::create_dir_all(&dept).unwrap();
+    fs::write(
+        dept.join("pack.json"),
+        r#"{"quickActions":[{"label_ar":"a","label_en":"a","prompt":"p","repos":["hogwarts","../evil"]}]}"#,
+    )
+    .unwrap();
+    let video = meta_in(kun.path(), "video").unwrap();
+    assert_eq!(video.quick_actions[0].repos, vec!["hogwarts".to_string()]);
+}
