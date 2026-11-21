@@ -1,7 +1,21 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BriefcaseIcon, CheckIcon, ChevronDownIcon, CloudIcon, LoaderIcon, SearchIcon } from "lucide-react";
+import {
+  BriefcaseIcon,
+  CheckIcon,
+  ChevronDownIcon,
+  ClapperboardIcon,
+  CloudIcon,
+  CodeXmlIcon,
+  FlaskConicalIcon,
+  HandCoinsIcon,
+  LifeBuoyIcon,
+  LoaderIcon,
+  MegaphoneIcon,
+  SearchIcon,
+  type LucideIcon,
+} from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -69,6 +83,18 @@ export function useWorkingContext(enabled: boolean): {
   return { profile, dept, chooseDept: (name) => void choose(name), repos: CHAT_REPOS, local, repo, setRepo };
 }
 
+/** Each department's mark; one not listed falls back to the briefcase. */
+const DEPT_ICONS: Record<string, LucideIcon> = {
+  tech: CodeXmlIcon,
+  business: BriefcaseIcon,
+  sales: HandCoinsIcon,
+  marketing: MegaphoneIcon,
+  video: ClapperboardIcon,
+  support: LifeBuoyIcon,
+  rnd: FlaskConicalIcon,
+};
+const deptIcon = (name: string): LucideIcon => DEPT_ICONS[name] ?? BriefcaseIcon;
+
 /** GitHub's repo mark (octicon `repo`), as the hogwarts profile uses it. */
 function RepoIcon({ className }: { className?: string }) {
   return (
@@ -118,6 +144,7 @@ export function ContextLine({
   const current = departments.find((d) => d.name === dept);
   if (!current) return null;
   const title = (d: (typeof departments)[number]) => (isAr && d.title_ar) || d.title;
+  const CurrentIcon = deptIcon(current.name);
   const q = query.trim().toLowerCase();
   const others = repos.filter((r) => r !== repo && (!q || r.toLowerCase().includes(q)));
   const pick = (r: string) => {
@@ -135,14 +162,16 @@ export function ContextLine({
       <Popover open={deptOpen} onOpenChange={setDeptOpen}>
         <PopoverTrigger asChild>
           <button type="button" disabled={disabled} aria-label={t(menuCopy.department)} className={trigger}>
-            <BriefcaseIcon className="size-4 shrink-0" aria-hidden />
+            <CurrentIcon className="size-4 shrink-0" aria-hidden />
             <span className="truncate">{title(current)}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
         <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
           <ul>
-            {departments.map((d) => (
+            {departments.map((d) => {
+              const Icon = deptIcon(d.name);
+              return (
               <li key={d.name}>
                 <button
                   type="button"
@@ -152,12 +181,13 @@ export function ContextLine({
                   }}
                   className={row}
                 >
-                  <BriefcaseIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
                   <span className="flex-1 truncate">{title(d)}</span>
                   {d.name === dept && <CheckIcon className="size-4 shrink-0" aria-hidden />}
                 </button>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </PopoverContent>
       </Popover>
