@@ -34,7 +34,6 @@ export const copy = {
   all: { en: "All", ar: "الكل" },
   images: { en: "Images", ar: "صور" },
   videos: { en: "Videos", ar: "فيديو" },
-  runsOn: { en: "Where this prompt runs", ar: "أين يُنفَّذ هذا الطلب" },
   refine: { en: "Make it a professional brief", ar: "صُغه موجزاً احترافياً" },
   refining: { en: "Writing the brief…", ar: "يكتب الموجز…" },
   refineFailed: { en: "Could not refine; your text is unchanged", ar: "تعذّرت الصياغة؛ نصك كما هو" },

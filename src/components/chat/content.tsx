@@ -67,7 +67,7 @@ export default function ChatContent({
   const [speakReplies] = useReadAloud();
   /** The navigator's sentence for the home composer. */
   const [fill, setFill] = useState<Fill | null>(null);
-  /** Where the next prompt runs: one of the pack's routes, remembered per department. */
+  /** Where the next prompt runs, silently: the option's or refine's route, else the pack default. */
   const [routeId, setRouteId] = useState<string | null>(null);
   const fillN = useRef(0);
   const speakRef = useRef(false);
@@ -88,15 +88,10 @@ export default function ChatContent({
     void packInfo(ctx.dept, ctx.repo || undefined).then(setPack).catch(() => setPack(null));
   }, [inApp, ctx.dept, ctx.repo]);
 
-  // A new chat (or another department) starts on the department's remembered route.
+  // A new chat (or another department) starts on the pack's default route.
   const isEmpty = messages.length === 0;
   useEffect(() => {
-    if (!isEmpty || !ctx.dept) return;
-    try {
-      setRouteId(localStorage.getItem(`machine.route.${ctx.dept}`));
-    } catch {
-      setRouteId(null);
-    }
+    if (isEmpty) setRouteId(null);
   }, [ctx.dept, isEmpty]);
 
   useEffect(() => {
@@ -240,7 +235,6 @@ export default function ChatContent({
       : allQuick.filter((q) => q.repos.length === 0)
   ).slice(0, 3);
   const routes = pack?.routes ?? [];
-  const routeKey = `machine.route.${ctx.dept}`;
   const chosen =
     routes.find((r) => r.id === routeId) ??
     routes.find((r) => r.id === pack?.default_route) ??
@@ -248,12 +242,6 @@ export default function ChatContent({
     null;
   /** The route that carries work on: the first that is not plan mode. */
   const working = routes.find((r) => r.mode !== "plan") ?? null;
-  const chooseRoute = (id: string) => {
-    setRouteId(id);
-    try {
-      localStorage.setItem(routeKey, id);
-    } catch {}
-  };
   /** Sends on the chosen route; once a plan turn is out, the reply that answers it does the work. */
   const sendRouted = (text: string) => {
     void send(text, undefined, chosen?.id ?? null);
@@ -283,9 +271,6 @@ export default function ChatContent({
       onRepo={ctx.setRepo}
       health={health}
       onAsk={(p) => void send(p, undefined, working?.id ?? null)}
-      routes={routes}
-      route={chosen?.id ?? null}
-      onRoute={chooseRoute}
       disabled={busy}
     />
   );

@@ -409,15 +409,16 @@ fn the_old_mode_picks_plan_or_do_and_other_drivers_ignore_routes() {
 #[test]
 fn refine_asks_for_a_complete_brief_and_lists_the_routes() {
     let meta = route_meta(ROUTED);
-    let text = refine_prompt("  اعمل فيلم  ", &meta.routes, "video", Some("hogwarts"));
-    assert!(text.starts_with("Rewrite the request below as one complete, professional brief"));
+    let text = refine_prompt("  اعمل فيلم  ", &meta.routes, "video", Some("hogwarts"), Some("## Task\n{{task}}"));
+    assert!(text.starts_with("Rewrite the request below as one professional prompt, in English"));
     assert!(text.contains("produce.mjs list --json --repo hogwarts"));
-    assert!(text.contains("**References & context**"));
-    assert!(text.contains("`route: <id>` choosing one of: plan — plan, do — do."));
+    assert!(text.contains("Fill this template exactly"));
+    assert!(text.contains("## Task\n{{task}}"));
+    assert!(text.contains("`route: <id>`, one of: plan, do."));
     assert!(text.ends_with("اعمل فيلم"));
-    let other = refine_prompt("x", &[], "sales", None);
+    let other = refine_prompt("x", &[], "sales", None, None);
     assert!(!other.contains("produce.mjs") && !other.contains("route:"));
-    assert!(other.contains("CLAUDE.md formula"));
+    assert!(other.contains("Task · Context · References · Constraints · Deliverable"));
     assert!(valid_job_id(&refine_job_id()));
     assert_ne!(refine_job_id(), refine_job_id());
     assert_eq!(REFINE_SECS, 240);

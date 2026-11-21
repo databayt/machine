@@ -495,39 +495,55 @@ async fn ask(
 /// How long `refine` may take before it gives up: it reads the project's folder first.
 const REFINE_SECS: u32 = 240;
 
-/// The instruction `refine` puts before the user's text. The brief must stand alone, so the run first
-/// gathers context (read-only); the video department also reads its produce projects. `routes` adds
-/// the closing line that picks one.
-fn refine_prompt(prompt: &str, routes: &[pack::Route], department: &str, repo: Option<&str>) -> String {
+/// The instruction `refine` puts before the user's text. The brief is always English and follows
+/// the pack's predefined `formula.en` template when it has one (a plain section list otherwise); it
+/// must stand alone, so the run first gathers context read-only (video also reads its produce
+/// projects). `routes` adds a closing `route:` line the app reads silently.
+fn refine_prompt(
+    prompt: &str,
+    routes: &[pack::Route],
+    department: &str,
+    repo: Option<&str>,
+    template: Option<&str>,
+) -> String {
     let mut out = String::from(
-        "Rewrite the request below as one complete, professional brief for this department. First gather \
-         the context it needs, read-only (no writes, no renders): the department's CLAUDE.md formula",
+        "Rewrite the request below as one professional prompt, in English whatever language the \
+         request is in. First gather the context it needs, read-only (no writes, no renders): the \
+         department's CLAUDE.md",
     );
     if department == "video" {
         let repo_flag = repo.map_or_else(String::new, |r| format!(" --repo {r}"));
         let _ = write!(
             out,
-            "; for video, `node ~/.claude/skills/produce/scripts/produce.mjs list --json{repo_flag}` and \
+            "; `node ~/.claude/skills/produce/scripts/produce.mjs list --json{repo_flag}` and \
              `status <ID>` of the matching project, its folder (reference video, transcript, script, \
              asset manifest), kun/content/media/brand-kit.json and markets.json (price, currency, \
              dialect), existing captures"
         );
     }
     out.push_str(
-        ". Then write the brief: what · for whom · version · goal · destination · then a **References & \
-         context** section listing every absolute path, CDN URL, project ID, current stage and gate, \
-         and key facts (price, currency, dialect, length) the worker needs, so the prompt stands alone \
-         · then what to return. Keep the request's language. Do not start the work. Output only the brief",
+        ". Put every reference and fact the worker needs into the prompt (absolute paths, CDN URLs, \
+         project ID, stage and gate, price, currency, dialect, length), so it stands alone. Do not \
+         start the work.",
     );
+    match template.map(str::trim).filter(|t| !t.is_empty()) {
+        Some(t) => {
+            let _ = write!(
+                out,
+                " Fill this template exactly — same headings, same order; write \"none\" where nothing \
+                 applies:\n\n{t}\n\n"
+            );
+        }
+        None => out.push_str(
+            " Use these headings in order: Task · Context · References · Constraints · Deliverable.",
+        ),
+    }
+    out.push_str(" Output only the prompt");
     if routes.is_empty() {
         out.push('.');
     } else {
-        let list = routes
-            .iter()
-            .map(|r| format!("{} — {}", r.id, r.label_en))
-            .collect::<Vec<_>>()
-            .join(", ");
-        let _ = write!(out, ", then on the very last line `route: <id>` choosing one of: {list}.");
+        let list = routes.iter().map(|r| r.id.as_str()).collect::<Vec<_>>().join(", ");
+        let _ = write!(out, ", then on the very last line `route: <id>`, one of: {list}.");
     }
     format!("{out}\n\n---\n\n{}", prompt.trim())
 }
@@ -566,7 +582,7 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
     let for_dept = department.clone();
     let repo_name = repo.clone();
-    let (cwd, extras, routes) = tokio::task::spawn_blocking(move || {
+    let (cwd, extras, routes, template) = tokio::task::spawn_blocking(move || {
         let setup = prepare_run(
             &resolved,
             &for_dept,
@@ -581,14 +597,15 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
         // No route applies (no agent, no pack model): refine is a cheap rewrite.
         let mut extras = setup.extras;
         extras.extend(["--model", "sonnet", "--effort", "medium"].map(str::to_owned));
-        Ok::<_, ChatError>((setup.cwd, extras, meta.routes))
+        let template = pack::info_in(&pack::kun_dir()?, &for_dept)?.formula.map(|f| f.en);
+        Ok::<_, ChatError>((setup.cwd, extras, meta.routes, template))
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
     let mut job = build_job(
         &refine_job_id(),
         DriverKind::Claude,
-        refine_prompt(&prompt, &routes, &department, repo_name.as_deref()),
+        refine_prompt(&prompt, &routes, &department, repo_name.as_deref(), template.as_deref()),
         cwd,
         None,
         extras,
