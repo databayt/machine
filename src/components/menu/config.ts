@@ -24,6 +24,7 @@ export const copy = {
   repository: { en: "Repository", ar: "المستودع" },
   allRepos: { en: "All repos", ar: "كل المستودعات" },
   searchRepos: { en: "Search repositories…", ar: "ابحث في المستودعات…" },
+  notCloned: { en: "Not cloned yet: picking it clones it", ar: "غير مستنسخ بعد: اختياره يستنسخه" },
   noRepoHere: { en: "No repository of this department is cloned yet.", ar: "لم يُستنسخ أي مستودع لهذا القسم بعد." },
   general: { en: "General", ar: "عام" },
   catalog: { en: "Catalog", ar: "الكتالوج" },

@@ -187,8 +187,20 @@ fn task_prompt(task_id: &str, prompt: &str) -> String {
     )
 }
 
-/// The repo a run is limited to. It must be one the machine works in (the profile's repos, or when
-/// the profile lists none, the department's) and be cloned under `root`.
+/// The repos the chat's repository menu offers on every machine (databayt on GitHub); hogwarts first,
+/// the default. Mirrors `CHAT_REPOS` in `chat/context.tsx`.
+pub const CHAT_REPOS: &[&str] = &[
+    "hogwarts",
+    "mkan",
+    "kun",
+    "machine",
+    "marketing",
+    "android-app",
+    "ios-app",
+];
+
+/// The repo a run is limited to. It must be one the machine works in (one of `CHAT_REPOS`, the
+/// profile's repos, or when the profile lists none, the department's) and be cloned under `root`.
 fn validate_repo(
     resolved: &Resolved,
     department: &str,
@@ -199,7 +211,7 @@ fn validate_repo(
         return Ok(None);
     };
     let profile = &resolved.profile;
-    let known = if profile.repos.is_empty() {
+    let known = CHAT_REPOS.contains(&repo) || if profile.repos.is_empty() {
         profile
             .departments
             .iter()

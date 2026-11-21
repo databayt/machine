@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { BookIcon, BriefcaseIcon, CheckIcon, ChevronDownIcon, SearchIcon } from "lucide-react";
+import { BriefcaseIcon, CheckIcon, ChevronDownIcon, CloudIcon, LoaderIcon, SearchIcon } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
 import { copy as menuCopy } from "../menu/config";
 import { loadRepos } from "../menu/data";
+import { cloneRepo } from "../repos/actions";
 import { useDepartment } from "../menu/use-department";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { loadSettings, saveSettings } from "../settings/actions";
@@ -15,56 +16,66 @@ import { tr } from "./config";
 
 /**
  * The working context of a run: the department (from Settings) and the repository, remembered per
- * department in `settings.repo_by_department`. The repository menu lists the department's repos that
- * are cloned here (and that this machine's profile lists, when it lists any); "" means all repos.
- * With no choice saved, hogwarts is the default whenever it is offered here.
+ * department in `settings.repo_by_department`. The repository menu offers the same databayt repos on
+ * every machine (`CHAT_REPOS`, mirrored in `chat/rust.rs`), hogwarts first and the default. One that
+ * is not cloned here is cloned from github.com/databayt when picked.
  */
-const DEFAULT_REPO = "hogwarts";
+export const CHAT_REPOS = ["hogwarts", "mkan", "kun", "machine", "marketing", "android-app", "ios-app"] as const;
+const DEFAULT_REPO = CHAT_REPOS[0];
 
 export function useWorkingContext(enabled: boolean): {
   profile: MachineProfile | null;
   dept: string;
   chooseDept: (name: string) => void;
-  repos: string[];
+  repos: readonly string[];
+  local: Set<string> | null;
   repo: string;
-  setRepo: (repo: string) => void;
+  setRepo: (repo: string) => Promise<void>;
 } {
   const [profile, setProfile] = useState<MachineProfile | null>(null);
   const [local, setLocal] = useState<Set<string> | null>(null);
   const [saved, setSaved] = useState<Record<string, string>>({});
   const { dept, choose } = useDepartment();
 
+  const readLocal = useCallback(
+    () => loadRepos().then((rows) => setLocal(new Set(rows.filter((r) => r.local).map((r) => r.name)))),
+    [],
+  );
+
   useEffect(() => {
     if (!enabled) return;
     getProfile().then(setProfile).catch(() => setProfile(null));
-    loadRepos().then((rows) => setLocal(new Set(rows.filter((r) => r.local).map((r) => r.name))));
+    void readLocal();
     loadSettings().then((s) => s && setSaved(s.repo_by_department)).catch(() => {});
-  }, [enabled]);
+  }, [enabled, readLocal]);
 
-  const current = profile?.departments.find((d) => d.name === dept);
-  const listed = profile?.repos ?? [];
-  const usable = (n: string) => !!local?.has(n) && (listed.length === 0 || listed.includes(n));
-  const repos = (current?.repos ?? []).map((r) => r.name).filter(usable);
-  // The run accepts a repo outside the department only when the profile lists it.
-  if (listed.includes(DEFAULT_REPO) && usable(DEFAULT_REPO) && !repos.includes(DEFAULT_REPO)) repos.unshift(DEFAULT_REPO);
-  const pick = saved[dept] ?? DEFAULT_REPO;
-  const repo = repos.includes(pick) ? pick : "";
+  const pick = saved[dept];
+  const repo = pick && (CHAT_REPOS as readonly string[]).includes(pick) ? pick : DEFAULT_REPO;
 
   const setRepo = useCallback(
-    (next: string) => {
+    async (next: string) => {
+      if (local && !local.has(next)) {
+        await cloneRepo(next);
+        await readLocal();
+      }
       setSaved((all) => ({ ...all, [dept]: next }));
-      void (async () => {
-        const now = await loadSettings();
-        if (!now) return;
-        const map = { ...now.repo_by_department };
-        map[dept] = next; // "" is a choice too: all repos, not the hogwarts default
-        await saveSettings({ ...now, repo_by_department: map }).catch(() => {});
-      })();
+      const now = await loadSettings();
+      if (!now) return;
+      await saveSettings({ ...now, repo_by_department: { ...now.repo_by_department, [dept]: next } }).catch(() => {});
     },
-    [dept],
+    [dept, local, readLocal],
   );
 
-  return { profile, dept, chooseDept: (name) => void choose(name), repos, repo, setRepo };
+  return { profile, dept, chooseDept: (name) => void choose(name), repos: CHAT_REPOS, local, repo, setRepo };
+}
+
+/** GitHub's repo mark (octicon `repo`), as the hogwarts profile uses it. */
+function RepoIcon({ className }: { className?: string }) {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="currentColor" className={className}>
+      <path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z" />
+    </svg>
+  );
 }
 
 /** A trigger in the row under the composer: icon, label, chevron; tinted while its menu is open. */
@@ -81,6 +92,7 @@ export function ContextLine({
   dept,
   onDept,
   repos,
+  local,
   repo,
   onRepo,
   disabled,
@@ -89,9 +101,11 @@ export function ContextLine({
   profile: MachineProfile | null;
   dept: string;
   onDept: (name: string) => void;
-  repos: string[];
+  repos: readonly string[];
+  /** The repos cloned here; null while unknown. */
+  local: Set<string> | null;
   repo: string;
-  onRepo: (repo: string) => void;
+  onRepo: (repo: string) => Promise<void>;
   disabled?: boolean;
 }) {
   const isAr = lang === "ar";
@@ -99,6 +113,7 @@ export function ContextLine({
   const [deptOpen, setDeptOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [cloning, setCloning] = useState<string | null>(null);
   const departments = profile?.departments ?? [];
   const current = departments.find((d) => d.name === dept);
   if (!current) return null;
@@ -108,8 +123,12 @@ export function ContextLine({
   const pick = (r: string) => {
     setRepoOpen(false);
     setQuery("");
-    onRepo(r);
+    setCloning(local && !local.has(r) ? r : null);
+    onRepo(r)
+      .catch(() => {})
+      .finally(() => setCloning(null));
   };
+  const remote = (r: string) => local !== null && !local.has(r);
 
   return (
     <div className="mt-2 flex min-w-0 items-center gap-2 px-1.5 text-sm text-foreground/80">
@@ -121,7 +140,7 @@ export function ContextLine({
             <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+        <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
           <ul>
             {departments.map((d) => (
               <li key={d.name}>
@@ -151,13 +170,17 @@ export function ContextLine({
         }}
       >
         <PopoverTrigger asChild>
-          <button type="button" disabled={disabled} aria-label={t(menuCopy.repository)} className={trigger}>
-            <BookIcon className="size-4 shrink-0" aria-hidden />
-            <span dir="ltr" className="truncate">{repo || t(menuCopy.allRepos)}</span>
+          <button type="button" disabled={disabled || cloning !== null} aria-label={t(menuCopy.repository)} className={trigger}>
+            {cloning ? (
+              <LoaderIcon className="size-4 shrink-0 animate-spin" aria-hidden />
+            ) : (
+              <RepoIcon className="size-4 shrink-0" />
+            )}
+            <span dir="ltr" className="truncate">{cloning ?? repo}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" dir={isAr ? "rtl" : "ltr"} className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+        <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
           <label className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 focus-within:border-foreground/40">
             <SearchIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             <input
@@ -171,30 +194,26 @@ export function ContextLine({
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </label>
-          {repo && (
-            <div className="mt-1.5 flex items-center gap-2.5 rounded-lg bg-muted px-2.5 py-1.5 text-sm">
-              <span dir="ltr" className="flex-1 truncate">{repo}</span>
-              <CheckIcon className="size-4 shrink-0" aria-hidden />
-            </div>
-          )}
+          <div className="mt-1.5 flex items-center gap-2.5 rounded-lg bg-muted px-2.5 py-1.5 text-sm">
+            <RepoIcon className="size-4 shrink-0 text-muted-foreground" />
+            <span dir="ltr" className="flex-1 truncate">{repo}</span>
+            <CheckIcon className="size-4 shrink-0" aria-hidden />
+          </div>
           {others.length > 0 && (
             <ul className="mt-1.5 max-h-64 overflow-y-auto border-t border-border/60 pt-1.5">
               {others.map((r) => (
                 <li key={r}>
                   <button type="button" onClick={() => pick(r)} className={row}>
-                    <span dir="ltr" className="truncate">{r}</span>
+                    <RepoIcon className="size-4 shrink-0 text-muted-foreground" />
+                    <span dir="ltr" className="flex-1 truncate">{r}</span>
+                    {remote(r) && (
+                      <CloudIcon className="size-4 shrink-0 text-muted-foreground" aria-label={t(menuCopy.notCloned)} />
+                    )}
                   </button>
                 </li>
               ))}
             </ul>
           )}
-          {repos.length === 0 && <p className="px-2.5 pb-1 pt-2 text-xs text-muted-foreground">{t(menuCopy.noRepoHere)}</p>}
-          <div className="mt-1.5 border-t border-border/60 pt-1.5">
-            <button type="button" onClick={() => pick("")} className={row}>
-              <span className="flex-1 truncate">{t(menuCopy.allRepos)}</span>
-              {repo === "" && <CheckIcon className="size-4 shrink-0" aria-hidden />}
-            </button>
-          </div>
         </PopoverContent>
       </Popover>
     </div>

@@ -287,7 +287,7 @@ fn a_repo_limits_the_run_to_that_repo_and_must_be_known_and_cloned() {
 fn the_default_profile_takes_its_repos_from_the_department() {
     use crate::profile::{Department, RepoTag};
     let root = tempfile::tempdir().unwrap();
-    std::fs::create_dir_all(root.path().join("hogwarts")).unwrap();
+    std::fs::create_dir_all(root.path().join("souq")).unwrap();
     let mut r = resolved(DriverKind::Claude, false);
     r.profile.repos = Vec::new();
     r.profile.departments = vec![Department {
@@ -297,10 +297,23 @@ fn the_default_profile_takes_its_repos_from_the_department() {
         quick_actions: Vec::new(),
         skills: Vec::new(),
         cards: Vec::new(),
-        repos: vec![RepoTag { name: "hogwarts".into(), blocks: Vec::new() }],
+        repos: vec![RepoTag { name: "souq".into(), blocks: Vec::new() }],
     }];
-    assert!(validate_repo(&r, "tech", Some("hogwarts"), root.path()).is_ok());
-    assert!(validate_repo(&r, "sales", Some("hogwarts"), root.path()).is_err());
+    assert!(validate_repo(&r, "tech", Some("souq"), root.path()).is_ok());
+    assert!(validate_repo(&r, "sales", Some("souq"), root.path()).is_err());
+}
+
+#[test]
+fn the_chat_repos_are_known_on_every_machine_once_cloned() {
+    let root = tempfile::tempdir().unwrap();
+    let mut r = resolved(DriverKind::Claude, false);
+    r.profile.repos = vec!["kun".into()];
+    assert!(matches!(
+        validate_repo(&r, "sales", Some("ios-app"), root.path()),
+        Err(ChatError::BadRepo)
+    ));
+    std::fs::create_dir_all(root.path().join("ios-app")).unwrap();
+    assert!(validate_repo(&r, "sales", Some("ios-app"), root.path()).is_ok());
 }
 
 #[test]

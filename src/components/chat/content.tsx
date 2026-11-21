@@ -218,6 +218,7 @@ export default function ChatContent({
       dept={ctx.dept}
       onDept={ctx.chooseDept}
       repos={ctx.repos}
+      local={ctx.local}
       repo={ctx.repo}
       onRepo={ctx.setRepo}
       disabled={busy}
