@@ -131,6 +131,9 @@ fn an_unauthorized_department_is_refused_and_a_stale_one_falls_back() {
     assert_eq!(pick("sales").effective(&p).department, "sales");
     assert_eq!(pick("video").effective(&p).department, "tech");
     assert_eq!(pick("").effective(&p).department, "tech");
+    // Choosing the default stores nothing; another department is stored.
+    assert_eq!(pick("tech").normalized(&p).department, "");
+    assert_eq!(pick("sales").normalized(&p).department, "sales");
 }
 
 #[test]

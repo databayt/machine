@@ -119,6 +119,16 @@ impl Settings {
         }
     }
 
+    /// Picking the registry's own default stores nothing, so a later change of that default
+    /// still reaches this machine.
+    #[must_use]
+    pub fn normalized(mut self, profile: &MachineProfile) -> Self {
+        if self.department == profile.department {
+            self.department.clear();
+        }
+        self
+    }
+
     /// These settings with `department` resolved against the profile: what the app acts on.
     #[must_use]
     pub fn effective(mut self, profile: &MachineProfile) -> Self {
@@ -194,7 +204,7 @@ fn load_settings() -> Result<Settings, SettingsError> {
 /// Without a readable profile (kun not cloned yet) only the name check applies.
 #[tauri::command]
 fn save(settings: Settings) -> Result<Settings, SettingsError> {
-    let settings = settings.validated()?;
+    let mut settings = settings.validated()?;
     if let Ok(r) = crate::pack::kun_dir()
         .map_err(|e| e.to_string())
         .and_then(|k| {
@@ -203,6 +213,7 @@ fn save(settings: Settings) -> Result<Settings, SettingsError> {
         })
     {
         settings.authorized_for(&r.profile)?;
+        settings = settings.normalized(&r.profile);
     }
     save_in(&machine_dir()?, settings)
 }
