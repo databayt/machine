@@ -23,7 +23,7 @@ import { inSettings, splitPath } from "./tabs";
  * shell grid, so opening or closing the menu never moves it. Large screens only; below `lg` the
  * menu's footer carries the same links.
  */
-export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
+export function AppSidebar({ lang, className }: { lang: Locale; className?: string }): React.JSX.Element {
   const isAr = lang === "ar";
   const t = tr(isAr);
   const inApp = useInMachine();
@@ -65,7 +65,7 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   const showEngine = inApp === true && (!profile || profile.access.engine);
 
   return (
-    <aside className={cn("hidden min-h-0 min-w-0 overflow-y-auto overscroll-contain lg:block lg:self-stretch", SHELL_TOP)}>
+    <aside className={cn("hidden min-h-0 min-w-0 overflow-y-auto overscroll-contain lg:block lg:self-stretch", SHELL_TOP, className)}>
       <nav aria-label={t(copy.title)} className="lg:w-36">
         <NavLinks links={parents} />
         <hr className="my-4 border-foreground/10" />

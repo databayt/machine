@@ -8,7 +8,7 @@ import type { Locale } from "@/components/local/config";
 import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
-import { SHELL_GRID, SHELL_TOP } from "../shell/grid";
+import { SHELL_GRID } from "../shell/grid";
 import { AppSidebar } from "../shell/sidebar";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { copy } from "./config";
@@ -205,20 +205,22 @@ export function MachineMenu({ lang }: { lang: Locale }) {
           <nav
             aria-label={t(copy.title)}
             className={cn(
-              "flex w-full flex-1 flex-col gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:pb-16 lg:pe-16 lg:pt-0",
+              "flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:pe-16",
               SHELL_GRID,
+              // The menu keeps its own vertical place: centred, as it always was.
+              "lg:content-center lg:items-center lg:py-32",
             )}
           >
-            <AppSidebar lang={lang} />
+            <AppSidebar lang={lang} className="lg:self-auto lg:pt-0" />
             {inApp && profile && profile.departments.length > 0 ? (
-              <div className={cn("flex min-w-0 flex-col gap-10", SHELL_TOP)}>
+              <div className="flex min-w-0 flex-col gap-10">
                 <Banner items={spotlight} lang={lang} onNavigate={() => close()} />
                 <Workflows lang={lang} workflows={workflows} />
                 <Keywords lang={lang} department={current} />
                 <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={() => close()} />
               </div>
             ) : (
-              <p className={cn(quiet, SHELL_TOP)}>{inApp ? t(copy.noDept) : t(copy.appOnly)}</p>
+              <p className={quiet}>{inApp ? t(copy.noDept) : t(copy.appOnly)}</p>
             )}
           </nav>
           <Footer lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />
