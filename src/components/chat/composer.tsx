@@ -80,7 +80,7 @@ export function Composer({
         e.preventDefault();
         submit();
       }}
-      className="flex min-h-[60px] w-full items-end gap-1 rounded-[30px] border border-border/60 bg-background p-2 shadow-[0_8px_30px_-12px_rgb(0_0_0/0.18)] transition-shadow focus-within:shadow-[0_8px_30px_-10px_rgb(0_0_0/0.25)]"
+      className="flex min-h-[60px] w-full items-end gap-1 rounded-[30px] border border-border/60 bg-background p-2 shadow-[0_4px_16px_-10px_rgb(0_0_0/0.10)] transition-shadow focus-within:shadow-[0_4px_18px_-10px_rgb(0_0_0/0.14)]"
     >
       {actions.length > 0 ? (
         <Popover open={plus} onOpenChange={setPlus}>
