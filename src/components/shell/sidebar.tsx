@@ -87,6 +87,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       active: open,
       mark: here,
       current: here,
+      ltr: node.id === "claude",
       children,
     };
   });

@@ -34,9 +34,14 @@ export function useNav(lang: Locale): NavState {
     getProfile()
       .then((p) => setEngine(!p || p.access.engine))
       .catch(() => setEngine(false))
-    readinessState()
-      .then(setView)
-      .catch(() => setView(null))
+    const reload = () =>
+      readinessState()
+        .then(setView)
+        .catch(() => setView(null))
+    reload()
+    // A run, fix, heal or uninstall finished: the sidebar's counts follow without a reload.
+    window.addEventListener("kun:readiness", reload)
+    return () => window.removeEventListener("kun:readiness", reload)
   }, [inApp])
 
   const tree = useMemo(

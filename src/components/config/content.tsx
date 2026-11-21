@@ -12,14 +12,10 @@ import type { Settings } from "../settings/types"
 import {
   configLoad,
   loadSecrets,
-  mcpAdd,
-  mcpList,
-  mcpRemove,
   removeSetting,
   setNotify,
   setSetting,
   type ConfigView,
-  type McpView,
   type WriteOutcome,
 } from "./actions"
 
@@ -27,14 +23,12 @@ const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transiti
 const field = "h-10 min-w-0 flex-1 rounded-full bg-muted px-4 text-sm outline-none"
 const card = "space-y-3 rounded-2xl bg-background p-4"
 
-/** The Configuration tab: department, notify line, personal settings keys, MCP servers, secrets. */
+/** The Configuration tab: department, notify line, personal settings keys, secrets. */
 export default function ConfigContent({ lang }: { lang: Locale }) {
   const isAr = lang === "ar"
   const t = (en: string, ar: string) => (isAr ? ar : en)
   const inApp = useInMachine()
   const [view, setView] = useState<ConfigView | null>(null)
-  const [mcp, setMcp] = useState<McpView | null>(null)
-  const [mcpBusy, setMcpBusy] = useState(false)
   const [settings, setSettings] = useState<Settings | null>(null)
   const [departments, setDepartments] = useState<string[]>([])
   const [notify, setNotifyText] = useState("")
@@ -49,24 +43,15 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
     setNotifyText(v.notify ?? "")
   }, [])
 
-  const loadMcp = useCallback(() => {
-    setMcpBusy(true)
-    mcpList()
-      .then(setMcp)
-      .catch((e) => setMessage({ ok: false, text: String(e) }))
-      .finally(() => setMcpBusy(false))
-  }, [])
-
   useEffect(() => {
     if (!inApp) return
     reload().catch((e) => setMessage({ ok: false, text: String(e) }))
     loadSettings().then(setSettings).catch(() => null)
     listDepartments().then(setDepartments).catch(() => null)
-    loadMcp()
-  }, [inApp, reload, loadMcp])
+  }, [inApp, reload])
 
   /** Runs a guarded write and says what happened, including a restore after a RED health check. */
-  async function write(job: () => Promise<WriteOutcome>, after?: () => void) {
+  async function write(job: () => Promise<WriteOutcome>) {
     setBusy(true)
     setMessage(null)
     try {
@@ -78,7 +63,6 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
           : `${t("Saved", "تم الحفظ")} · health ${out.verdict}`,
       })
       await reload()
-      after?.()
     } catch (e) {
       setMessage({ ok: false, text: String(e) })
     } finally {
@@ -144,36 +128,6 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
           ))}
         </ul>
         <NewSetting busy={busy} isAr={isAr} onAdd={(k, v) => write(() => setSetting(k, v))} />
-      </div>
-      </Section>
-
-      <Section
-        title={t("MCP servers", "خوادم MCP")}
-        action={<button className={link} disabled={mcpBusy} onClick={loadMcp}>{mcpBusy ? "…" : t("Refresh", "حدّث")}</button>}
-      >
-      <div className={card}>
-        <ul className="divide-y divide-border text-sm">
-          {mcp?.installed.map((s) => (
-            <li key={s.name} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="font-medium" dir="ltr">{s.name}</p>
-                <p className="truncate text-xs text-muted-foreground" dir="ltr">{s.connected === true ? "✓ " : s.connected === false ? "✗ " : ""}{s.summary}</p>
-              </div>
-              <button className="text-sm font-medium text-destructive rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50" disabled={busy} onClick={() => write(() => mcpRemove(s.name), loadMcp)}>
-                {t("Remove", "أزل")}
-              </button>
-            </li>
-          ))}
-          {mcp?.available.map((s) => (
-            <li key={s.name} className="flex items-center justify-between gap-3 py-2">
-              <div className="min-w-0">
-                <p className="font-medium" dir="ltr">{s.name} <span className="text-xs font-normal text-muted-foreground">· {t("not installed", "غير مثبّت")}{s.skipped ? ` · ${t("setup skips it", "الإعداد يتخطاه")}` : ""}</span></p>
-                {s.description && <p className="truncate text-xs text-muted-foreground">{s.description}</p>}
-              </div>
-              <button className={link} disabled={busy} onClick={() => write(() => mcpAdd(s.name), loadMcp)}>{t("Add", "أضف")}</button>
-            </li>
-          ))}
-        </ul>
       </div>
       </Section>
 

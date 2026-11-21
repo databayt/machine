@@ -35,7 +35,7 @@ export function NavCard({
           <span dir={ltr ? "ltr" : undefined} className="block truncate font-medium">
             {name}
           </span>
-          {hint && <span className="mt-1 block truncate text-sm text-muted-foreground">{hint}</span>}
+          {hint && <span className="mt-1 line-clamp-2 text-sm text-muted-foreground">{hint}</span>}
         </span>
         {state && (
           <span className="shrink-0 text-sm text-muted-foreground tabular-nums" dir="ltr">

@@ -103,7 +103,11 @@ export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: numbe
                 className={cn(depth === 0 ? item : sub, tone)}
               >
                 <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
-                {l.hint && <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums" dir="ltr">{l.hint}</span>}
+                {l.hint && (
+                  <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums">
+                    <bdi dir="ltr">{l.hint}</bdi>
+                  </span>
+                )}
               </Link>
             )}
             {l.children && l.children.length > 0 && <NavLinks links={l.children} depth={depth + 1} />}

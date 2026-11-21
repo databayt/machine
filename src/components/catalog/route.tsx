@@ -4,14 +4,23 @@ import { useSearchParams } from "next/navigation"
 
 import type { Locale } from "@/components/local/config"
 
-import CatalogContent from "./content"
-import CatalogDetail from "./detail"
+import Folder from "./folder"
+import Item from "./item"
+import Mcp from "./mcp"
+import Root from "./root"
+import { useTree } from "./use-tree"
 
-/** `/catalog/?dir=<folder>&item=<type>:<name>` — `item` opens one registry item, else the list; read in the client (static export). */
+const DIRS = ["skills", "agents", "rules", "hooks", "departments"]
+
+/** `/catalog/` → `?dir=<dir>` → `?dir=<dir>&item=<id>`; read in the client (static export). */
 export default function CatalogRoute({ lang }: { lang: Locale }) {
   const params = useSearchParams()
+  const dir = params.get("dir") ?? ""
   const id = params.get("item")
-  if (!id) return <CatalogContent key={params.get("dir") ?? ""} lang={lang} />
-  const i = id.indexOf(":")
-  return <CatalogDetail lang={lang} type={i < 0 ? id : id.slice(0, i)} name={i < 0 ? "" : id.slice(i + 1)} />
+  const state = useTree()
+
+  if (dir === "mcp") return <Mcp lang={lang} name={id?.startsWith("mcp:") ? id.slice(4) : undefined} />
+  if (id) return <Item lang={lang} id={id} state={state} />
+  if (DIRS.includes(dir)) return <Folder lang={lang} dir={dir} state={state} />
+  return <Root lang={lang} state={state} />
 }
