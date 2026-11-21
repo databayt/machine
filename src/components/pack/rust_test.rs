@@ -338,3 +338,57 @@ fn quick_action_repos_parse_and_default_empty() {
     let video = meta_in(kun.path(), "video").unwrap();
     assert_eq!(video.quick_actions[0].repos, vec!["hogwarts".to_string()]);
 }
+
+fn meta_of(json: &str) -> PackMeta {
+    let kun = tempfile::tempdir().unwrap();
+    let dept = kun.path().join("departments/video");
+    fs::create_dir_all(&dept).unwrap();
+    fs::write(dept.join("pack.json"), json).unwrap();
+    meta_in(kun.path(), "video").unwrap()
+}
+
+#[test]
+fn dirs_and_timeout_parse_and_default_to_nothing() {
+    let m = meta_of(r#"{"dirs":["~/media","/etc"],"timeoutSecs":7200}"#);
+    assert_eq!(m.dirs, ["~/media", "/etc"]);
+    assert_eq!(m.timeout_secs, Some(7200));
+    let none = meta_of(r#"{"name":"video"}"#);
+    assert!(none.dirs.is_empty() && none.timeout_secs.is_none());
+}
+
+#[test]
+fn timeout_is_clamped() {
+    assert_eq!(meta_of(r#"{"timeoutSecs":5}"#).timeout_secs, Some(60));
+    assert_eq!(meta_of(r#"{"timeoutSecs":999999}"#).timeout_secs, Some(14_400));
+}
+
+#[test]
+fn pack_dirs_expand_home_and_refuse_escapes() {
+    let home = tempfile::tempdir().unwrap();
+    let real = home.path().canonicalize().unwrap();
+    fs::create_dir_all(real.join("existing")).unwrap();
+    let outside = tempfile::tempdir().unwrap();
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(outside.path(), real.join("link")).unwrap();
+    let meta = PackMeta {
+        dirs: [
+            "~/media",
+            "~/existing",
+            "~/existing",
+            "/etc",
+            "~/../x",
+            "relative/dir",
+            "~/",
+            "~",
+            "~/link",
+            "~/missing-parent/child",
+        ]
+        .map(String::from)
+        .to_vec(),
+        ..PackMeta::default()
+    };
+    let got = pack_dirs_in(&meta, home.path());
+    assert_eq!(got, [real.join("media"), real.join("existing")]);
+    assert!(real.join("media").is_dir());
+    assert!(!real.join("missing-parent").exists());
+}

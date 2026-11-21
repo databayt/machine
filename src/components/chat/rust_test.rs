@@ -325,3 +325,17 @@ fn only_a_new_session_gets_the_working_in_line() {
     assert_eq!(with_preface("hi".into(), Some("kun"), "tech", false), "hi");
     assert_eq!(with_preface("hi".into(), None, "tech", true), "hi");
 }
+
+#[test]
+fn pack_dirs_become_deduped_add_dir_pairs_within_the_cap() {
+    let dirs = [PathBuf::from("/h/media"), PathBuf::from("/h/repos/kun")];
+    let have = vec!["--add-dir".to_owned(), "/h/repos/kun".to_owned()];
+    assert_eq!(
+        task_extras(DriverKind::Claude, &have, &dirs),
+        ["--add-dir", "/h/media"]
+    );
+    let full: Vec<String> = (0..MAX_EXTRA_PAIRS)
+        .flat_map(|i| ["--add-dir".to_owned(), format!("/h/d{i}")])
+        .collect();
+    assert!(task_extras(DriverKind::Claude, &full, &dirs).is_empty());
+}

@@ -277,7 +277,7 @@ fn build_job(
 
 /// Where and how a run starts: its folder, extra flags and secrets. Blocking (filesystem, keychain).
 /// Folder, extra flags and environment of one run.
-type RunSetup = (String, Vec<String>, Vec<(String, String)>);
+type RunSetup = (String, Vec<String>, Vec<(String, String)>, Option<u32>);
 
 fn prepare_run(
     resolved: &Resolved,
@@ -308,11 +308,15 @@ fn prepare_run(
             Vec::new(),
         )
     };
+    // The department's own world: extra folders (a longer timeout rides along).
+    let meta = pack::meta_in(&pack::kun_dir()?, department)?;
+    let more = task_extras(kind, &extras, &pack::pack_dirs(&meta));
+    extras.extend(more);
     if let Some(id) = task_id {
         let more = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
         extras.extend(more);
     }
-    Ok((cwd, extras, env))
+    Ok((cwd, extras, env, meta.timeout_secs))
 }
 
 /// `ask` — runs one prompt, streaming events to `channel`. The frontend supplies `job_id`
@@ -339,7 +343,7 @@ async fn ask(
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
     let for_run = task_id.clone();
     let (for_dept, for_repo) = (department.clone(), repo.clone());
-    let (cwd, extras, env) = tokio::task::spawn_blocking(move || {
+    let (cwd, extras, env, timeout) = tokio::task::spawn_blocking(move || {
         prepare_run(&resolved, &for_dept, kind, for_run.as_deref(), for_repo.as_deref(), &root)
     })
     .await
@@ -351,7 +355,8 @@ async fn ask(
         _ => prompt,
     };
     let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
-    let job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
+    let mut job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
+    job.timeout_secs = timeout;
     let (tx, rx) = oneshot::channel();
     let _registration = register(&job.job_id, tx)?;
 

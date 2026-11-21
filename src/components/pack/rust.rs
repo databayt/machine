@@ -125,6 +125,12 @@ struct RawPack {
     /// The databayt repos this department works in.
     #[serde(default)]
     repos: Vec<String>,
+    /// Extra folders under `$HOME` the department's chat runs may write (`--add-dir`).
+    #[serde(default)]
+    dirs: Vec<String>,
+    /// A longer turn timeout for departments whose runs take hours (clamped on read).
+    #[serde(default, rename = "timeoutSecs")]
+    timeout_secs: Option<u32>,
 }
 
 /// A department or skill name: lowercase-ish, no separators, no dots at the start.
@@ -262,6 +268,69 @@ pub struct PackMeta {
     pub cards: Vec<String>,
     /// The repos this department works in, in the pack's order.
     pub repos: Vec<String>,
+    /// Extra folders the pack asks for, as written (`~/media`); resolve with [`pack_dirs`].
+    pub dirs: Vec<String>,
+    /// The turn timeout the pack asks for, clamped to [`MIN_TIMEOUT_SECS`]..=[`MAX_TIMEOUT_SECS`].
+    pub timeout_secs: Option<u32>,
+}
+
+/// The shortest and longest turn timeout a pack may ask for.
+pub const MIN_TIMEOUT_SECS: u32 = 60;
+pub const MAX_TIMEOUT_SECS: u32 = 14_400;
+
+/// Expands a leading `~/`; anything else must already be absolute.
+fn expand_home(raw: &str, home: &Path) -> Option<PathBuf> {
+    let raw = raw.trim();
+    let path = match raw.strip_prefix("~/") {
+        Some(rest) if !rest.trim_matches('/').is_empty() => home.join(rest),
+        Some(_) => return None,
+        None => PathBuf::from(raw),
+    };
+    let clean = path.is_absolute()
+        && !path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir));
+    clean.then_some(path)
+}
+
+/// One pack folder, validated against `home`: absolute, no `..`, symlink-resolved and strictly
+/// under `home`. A missing folder is created only when its parent already exists under `home`.
+fn resolve_dir(raw: &str, home: &Path) -> Option<PathBuf> {
+    let path = expand_home(raw, home)?;
+    let under = |p: &Path| p != home && p.starts_with(home);
+    if let Ok(real) = path.canonicalize() {
+        return (under(&real) && real.is_dir()).then_some(real);
+    }
+    let parent = path.parent()?.canonicalize().ok()?;
+    if !(parent == home || under(&parent)) {
+        return None;
+    }
+    fs::create_dir_all(&path).ok()?;
+    let real = path.canonicalize().ok()?;
+    under(&real).then_some(real)
+}
+
+/// The pack's extra folders resolved under `home` (canonical). Bad entries are skipped with a warning.
+#[must_use]
+pub fn pack_dirs_in(meta: &PackMeta, home: &Path) -> Vec<PathBuf> {
+    let Ok(home) = home.canonicalize() else {
+        return Vec::new();
+    };
+    let mut out: Vec<PathBuf> = Vec::new();
+    for raw in &meta.dirs {
+        match resolve_dir(raw, &home) {
+            Some(dir) if !out.contains(&dir) => out.push(dir),
+            Some(_) => {}
+            None => tracing::warn!("pack dir `{raw}` skipped: not a folder under the home folder"),
+        }
+    }
+    out
+}
+
+/// [`pack_dirs_in`] for the real home folder.
+#[must_use]
+pub fn pack_dirs(meta: &PackMeta) -> Vec<PathBuf> {
+    dirs::home_dir().map_or_else(Vec::new, |h| pack_dirs_in(meta, &h))
 }
 
 /// Reads `departments/<dept>/pack.json`. A missing file gives an empty meta.
@@ -288,6 +357,10 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         default_driver: raw.default_driver,
         cards: raw.cards.iter().filter(|c| valid_name(c)).cloned().collect(),
         repos: raw.repos.iter().filter(|r| valid_name(r)).cloned().collect(),
+        dirs: raw.dirs.clone(),
+        timeout_secs: raw
+            .timeout_secs
+            .map(|t| t.clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS)),
         quick_actions: raw
             .quick_actions
             .into_iter()
