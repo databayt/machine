@@ -207,8 +207,9 @@ export function MachineMenu({ lang }: { lang: Locale }) {
             className={cn(
               "flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:pe-16",
               SHELL_GRID,
-              // The menu keeps its own vertical place: centred, as it always was.
-              "lg:content-center lg:items-center lg:py-32",
+              // The menu keeps its own vertical place (the block centred, as it always was); inside it
+              // the sidebar starts level with the work area's first line instead of floating mid-column.
+              "lg:content-center lg:items-start lg:py-32",
             )}
           >
             <AppSidebar lang={lang} className="lg:self-auto lg:pt-0" />
