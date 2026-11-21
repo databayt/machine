@@ -204,22 +204,6 @@ export function Composer({
           </ul>
         )}
         <div className="flex w-full items-end gap-1">
-          {plan && (
-            <span className="flex h-10 shrink-0 items-center">
-              <span className="flex items-center gap-1 rounded-full bg-muted/60 py-0.5 ps-2.5 pe-1 text-xs text-muted-foreground">
-                {t(copy.planFirst)}
-                <button
-                  type="button"
-                  onClick={() => setPlan(false)}
-                  aria-label={t(copy.planOff)}
-                  title={t(copy.planOff)}
-                  className="flex size-5 items-center justify-center rounded-full transition-colors hover:bg-foreground/10 hover:text-foreground"
-                >
-                  <XIcon className="size-3" aria-hidden />
-                </button>
-              </span>
-            </span>
-          )}
           <Popover
             open={plus}
             onOpenChange={(o) => {

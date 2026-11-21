@@ -69,9 +69,8 @@ function fromItem(parent: Starter, item: SourceItem, i: number): Starter {
 }
 
 /**
- * The home starters as a drill-down: a few plain rows; tapping a branch swaps them for its
- * children, a quiet trail of small chips above shows the choices (a chip steps back to the level
- * where that choice was made, the arrow steps up one). It never sends: every choice writes one
+ * The home starters as one flat list: tapping a branch swaps the rows for its children, and a
+ * "previous" row (back icon + the current branch's name) at the top steps up one level. It never sends: every choice writes one
  * sentence into the composer (`onFill`, live at each step, "" at the root) for the person to edit
  * and send; a leaf with a fill stays on screen and asks for focus. A leaf with only a legacy
  * `prompt` still sends (`onPick`). Dynamic levels (`source`) load their rows on entry.
@@ -168,32 +167,6 @@ export function Navigator({
 
   return (
     <div className="w-full">
-      {path.length > 0 && (
-        <div className="flex items-center gap-1 px-1 pb-1" role="navigation" aria-label={t(copy.navTrail)}>
-          <button
-            type="button"
-            onClick={() => go(path.slice(0, -1), -1)}
-            aria-label={t(copy.navBack)}
-            className="flex size-7 shrink-0 items-center justify-center rounded-full text-muted-foreground transition-colors hover:text-foreground"
-          >
-            <Back className="size-4" aria-hidden />
-          </button>
-          <ol className="flex min-w-0 flex-wrap items-center gap-x-1 gap-y-0.5 text-xs text-muted-foreground">
-            {path.map((n, i) => (
-              <li key={n.id} className="flex items-center gap-1">
-                {i > 0 && <span aria-hidden>·</span>}
-                <button
-                  type="button"
-                  onClick={() => go(path.slice(0, i), -1)}
-                  className="rounded-full px-1.5 py-0.5 transition-colors hover:text-foreground"
-                >
-                  <span dir="auto">{labelOf(n, isAr)}</span>
-                </button>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
       <div
         key={level.map((n) => n.id).join("/")}
         className="machine-nav-in"
@@ -212,9 +185,23 @@ export function Navigator({
           <p className="px-2 py-3.5 text-[15px] text-muted-foreground">{t(copy.navNothing)}</p>
         ) : (
           <ul className="flex flex-col">
+            {path.length > 0 && (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => go(level.slice(0, -1), -1)}
+                  aria-label={t(copy.navBack)}
+                  className="flex w-full min-w-0 items-center gap-4 px-2 py-3.5 text-start text-[17px] text-muted-foreground transition-colors hover:text-foreground"
+                >
+                  <Back className="size-5 shrink-0" strokeWidth={1.5} aria-hidden />
+                  <span dir="auto" className="min-w-0 flex-1 truncate">
+                    {current ? labelOf(current, isAr) : t(copy.navBack)}
+                  </span>
+                </button>
+              </li>
+            )}
             {shown.map((n) => {
               const Icon = ICONS[n.icon ?? ""] ?? LightbulbIcon;
-              const branch = n.children.length > 0 || !!n.source;
               const picked = leafChosen && last?.id === n.id;
               const about = (isAr ? n.description_ar : n.description_en) || "";
               return (
@@ -230,9 +217,6 @@ export function Navigator({
                     <span dir="auto" className="min-w-0 flex-1 truncate">
                       {labelOf(n, isAr)}
                     </span>
-                    {branch && (
-                      <Back className="size-4 shrink-0 opacity-50 rotate-180" aria-hidden />
-                    )}
                   </button>
                 </li>
               );
