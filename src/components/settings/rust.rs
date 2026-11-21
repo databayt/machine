@@ -92,7 +92,8 @@ impl Settings {
         if self
             .repo_by_department
             .iter()
-            .any(|(d, r)| !crate::pack::valid_name(d) || !crate::pack::valid_name(r))
+            // An empty repo is a saved "all repos".
+            .any(|(d, r)| !crate::pack::valid_name(d) || (!r.is_empty() && !crate::pack::valid_name(r)))
         {
             return Err(SettingsError::BadRepo);
         }

@@ -246,8 +246,7 @@ export default function ChatContent({
                 )}
               </div>
               <div className="w-full">
-                {contextLine}
-              <Composer
+                <Composer
                   lang={lang}
                   onSend={(text) => void send(text)}
                   onStop={() => jobId && void stop(jobId)}
@@ -256,6 +255,7 @@ export default function ChatContent({
                   initialText={prompt}
                   autoFocus
                 />
+                {contextLine}
               </div>
               <Suggestions
                 actions={quick}
@@ -319,7 +319,6 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
-          {contextLine}
           <Composer
             lang={lang}
             onSend={(text) => void send(text)}
@@ -328,6 +327,7 @@ export default function ChatContent({
             actions={quick}
             autoFocus
           />
+          {contextLine}
           <div className="h-3" aria-hidden />
         </div>
       )}

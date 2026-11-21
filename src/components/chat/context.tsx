@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { CheckIcon, ChevronDownIcon } from "lucide-react";
+import { BookIcon, BriefcaseIcon, CheckIcon, ChevronDownIcon } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -18,7 +18,10 @@ import { tr } from "./config";
  * The working context of a run: the department (from Settings) and the repository, remembered per
  * department in `settings.repo_by_department`. The repository menu lists the department's repos that
  * are cloned here (and that this machine's profile lists, when it lists any); "" means all repos.
+ * With no choice saved, hogwarts is the default whenever it is offered here.
  */
+const DEFAULT_REPO = "hogwarts";
+
 export function useWorkingContext(enabled: boolean): {
   profile: MachineProfile | null;
   dept: string;
@@ -40,10 +43,11 @@ export function useWorkingContext(enabled: boolean): {
 
   const current = profile?.departments.find((d) => d.name === dept);
   const listed = profile?.repos ?? [];
-  const repos = (current?.repos ?? [])
-    .map((r) => r.name)
-    .filter((n) => local?.has(n) && (listed.length === 0 || listed.includes(n)));
-  const pick = saved[dept] ?? "";
+  const usable = (n: string) => !!local?.has(n) && (listed.length === 0 || listed.includes(n));
+  const repos = (current?.repos ?? []).map((r) => r.name).filter(usable);
+  // The run accepts a repo outside the department only when the profile lists it.
+  if (listed.includes(DEFAULT_REPO) && usable(DEFAULT_REPO) && !repos.includes(DEFAULT_REPO)) repos.unshift(DEFAULT_REPO);
+  const pick = saved[dept] ?? DEFAULT_REPO;
   const repo = repos.includes(pick) ? pick : "";
 
   const setRepo = useCallback(
@@ -53,8 +57,7 @@ export function useWorkingContext(enabled: boolean): {
         const now = await loadSettings();
         if (!now) return;
         const map = { ...now.repo_by_department };
-        if (next) map[dept] = next;
-        else delete map[dept];
+        map[dept] = next; // "" is a choice too: all repos, not the hogwarts default
         await saveSettings({ ...now, repo_by_department: map }).catch(() => {});
       })();
     },
@@ -64,7 +67,7 @@ export function useWorkingContext(enabled: boolean): {
   return { profile, dept, repos, repo, setRepo };
 }
 
-/** `Department · Repository ▾`, one quiet line above the composer. */
+/** `▣ Department ▾   ▤ Repository ▾`, one quiet row under the composer. */
 export function ContextLine({
   lang,
   profile,
@@ -91,24 +94,26 @@ export function ContextLine({
   const row = "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-start text-sm transition-colors hover:bg-muted";
 
   return (
-    <div className="mb-2 flex min-w-0 items-center gap-1.5 px-4 text-sm text-muted-foreground">
-      <Link href={`/${lang}/settings/`} className="truncate transition-colors hover:text-foreground">
-        {title}
+    <div className="mt-2.5 flex min-w-0 items-center gap-5 px-3 text-sm text-foreground/80">
+      <Link href={`/${lang}/settings/`} className="inline-flex min-w-0 items-center gap-1.5 transition-colors hover:text-foreground">
+        <BriefcaseIcon className="size-4 shrink-0" aria-hidden />
+        <span className="truncate">{title}</span>
+        <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       </Link>
-      <span aria-hidden>·</span>
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
           <button
             type="button"
             disabled={disabled}
             aria-label={t(menuCopy.repository)}
-            className="inline-flex min-w-0 items-center gap-1 transition-colors hover:text-foreground disabled:opacity-50"
+            className="inline-flex min-w-0 items-center gap-1.5 transition-colors hover:text-foreground disabled:opacity-50"
           >
+            <BookIcon className="size-4 shrink-0" aria-hidden />
             <span dir="ltr" className="truncate">{repo || t(menuCopy.allRepos)}</span>
-            <ChevronDownIcon className="size-3.5 shrink-0" aria-hidden />
+            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="top" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+        <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
           <ul>
             {["", ...repos].map((r) => (
               <li key={r || "all"}>
