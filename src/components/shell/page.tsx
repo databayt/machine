@@ -30,7 +30,7 @@ export function PageShell({
           SHELL_TOP,
         )}
       >
-        <Suspense fallback={<div className="mb-4 size-10" aria-hidden />}>
+        <Suspense fallback={<div className="mb-4 h-5" aria-hidden />}>
           <BackButton />
         </Suspense>
         <div className={cn("flex min-w-0 max-w-4xl flex-col gap-10", className)}>{children}</div>
