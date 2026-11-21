@@ -7,5 +7,8 @@
 export const SHELL_GRID =
   "lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:content-start lg:items-start lg:gap-x-28 lg:ps-[46px]";
 
-/** The offset from the top, applied by each column: the sidebar, the page and the menu's work area. */
-export const SHELL_TOP = "lg:pt-16";
+/**
+ * The offset from the top on large screens, the same for the mega menu (the first page you see)
+ * and every page, so nothing starts higher or lower as you move between them.
+ */
+export const SHELL_TOP = "lg:pt-32";

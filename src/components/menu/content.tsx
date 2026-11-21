@@ -8,7 +8,7 @@ import type { Locale } from "@/components/local/config";
 import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
-import { SHELL_GRID } from "../shell/grid";
+import { SHELL_GRID, SHELL_TOP } from "../shell/grid";
 import { AppSidebar } from "../shell/sidebar";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { copy } from "./config";
@@ -207,9 +207,10 @@ export function MachineMenu({ lang }: { lang: Locale }) {
             className={cn(
               "flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:pe-16",
               SHELL_GRID,
-              // The menu keeps its own vertical place (the block centred, as it always was); inside it
-              // the sidebar starts level with the work area's first line instead of floating mid-column.
-              "lg:content-center lg:items-start lg:py-32",
+              // Top-aligned at the shared offset, like every page; the sidebar starts level with the
+              // work area's first line.
+              "lg:items-start lg:pb-32",
+              SHELL_TOP,
             )}
           >
             <AppSidebar lang={lang} className="lg:self-auto lg:pt-0" />
