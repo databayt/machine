@@ -339,3 +339,94 @@ fn pack_dirs_become_deduped_add_dir_pairs_within_the_cap() {
         .collect();
     assert!(task_extras(DriverKind::Claude, &full, &dirs).is_empty());
 }
+
+fn route_meta(json: &str) -> pack::PackMeta {
+    let kun = tempfile::tempdir().unwrap();
+    let dept = kun.path().join("departments/video");
+    std::fs::create_dir_all(&dept).unwrap();
+    std::fs::write(dept.join("pack.json"), json).unwrap();
+    pack::meta_in(kun.path(), "video").unwrap()
+}
+
+const ROUTED: &str = r#"{"routes":[
+    {"id":"plan","mode":"plan","model":"opus","effort":"high","agent":"producer","suffix":"Plan only."},
+    {"id":"do","mode":"auto","suffix":""}],"defaultRoute":"plan"}"#;
+
+#[test]
+fn a_route_sets_the_mode_flags_and_suffix() {
+    let meta = route_meta(ROUTED);
+    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("plan"), None).unwrap();
+    assert_eq!((mode, suffix.as_str()), (PermissionMode::Plan, "Plan only."));
+    let prompt = with_suffix("make a film".into(), &suffix);
+    assert_eq!(prompt, "make a film\n\nPlan only.");
+    let mut job = build_job("j-1", DriverKind::Claude, prompt, "/".into(), None, flags, Vec::new()).unwrap();
+    job.permission_mode = mode;
+    let args = driver::args_for(&job).unwrap();
+    assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
+    assert!(args.windows(6).any(|w| w == ["--agent", "producer", "--model", "opus", "--effort", "high"])
+        || (args.windows(2).any(|w| w == ["--agent", "producer"])
+            && args.windows(2).any(|w| w == ["--model", "opus"])
+            && args.windows(2).any(|w| w == ["--effort", "high"])));
+    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("do"), None).unwrap();
+    assert_eq!((mode, flags.is_empty(), suffix.is_empty()), (PermissionMode::Auto, true, true));
+    assert_eq!(with_suffix("x".into(), ""), "x");
+}
+
+#[test]
+fn an_unknown_route_is_refused() {
+    let meta = route_meta(ROUTED);
+    assert!(matches!(
+        resolve_turn(&meta, DriverKind::Claude, Some("ghost"), None),
+        Err(ChatError::BadRoute(id)) if id == "ghost"
+    ));
+    assert!(matches!(
+        resolve_turn(&meta, DriverKind::Codex, Some("ghost"), None),
+        Err(ChatError::BadRoute(_))
+    ));
+}
+
+#[test]
+fn the_old_mode_picks_plan_or_do_and_other_drivers_ignore_routes() {
+    let meta = route_meta(ROUTED);
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan")).unwrap();
+    assert_eq!((m, f.is_empty(), s.as_str()), (PermissionMode::Plan, false, "Plan only."));
+    let (m, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto")).unwrap();
+    assert_eq!((m, f.is_empty()), (PermissionMode::Auto, true));
+    // No route, no mode: a plain auto run.
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, None).unwrap();
+    assert_eq!((m, f.is_empty(), s.is_empty()), (PermissionMode::Auto, true, true));
+    // Another driver takes the route's mode but none of its flags or suffix.
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Codex, Some("plan"), None).unwrap();
+    assert_eq!((m, f.is_empty(), s.is_empty()), (PermissionMode::Plan, true, true));
+    // A bare `run` block still answers the old mode through the derived routes.
+    let meta = route_meta(r#"{"run":{"plan":{"effort":"high"},"work":{"effort":"low"}}}"#);
+    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan")).unwrap();
+    assert_eq!(f, ["--effort", "high"]);
+    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto")).unwrap();
+    assert_eq!(f, ["--effort", "low"]);
+}
+
+#[test]
+fn refine_asks_for_a_complete_brief_and_lists_the_routes() {
+    let meta = route_meta(ROUTED);
+    let text = refine_prompt("  اعمل فيلم  ", &meta.routes, "video", Some("hogwarts"));
+    assert!(text.starts_with("Rewrite the request below as one complete, professional brief"));
+    assert!(text.contains("produce.mjs list --json --repo hogwarts"));
+    assert!(text.contains("**References & context**"));
+    assert!(text.contains("`route: <id>` choosing one of: plan — plan, do — do."));
+    assert!(text.ends_with("اعمل فيلم"));
+    let other = refine_prompt("x", &[], "sales", None);
+    assert!(!other.contains("produce.mjs") && !other.contains("route:"));
+    assert!(other.contains("CLAUDE.md formula"));
+    assert!(valid_job_id(&refine_job_id()));
+    assert_ne!(refine_job_id(), refine_job_id());
+    assert_eq!(REFINE_SECS, 240);
+}
+
+#[test]
+fn the_refined_text_prefers_the_result() {
+    assert_eq!(refined_text("streamed ", Some(" final\n")).unwrap(), "final");
+    assert_eq!(refined_text(" streamed ", None).unwrap(), "streamed");
+    assert_eq!(refined_text("s", Some("  ")).unwrap(), "s");
+    assert!(refined_text(" ", None).is_err());
+}

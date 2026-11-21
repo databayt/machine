@@ -14,18 +14,29 @@ export interface AskOptions {
   repo?: string | null
   /** Claude's permission mode: "plan" answers with a plan first. Anything else runs as auto. */
   mode?: "plan" | "auto" | null
+  /** One of the department pack's route ids (`PackInfo.routes`): permission mode, model, effort, agent and suffix. Wins over `mode`. */
+  route?: string | null
 }
 
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null, mode = null }: AskOptions,
+  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, channel })
+}
+
+/**
+ * Rewrites rough text as one professional brief for the department. When the pack has routes the
+ * answer ends with a `route: <id>` line. One fresh sonnet turn that reads the department's context first (240 s at most); nothing is kept.
+ */
+export async function refine(prompt: string, repo: string | null): Promise<string> {
+  if (!isTauri()) throw new Error("not in the machine app")
+  return invoke<string>("plugin:chat|refine", { prompt, repo })
 }
 
 /** Cancels a running job. False when it was not running. */

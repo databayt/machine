@@ -47,7 +47,7 @@ export function Suggestions({
 }: {
   actions: QuickAction[];
   isAr: boolean;
-  onPick: (prompt: string) => void;
+  onPick: (action: QuickAction) => void;
   disabled?: boolean;
 }) {
   // Starters the person cleared with ✕ — gone for this visit.
@@ -66,7 +66,7 @@ export function Suggestions({
           >
             <button
               type="button"
-              onClick={() => onPick(q.prompt)}
+              onClick={() => onPick(q)}
               disabled={disabled}
               className="flex min-w-0 flex-1 items-center gap-4 px-2 py-3.5 text-start text-[17px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
             >

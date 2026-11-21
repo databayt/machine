@@ -25,7 +25,7 @@ use tauri::{
 };
 use ts_rs::TS;
 
-use crate::driver::DriverKind;
+use crate::driver::{DriverKind, PermissionMode};
 
 #[path = "health.rs"]
 pub mod health;
@@ -53,6 +53,8 @@ pub enum PackError {
     BadRepo(String),
     #[error("{0}")]
     Profile(String),
+    #[error("this department has no route `{0}`")]
+    UnknownRoute(String),
 }
 
 impl Serialize for PackError {
@@ -80,6 +82,36 @@ pub struct QuickAction {
     /// Repos this starter belongs to; empty = shown for any repo.
     #[serde(default)]
     pub repos: Vec<String>,
+    /// The route (`pack.json` `routes[].id`) this action runs in; none = the pack's default.
+    pub route: Option<String>,
+}
+
+/// A named place a home prompt runs: permission mode, model, effort, agent and an instruction
+/// appended to every prompt sent through it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+pub struct Route {
+    pub id: String,
+    pub label_ar: String,
+    pub label_en: String,
+    pub description_ar: String,
+    pub description_en: String,
+    pub icon: Option<String>,
+    /// `"plan"` or `"auto"`: Claude's permission mode for the run.
+    pub mode: String,
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub agent: Option<String>,
+    /// Appended to the prompt as `\n\n<suffix>`; empty when none.
+    pub suffix: String,
+}
+
+impl Route {
+    /// The route's permission mode as the driver takes it.
+    #[must_use]
+    pub fn permission(&self) -> PermissionMode {
+        PermissionMode::parse(Some(&self.mode))
+    }
 }
 
 /// What the UI shows about a department's pack.
@@ -95,6 +127,10 @@ pub struct PackInfo {
     pub starters: Vec<starters::Starter>,
     /// The sentence the navigator writes when the deepest chosen node has no fill of its own.
     pub formula: Option<starters::Formula>,
+    /// Where a home prompt can run, in the pack's order (at most [`MAX_ROUTES`]).
+    pub routes: Vec<Route>,
+    /// The route the home selector starts on: the pack's choice when it exists, else the first.
+    pub default_route: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -111,6 +147,35 @@ struct RawQuick {
     description_ar: String,
     #[serde(default)]
     repos: Vec<String>,
+    #[serde(default)]
+    route: Option<String>,
+}
+
+/// One `routes[]` entry as written; parsed per entry so a bad one is skipped, not fatal.
+#[derive(Debug, Default, Deserialize)]
+struct RawRoute {
+    #[serde(default)]
+    id: String,
+    #[serde(default, alias = "labelAr")]
+    label_ar: String,
+    #[serde(default, alias = "labelEn")]
+    label_en: String,
+    #[serde(default, alias = "descriptionAr")]
+    description_ar: String,
+    #[serde(default, alias = "descriptionEn")]
+    description_en: String,
+    #[serde(default)]
+    icon: Option<String>,
+    #[serde(default)]
+    mode: String,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    effort: Option<String>,
+    #[serde(default)]
+    agent: Option<String>,
+    #[serde(default)]
+    suffix: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -151,6 +216,11 @@ struct RawPack {
     /// Model, effort and agent per turn type (`plan` / `work`); validated by [`parse_run`].
     #[serde(default)]
     run: Option<Value>,
+    /// Named run routes (`parse_routes`); entries are parsed one by one.
+    #[serde(default)]
+    routes: Vec<Value>,
+    #[serde(default, rename = "defaultRoute")]
+    default_route: Option<String>,
 }
 
 /// A department or skill name: lowercase-ish, no separators, no dots at the start.
@@ -295,19 +365,145 @@ fn parse_run(v: Option<&Value>) -> Option<RunMeta> {
     (run != RunMeta::default()).then_some(run)
 }
 
-/// The Claude flags a turn gets from the pack: `--model`, `--effort`, `--agent` (those present).
+const VALID_EFFORT: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// The most routes a pack may declare.
+pub const MAX_ROUTES: usize = 6;
+/// The longest route suffix, in characters; a longer one drops the route.
+pub const MAX_SUFFIX_CHARS: usize = 400;
+
+fn valid_route_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 32
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+fn valid_agent(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 64
+        && s.chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+}
+
+/// One route from its raw form; `None` (with a warning) when any field is invalid.
+fn parse_route(v: &Value) -> Option<Route> {
+    let r: RawRoute = serde_json::from_value(v.clone()).ok()?;
+    let drop = |why: &str| {
+        tracing::warn!("pack route `{}` dropped: {why}", r.id);
+        None
+    };
+    if !valid_route_id(&r.id) {
+        return drop("bad id");
+    }
+    if !matches!(r.mode.as_str(), "plan" | "auto") {
+        return drop("mode must be plan or auto");
+    }
+    if r.model.as_deref().is_some_and(|m| !valid_model(m)) {
+        return drop("invalid model");
+    }
+    if r.effort.as_deref().is_some_and(|e| !VALID_EFFORT.contains(&e)) {
+        return drop("invalid effort");
+    }
+    if r.agent.as_deref().is_some_and(|a| !valid_agent(a)) {
+        return drop("invalid agent");
+    }
+    let suffix = r.suffix.as_deref().map_or("", str::trim);
+    if suffix.chars().count() > MAX_SUFFIX_CHARS {
+        return drop("suffix too long");
+    }
+    let label = |s: String| if s.trim().is_empty() { r.id.clone() } else { s };
+    Some(Route {
+        label_ar: label(r.label_ar.clone()),
+        label_en: label(r.label_en.clone()),
+        description_ar: r.description_ar.clone(),
+        description_en: r.description_en.clone(),
+        icon: r.icon.clone().filter(|i| !i.trim().is_empty()),
+        mode: r.mode.clone(),
+        model: r.model.clone(),
+        effort: r.effort.clone(),
+        agent: r.agent.clone(),
+        suffix: suffix.to_owned(),
+        id: r.id.clone(),
+    })
+}
+
+fn derived_route(id: &str, en: &str, ar: &str, mode: &str, spec: Option<&RunSpec>) -> Route {
+    let spec = spec.cloned().unwrap_or_default();
+    Route {
+        id: id.to_owned(),
+        label_ar: ar.to_owned(),
+        label_en: en.to_owned(),
+        description_ar: String::new(),
+        description_en: String::new(),
+        icon: None,
+        mode: mode.to_owned(),
+        model: spec.model,
+        effort: spec.effort,
+        agent: spec.agent,
+        suffix: String::new(),
+    }
+}
+
+/// The pack's routes: its valid `routes` (unique ids, at most [`MAX_ROUTES`]); with none declared, a
+/// pack that has a `run` block gets `plan` and `do` derived from it. Plus the default route id.
+fn parse_routes(raw: &[Value], default: Option<&str>, run: Option<&RunMeta>) -> (Vec<Route>, Option<String>) {
+    let mut routes: Vec<Route> = Vec::new();
+    for route in raw.iter().filter_map(parse_route) {
+        if routes.len() < MAX_ROUTES && !routes.iter().any(|r| r.id == route.id) {
+            routes.push(route);
+        }
+    }
+    let mut default = default.map(str::to_owned);
+    if raw.is_empty()
+        && let Some(run) = run
+    {
+        routes = vec![
+            derived_route("plan", "Plan first", "خطة أولاً", "plan", run.plan.as_ref()),
+            derived_route("do", "Do it now", "نفّذ الآن", "auto", run.work.as_ref()),
+        ];
+        default = Some("plan".to_owned());
+    }
+    let default = default
+        .filter(|d| routes.iter().any(|r| &r.id == d))
+        .or_else(|| routes.first().map(|r| r.id.clone()));
+    (routes, default)
+}
+
+/// The Claude flags a route gets: `--model`, `--effort`, `--agent` (those present).
 #[must_use]
-pub fn run_flags(run: Option<&RunMeta>, plan: bool) -> Vec<String> {
-    let spec = run.and_then(|r| if plan { r.plan.as_ref() } else { r.work.as_ref() });
+pub fn route_flags(route: &Route) -> Vec<String> {
     let mut a = Vec::new();
-    if let Some(s) = spec {
-        for (flag, val) in [("--model", &s.model), ("--effort", &s.effort), ("--agent", &s.agent)] {
-            if let Some(v) = val {
-                a.extend([flag.to_owned(), v.clone()]);
-            }
+    for (flag, val) in [
+        ("--model", &route.model),
+        ("--effort", &route.effort),
+        ("--agent", &route.agent),
+    ] {
+        if let Some(v) = val {
+            a.extend([flag.to_owned(), v.clone()]);
         }
     }
     a
+}
+
+/// The route a request names: no id gives the pack's default (none when it has no routes); an id the
+/// pack does not declare is an error.
+///
+/// # Errors
+/// [`PackError::UnknownRoute`] for an unknown id.
+pub fn find_route<'a>(meta: &'a PackMeta, id: Option<&str>) -> Result<Option<&'a Route>, PackError> {
+    match id {
+        Some(id) => meta
+            .routes
+            .iter()
+            .find(|r| r.id == id)
+            .map(Some)
+            .ok_or_else(|| PackError::UnknownRoute(id.to_owned())),
+        None => Ok(meta
+            .default_route
+            .as_deref()
+            .and_then(|d| meta.routes.iter().find(|r| r.id == d))),
+    }
 }
 
 fn read_pack(kun: &Path, dept: &str) -> RawPack {
@@ -395,6 +591,10 @@ pub struct PackMeta {
     pub health: Option<health::HealthSpec>,
     /// Model, effort and agent the pack picks for its Claude turns.
     pub run: Option<RunMeta>,
+    /// Named run routes (validated), at most [`MAX_ROUTES`]; derived from `run` when none are declared.
+    pub routes: Vec<Route>,
+    /// The route a request without one uses: `defaultRoute` when it exists, else the first.
+    pub default_route: Option<String>,
 }
 
 /// The shortest and longest turn timeout a pack may ask for.
@@ -473,7 +673,11 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         Value::String(s) => Some(s.clone()),
         _ => None,
     };
+    let run = parse_run(raw.run.as_ref());
+    let (routes, default_route) = parse_routes(&raw.routes, raw.default_route.as_deref(), run.as_ref());
     Ok(PackMeta {
+        routes,
+        default_route,
         title_ar: raw.title_ar.clone().or_else(|| pick("ar")),
         title_en: pick("en").or(plain),
         skills: item_names(&raw.items),
@@ -482,7 +686,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         repos: raw.repos.iter().filter(|r| valid_name(r)).cloned().collect(),
         dirs: raw.dirs.clone(),
         health: raw.health.clone(),
-        run: parse_run(raw.run.as_ref()),
+        run,
         timeout_secs: raw
             .timeout_secs
             .map(|t| t.clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS)),
@@ -497,6 +701,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
                 description_en: q.description_en,
                 description_ar: q.description_ar,
                 repos: q.repos.into_iter().filter(|r| valid_name(r)).collect(),
+                route: q.route.filter(|r| valid_route_id(r)),
             })
             .collect(),
     })
@@ -520,6 +725,8 @@ pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
         quick_actions: meta.quick_actions,
         starters,
         formula,
+        routes: meta.routes,
+        default_route: meta.default_route,
     })
 }
 

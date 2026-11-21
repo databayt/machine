@@ -12,7 +12,11 @@ import {
   ImageIcon,
   HandCoinsIcon,
   LifeBuoyIcon,
+  ListChecksIcon,
   LoaderIcon,
+  PlayIcon,
+  WorkflowIcon,
+  ZapIcon,
   MegaphoneIcon,
   SearchIcon,
   type LucideIcon,
@@ -28,7 +32,8 @@ import { useDepartment } from "../menu/use-department";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { loadSettings, saveSettings } from "../settings/actions";
 import { HealthLight, type DeptHealth } from "../pack/health";
-import { tr } from "./config";
+import type { Route } from "../pack/types";
+import { copy, tr } from "./config";
 
 /**
  * The working context of a run: the department (from Settings) and the repository, remembered per
@@ -114,7 +119,27 @@ const trigger =
 const row =
   "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-muted";
 
-/** `▣ Department ▾   ▤ Repository ▾`: two selects under the composer, each opening its own menu. */
+const ROUTE_ICONS: Record<string, LucideIcon> = {
+  ListChecks: ListChecksIcon,
+  Play: PlayIcon,
+  Workflow: WorkflowIcon,
+  Zap: ZapIcon,
+};
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** The model a route names, short: `opus`, `claude-sonnet-5-5` → `Sonnet`. */
+const modelName = (m: string | null) =>
+  m ? cap(m.replace(/^claude-/, "").split("-")[0]) : "";
+/** `Plan first · Producer · Opus`: the decision of where a prompt runs, in one line. */
+export function routeLine(r: Route, isAr: boolean): string {
+  return [isAr ? r.label_ar : r.label_en, r.agent ? cap(r.agent) : "", modelName(r.model)]
+    .filter(Boolean)
+    .join(" · ");
+}
+
+/**
+ * `▣ Department ▾   ▤ Repository ▾   ◎ Runs on ▾`: the selects under the composer, each opening its
+ * own menu. The third is the department's routes — where the prompt in the box will run.
+ */
 export function ContextLine({
   lang,
   profile,
@@ -126,6 +151,9 @@ export function ContextLine({
   onRepo,
   health,
   onAsk,
+  routes,
+  route,
+  onRoute,
   disabled,
 }: {
   lang: Locale;
@@ -141,12 +169,18 @@ export function ContextLine({
   health?: DeptHealth;
   /** Sends a prompt to the agent (the home suggestions' path). */
   onAsk?: (prompt: string) => void;
+  /** The department's routes; the selector hides when there are none. */
+  routes?: Route[];
+  /** The chosen route's id. */
+  route?: string | null;
+  onRoute?: (id: string) => void;
   disabled?: boolean;
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
   const [deptOpen, setDeptOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
+  const [routeOpen, setRouteOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cloning, setCloning] = useState<string | null>(null);
   const departments = profile?.departments ?? [];
@@ -255,6 +289,49 @@ export function ContextLine({
           )}
         </PopoverContent>
       </Popover>
+
+      {routes && routes.length > 0 && onRoute && (() => {
+        const chosen = routes.find((r) => r.id === route) ?? routes[0];
+        const ChosenIcon = ROUTE_ICONS[chosen.icon ?? ""] ?? PlayIcon;
+        return (
+          <Popover open={routeOpen} onOpenChange={setRouteOpen}>
+            <PopoverTrigger asChild>
+              <button type="button" disabled={disabled} aria-label={t(copy.runsOn)} title={t(copy.runsOn)} className={trigger}>
+                <ChosenIcon className="size-4 shrink-0" aria-hidden />
+                <span className="truncate">{routeLine(chosen, isAr)}</span>
+                <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+              <ul>
+                {routes.map((r) => {
+                  const Icon = ROUTE_ICONS[r.icon ?? ""] ?? PlayIcon;
+                  const about = isAr ? r.description_ar : r.description_en;
+                  return (
+                    <li key={r.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRouteOpen(false);
+                          onRoute(r.id);
+                        }}
+                        className={cn(row, "items-start")}
+                      >
+                        <Icon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate">{routeLine(r, isAr)}</span>
+                          {about && <span className="block text-xs text-muted-foreground">{about}</span>}
+                        </span>
+                        {r.id === chosen.id && <CheckIcon className="mt-0.5 size-4 shrink-0" aria-hidden />}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </PopoverContent>
+          </Popover>
+        );
+      })()}
 
       {health && onAsk && <HealthLight lang={lang} dept={dept} state={health} onAsk={onAsk} />}
     </div>

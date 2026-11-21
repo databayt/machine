@@ -33,7 +33,15 @@ starters: Array<Starter>,
 /**
  * The sentence the navigator writes when the deepest chosen node has no fill of its own.
  */
-formula: Formula | null, };
+formula: Formula | null, 
+/**
+ * Where a home prompt can run, in the pack's order (at most [`MAX_ROUTES`]).
+ */
+routes: Array<Route>, 
+/**
+ * The route the home selector starts on: the pack's choice when it exists, else the first.
+ */
+default_route: string | null, };
 
 /**
  * A one-tap prompt shown under the greeting.
@@ -46,7 +54,25 @@ description_en: string, description_ar: string,
 /**
  * Repos this starter belongs to; empty = shown for any repo.
  */
-repos: Array<string>, };
+repos: Array<string>, 
+/**
+ * The route (`pack.json` `routes[].id`) this action runs in; none = the pack's default.
+ */
+route: string | null, };
+
+/**
+ * A named place a home prompt runs: permission mode, model, effort, agent and an instruction
+ * appended to every prompt sent through it.
+ */
+export type Route = { id: string, label_ar: string, label_en: string, description_ar: string, description_en: string, icon: string | null, 
+/**
+ * `"plan"` or `"auto"`: Claude's permission mode for the run.
+ */
+mode: string, model: string | null, effort: string | null, agent: string | null, 
+/**
+ * Appended to the prompt as `\n\n<suffix>`; empty when none.
+ */
+suffix: string, };
 
 /**
  * What a source may depend on.

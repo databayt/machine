@@ -8,8 +8,12 @@
 
 use std::{
     collections::HashMap,
+    fmt::Write as _,
     path::{Path, PathBuf},
-    sync::{LazyLock, Mutex, PoisonError},
+    sync::{
+        LazyLock, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use serde::Serialize;
@@ -38,6 +42,10 @@ pub enum ChatError {
     Duplicate,
     #[error("that repository is not available for this machine or is not cloned here")]
     BadRepo,
+    #[error("this department has no route `{0}`")]
+    BadRoute(String),
+    #[error("{0}")]
+    Refine(String),
     #[error("task id is invalid")]
     BadTask,
     #[error("that task was not started here: start it from the task list first")]
@@ -276,10 +284,62 @@ fn build_job(
     })
 }
 
-/// Where and how a run starts: its folder, extra flags and secrets. Blocking (filesystem, keychain).
-/// Folder, extra flags and environment of one run.
-type RunSetup = (String, Vec<String>, Vec<(String, String)>, Option<u32>);
+/// Where and how a run starts: its folder, extra flags, environment and timeout, plus the turn's
+/// permission mode and the prompt suffix its route adds. Blocking (filesystem, keychain).
+struct RunSetup {
+    cwd: String,
+    extras: Vec<String>,
+    env: Vec<(String, String)>,
+    timeout: Option<u32>,
+    permission: PermissionMode,
+    suffix: String,
+}
 
+/// What a turn runs as: the pack's route for it, or (old callers) the one the `mode` names.
+///
+/// `route` wins; with only a `mode`, `plan` / anything else pick the route of that id when the pack has
+/// it (`plan` / `do` are what a bare `run` block derives); with neither, the turn is a plain auto run.
+/// Only claude takes routes.
+fn resolve_turn(
+    meta: &pack::PackMeta,
+    kind: DriverKind,
+    route: Option<&str>,
+    mode: Option<&str>,
+) -> Result<(PermissionMode, Vec<String>, String), ChatError> {
+    let legacy = PermissionMode::parse(mode);
+    if kind != DriverKind::Claude {
+        if let Some(id) = route.filter(|id| !meta.routes.iter().any(|r| r.id == *id)) {
+            return Err(ChatError::BadRoute(id.to_owned()));
+        }
+        let permission = route
+            .and_then(|id| meta.routes.iter().find(|r| r.id == id))
+            .map_or(legacy, pack::Route::permission);
+        return Ok((permission, Vec::new(), String::new()));
+    }
+    let found = match (route, mode) {
+        (Some(id), _) => pack::find_route(meta, Some(id))
+            .map_err(|_| ChatError::BadRoute(id.to_owned()))?,
+        (None, Some(_)) => {
+            let id = if legacy == PermissionMode::Plan { "plan" } else { "do" };
+            meta.routes.iter().find(|r| r.id == id)
+        }
+        (None, None) => None,
+    };
+    Ok(found.map_or((legacy, Vec::new(), String::new()), |r| {
+        (r.permission(), pack::route_flags(r), r.suffix.clone())
+    }))
+}
+
+/// The prompt with its route's suffix: `\n\n<suffix>`, every turn.
+fn with_suffix(prompt: String, suffix: &str) -> String {
+    if suffix.is_empty() {
+        prompt
+    } else {
+        format!("{prompt}\n\n{suffix}")
+    }
+}
+
+#[allow(clippy::too_many_arguments)] // one named input per thing a run depends on
 fn prepare_run(
     resolved: &Resolved,
     department: &str,
@@ -287,7 +347,8 @@ fn prepare_run(
     task_id: Option<&str>,
     repo: Option<&str>,
     root: &Path,
-    turn: PermissionMode,
+    route: Option<&str>,
+    mode: Option<&str>,
 ) -> Result<RunSetup, ChatError> {
     let (cwd, mut extras, env) = if resolved.explicit {
         let ws = pack::workspace(&resolved.profile)?;
@@ -312,24 +373,32 @@ fn prepare_run(
     };
     // The department's own world: extra folders (a longer timeout rides along).
     let meta = pack::meta_in(&pack::kun_dir()?, department)?;
-    let more = task_extras(kind, &extras, &pack::pack_dirs(&meta));
-    extras.extend(more);
-    if kind == DriverKind::Claude {
-        extras.extend(pack::run_flags(meta.run.as_ref(), turn == PermissionMode::Plan));
-    }
+    let dirs = task_extras(kind, &extras, &pack::pack_dirs(&meta));
+    extras.extend(dirs);
+    let (permission, flags, suffix) = resolve_turn(&meta, kind, route, mode)?;
+    extras.extend(flags);
     if let Some(id) = task_id {
-        let more = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
-        extras.extend(more);
+        let seeded = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
+        extras.extend(seeded);
     }
-    Ok((cwd, extras, env, meta.timeout_secs))
+    Ok(RunSetup {
+        cwd,
+        extras,
+        env,
+        timeout: meta.timeout_secs,
+        permission,
+        suffix,
+    })
 }
 
 /// `ask` — runs one prompt, streaming events to `channel`. The frontend supplies `job_id`
 /// so it can call `stop` before this command returns. With `task_id` the run is a task's: its
 /// repos join as `--add-dir` and the prompt points at `TASK.md`. With `repo` the run is limited to
 /// that repository (`--add-dir` only it) and a new session opens with a line naming it and the
-/// department. `mode` (`"plan"` | `"auto"`, anything else is auto) is Claude's permission mode for
-/// the run: the navigator's sentences go out as a plan turn. Run-time failures arrive as an
+/// department. `route` is one of the department's route ids (`pack.json` `routes`): it sets the
+/// permission mode, model, effort and agent, and its suffix is appended to the prompt; an unknown id
+/// rejects the call. `mode` (`"plan"` | `"auto"`, anything else is auto) is the older way, used when
+/// `route` is absent: it picks the route called `plan` or `do`. Run-time failures arrive as an
 /// `error` event; only bad arguments reject the call.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // the IPC surface: one named argument per field the UI sends
@@ -341,6 +410,7 @@ async fn ask(
     task_id: Option<String>,
     repo: Option<String>,
     mode: Option<String>,
+    route: Option<String>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
     let settings = settings::load()?;
@@ -351,12 +421,21 @@ async fn ask(
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
     let for_run = task_id.clone();
     let (for_dept, for_repo) = (department.clone(), repo.clone());
-    let permission = PermissionMode::parse(mode.as_deref());
-    let (cwd, extras, env, timeout) = tokio::task::spawn_blocking(move || {
-        prepare_run(&resolved, &for_dept, kind, for_run.as_deref(), for_repo.as_deref(), &root, permission)
+    let setup = tokio::task::spawn_blocking(move || {
+        prepare_run(
+            &resolved,
+            &for_dept,
+            kind,
+            for_run.as_deref(),
+            for_repo.as_deref(),
+            &root,
+            route.as_deref(),
+            mode.as_deref(),
+        )
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
+    let RunSetup { cwd, extras, env, timeout, permission, suffix } = setup;
     let title = title_from(&prompt);
     // The seed is only the opening move: a resumed session already has it.
     let prompt = match (&task_id, &session) {
@@ -364,6 +443,7 @@ async fn ask(
         _ => prompt,
     };
     let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
+    let prompt = with_suffix(prompt, &suffix);
     let mut job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
     job.timeout_secs = timeout;
     job.permission_mode = permission;
@@ -412,6 +492,137 @@ async fn ask(
     Ok(())
 }
 
+/// How long `refine` may take before it gives up: it reads the project's folder first.
+const REFINE_SECS: u32 = 240;
+
+/// The instruction `refine` puts before the user's text. The brief must stand alone, so the run first
+/// gathers context (read-only); the video department also reads its produce projects. `routes` adds
+/// the closing line that picks one.
+fn refine_prompt(prompt: &str, routes: &[pack::Route], department: &str, repo: Option<&str>) -> String {
+    let mut out = String::from(
+        "Rewrite the request below as one complete, professional brief for this department. First gather \
+         the context it needs, read-only (no writes, no renders): the department's CLAUDE.md formula",
+    );
+    if department == "video" {
+        let repo_flag = repo.map_or_else(String::new, |r| format!(" --repo {r}"));
+        let _ = write!(
+            out,
+            "; for video, `node ~/.claude/skills/produce/scripts/produce.mjs list --json{repo_flag}` and \
+             `status <ID>` of the matching project, its folder (reference video, transcript, script, \
+             asset manifest), kun/content/media/brand-kit.json and markets.json (price, currency, \
+             dialect), existing captures"
+        );
+    }
+    out.push_str(
+        ". Then write the brief: what · for whom · version · goal · destination · then a **References & \
+         context** section listing every absolute path, CDN URL, project ID, current stage and gate, \
+         and key facts (price, currency, dialect, length) the worker needs, so the prompt stands alone \
+         · then what to return. Keep the request's language. Do not start the work. Output only the brief",
+    );
+    if routes.is_empty() {
+        out.push('.');
+    } else {
+        let list = routes
+            .iter()
+            .map(|r| format!("{} — {}", r.id, r.label_en))
+            .collect::<Vec<_>>()
+            .join(", ");
+        let _ = write!(out, ", then on the very last line `route: <id>` choosing one of: {list}.");
+    }
+    format!("{out}\n\n---\n\n{}", prompt.trim())
+}
+
+/// A job id for a refine call: unique within the process, valid for [`valid_job_id`].
+fn refine_job_id() -> String {
+    static N: AtomicU64 = AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    format!("refine-{nanos}-{}", N.fetch_add(1, Ordering::Relaxed))
+}
+
+/// The brief: the run's final result when it has one, else the text it streamed.
+fn refined_text(streamed: &str, result: Option<&str>) -> Result<String, ChatError> {
+    let text = result
+        .filter(|r| !r.trim().is_empty())
+        .unwrap_or(streamed)
+        .trim();
+    if text.is_empty() {
+        Err(ChatError::Driver(DriverError::Invalid("empty answer")))
+    } else {
+        Ok(text.to_owned())
+    }
+}
+
+/// `refine` — rewrites rough text as a professional brief for the department (and, when the pack has
+/// routes, ends with a `route: <id>` line). One fresh plan-mode Claude turn on sonnet at medium effort,
+/// 240 seconds at most, no session kept.
+#[tauri::command]
+async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatError> {
+    let settings = settings::load()?;
+    let resolved = profile::current()?;
+    let department = profile::effective_department(&resolved.profile, &settings.department);
+    let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
+    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
+    let for_dept = department.clone();
+    let repo_name = repo.clone();
+    let (cwd, extras, routes) = tokio::task::spawn_blocking(move || {
+        let setup = prepare_run(
+            &resolved,
+            &for_dept,
+            DriverKind::Claude,
+            None,
+            repo.as_deref(),
+            &root,
+            None,
+            None,
+        )?;
+        let meta = pack::meta_in(&pack::kun_dir()?, &for_dept)?;
+        // No route applies (no agent, no pack model): refine is a cheap rewrite.
+        let mut extras = setup.extras;
+        extras.extend(["--model", "sonnet", "--effort", "medium"].map(str::to_owned));
+        Ok::<_, ChatError>((setup.cwd, extras, meta.routes))
+    })
+    .await
+    .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
+    let mut job = build_job(
+        &refine_job_id(),
+        DriverKind::Claude,
+        refine_prompt(&prompt, &routes, &department, repo_name.as_deref()),
+        cwd,
+        None,
+        extras,
+        Vec::new(),
+    )?;
+    job.timeout_secs = Some(REFINE_SECS);
+    job.permission_mode = PermissionMode::Plan;
+    let (tx, rx) = oneshot::channel();
+    let _registration = register(&job.job_id, tx)?;
+
+    let (mut streamed, mut result, mut failure) = (String::new(), None, None);
+    let outcome = {
+        let emit = |event: Event| match event {
+            Event::Text { text } => streamed.push_str(&text),
+            Event::Done { result: r, .. } => result = r,
+            Event::Error { message } => failure = Some(message),
+            _ => {}
+        };
+        tokio::select! {
+            r = driver::run(&job, emit) => Some(r),
+            _ = rx => None,
+        }
+    };
+    match outcome {
+        Some(Ok(())) => {}
+        Some(Err(e)) => return Err(e.into()),
+        None => return Err(ChatError::Driver(DriverError::Invalid("stopped"))),
+    }
+    if let Some(message) = failure {
+        return Err(ChatError::Refine(message));
+    }
+    refined_text(&streamed, result.as_deref())
+}
+
 /// `stop` — cancels a running job. True when it was running.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
@@ -422,7 +633,7 @@ fn stop(job_id: String) -> bool {
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("chat")
-        .invoke_handler(tauri::generate_handler![ask, stop])
+        .invoke_handler(tauri::generate_handler![ask, refine, stop])
         .build()
 }
 

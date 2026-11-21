@@ -496,19 +496,128 @@ fn fable_and_unknown_models_are_rejected() {
     }
 }
 
+fn v(s: &[&str]) -> Vec<String> {
+    s.iter().map(|x| (*x).to_owned()).collect()
+}
+
 #[test]
-fn run_flags_follow_the_turn_type() {
+fn routes_parse_with_snake_or_camel_fields() {
+    let m = meta_of(
+        r#"{"defaultRoute":"do","routes":[
+            {"id":"plan","label_ar":"خطة","label_en":"Plan","mode":"plan","model":"opus","effort":"high","agent":"producer","suffix":"  Ask first.  "},
+            {"id":"do","labelEn":"Do","descriptionEn":"Now","icon":"zap","mode":"auto"}]}"#,
+    );
+    assert_eq!(m.routes.len(), 2);
+    let plan = &m.routes[0];
+    assert_eq!(
+        (plan.mode.as_str(), plan.suffix.as_str(), plan.label_ar.as_str()),
+        ("plan", "Ask first.", "خطة")
+    );
+    assert_eq!(route_flags(plan), v(&["--model", "opus", "--effort", "high", "--agent", "producer"]));
+    let d = &m.routes[1];
+    assert_eq!((d.label_en.as_str(), d.description_en.as_str(), d.icon.as_deref()), ("Do", "Now", Some("zap")));
+    assert_eq!(d.label_ar, "do"); // no label: the id shows
+    assert!(d.suffix.is_empty() && route_flags(d).is_empty());
+    assert_eq!(m.default_route.as_deref(), Some("do"));
+}
+
+#[test]
+fn invalid_routes_are_skipped_not_fatal() {
+    let long = "x".repeat(401);
+    let json = format!(
+        r#"{{"routes":[
+        {{"id":"fab","mode":"plan","model":"fable"}},
+        {{"id":"eff","mode":"plan","effort":"ultra"}},
+        {{"id":"agt","mode":"plan","agent":"../x"}},
+        {{"id":"Bad Id","mode":"plan"}},
+        {{"id":"mode","mode":"yolo"}},
+        {{"id":"nomode"}},
+        {{"id":"long","mode":"plan","suffix":"{long}"}},
+        {{"id":"edge","mode":"auto","suffix":"{ok}"}},
+        {{"id":"edge","mode":"plan"}},
+        "not an object",
+        {{"id":"ok","mode":"plan","model":"claude-sonnet-4-6"}}]}}"#,
+        ok = "y".repeat(400)
+    );
+    let m = meta_of(&json);
+    let ids: Vec<_> = m.routes.iter().map(|r| r.id.as_str()).collect();
+    assert_eq!(ids, ["edge", "ok"]); // exactly 400 chars is kept; the duplicate id is dropped
+    assert_eq!(m.default_route.as_deref(), Some("edge"));
+}
+
+#[test]
+fn at_most_six_routes() {
+    let routes: Vec<String> = (0..9).map(|i| format!(r#"{{"id":"r{i}","mode":"auto"}}"#)).collect();
+    let m = meta_of(&format!(r#"{{"routes":[{}]}}"#, routes.join(",")));
+    assert_eq!(m.routes.len(), MAX_ROUTES);
+}
+
+#[test]
+fn a_run_block_without_routes_derives_plan_and_do() {
     let m = meta_of(
         r#"{"run":{"plan":{"model":"opus","effort":"high","agent":"producer"},"work":{"effort":"medium"}}}"#,
     );
-    let v = |s: &[&str]| s.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+    let ids: Vec<_> = m.routes.iter().map(|r| (r.id.as_str(), r.mode.as_str())).collect();
+    assert_eq!(ids, [("plan", "plan"), ("do", "auto")]);
+    assert_eq!(m.default_route.as_deref(), Some("plan"));
+    assert_eq!(m.routes[0].label_en, "Plan first");
+    assert_eq!(m.routes[1].label_ar, "نفّذ الآن");
     assert_eq!(
-        run_flags(m.run.as_ref(), true),
+        route_flags(&m.routes[0]),
         v(&["--model", "opus", "--effort", "high", "--agent", "producer"])
     );
-    assert_eq!(run_flags(m.run.as_ref(), false), v(&["--effort", "medium"]));
-    assert!(run_flags(None, true).is_empty());
-    // They pass the driver's validation, resumed or not.
+    assert_eq!(route_flags(&m.routes[1]), v(&["--effort", "medium"]));
+    // Declared routes win over `run`.
+    let m = meta_of(r#"{"run":{"plan":{"model":"opus"}},"routes":[{"id":"x","mode":"auto"}]}"#);
+    assert_eq!(m.routes.len(), 1);
+    let none = meta_of("{}");
+    assert!(none.routes.is_empty() && none.default_route.is_none());
+}
+
+#[test]
+fn default_route_must_exist_else_the_first() {
+    let m = meta_of(r#"{"defaultRoute":"ghost","routes":[{"id":"a","mode":"auto"},{"id":"b","mode":"plan"}]}"#);
+    assert_eq!(m.default_route.as_deref(), Some("a"));
+    // A default naming a dropped route falls back too.
+    let m = meta_of(
+        r#"{"defaultRoute":"bad","routes":[{"id":"bad","mode":"plan","model":"fable"},{"id":"b","mode":"plan"}]}"#,
+    );
+    assert_eq!(m.default_route.as_deref(), Some("b"));
+}
+
+#[test]
+fn find_route_defaults_and_refuses_unknown_ids() {
+    let m = meta_of(r#"{"defaultRoute":"b","routes":[{"id":"a","mode":"auto"},{"id":"b","mode":"plan"}]}"#);
+    assert_eq!(find_route(&m, None).unwrap().unwrap().id, "b");
+    assert_eq!(find_route(&m, Some("a")).unwrap().unwrap().id, "a");
+    assert!(matches!(find_route(&m, Some("zzz")), Err(PackError::UnknownRoute(id)) if id == "zzz"));
+    assert!(find_route(&meta_of("{}"), None).unwrap().is_none());
+}
+
+#[test]
+fn quick_action_routes_and_info_expose_routes() {
+    let kun = tempfile::tempdir().unwrap();
+    let dept = kun.path().join("departments/video");
+    fs::create_dir_all(&dept).unwrap();
+    fs::write(dept.join("prompt.md"), "p").unwrap();
+    fs::write(
+        dept.join("pack.json"),
+        r#"{"routes":[{"id":"a","mode":"plan"}],"quickActions":[
+            {"label_en":"x","prompt":"p","route":"a"},{"label_en":"y","prompt":"q","route":"../bad"},{"label_en":"z","prompt":"r"}]}"#,
+    )
+    .unwrap();
+    let info = info_in(kun.path(), "video").unwrap();
+    assert_eq!(info.default_route.as_deref(), Some("a"));
+    assert_eq!(info.routes[0].id, "a");
+    let routes: Vec<_> = info.quick_actions.iter().map(|q| q.route.as_deref()).collect();
+    assert_eq!(routes, [Some("a"), None, None]);
+}
+
+#[test]
+fn route_flags_pass_the_driver_validation() {
+    let m = meta_of(
+        r#"{"run":{"plan":{"model":"opus","effort":"high","agent":"producer"}}}"#,
+    );
     let job = crate::driver::Job {
         job_id: "j".into(),
         driver: DriverKind::Claude,
@@ -516,11 +625,12 @@ fn run_flags_follow_the_turn_type() {
         cwd: "/".into(),
         session: Some("s-1".into()),
         timeout_secs: None,
-        extra_args: run_flags(m.run.as_ref(), true),
+        extra_args: route_flags(&m.routes[0]),
         env: vec![],
-        permission_mode: crate::driver::PermissionMode::Plan,
+        permission_mode: m.routes[0].permission(),
     };
     let args = crate::driver::args_for(&job).unwrap();
+    assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
     assert!(args.windows(2).any(|w| w == ["--agent", "producer"]));
     assert!(args.windows(2).any(|w| w == ["--effort", "high"]));
 }

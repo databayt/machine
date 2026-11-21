@@ -10,7 +10,9 @@ import {
   ImageIcon,
   MonitorIcon,
   PaperclipIcon,
+  LoaderIcon,
   PlusIcon,
+  SparklesIcon,
   SquareIcon,
   XIcon,
 } from "lucide-react";
@@ -35,11 +37,13 @@ import {
 import { copy, tr } from "./config";
 import { MediaPicker } from "./media-picker";
 
-/** A sentence the navigator writes into the box; a new object (`n`) is a new fill. */
+/** A brief an option writes into the box; a new object (`n`) is a new fill. */
 export interface Fill {
   text: string;
   /** Focus the box with the caret at the end (a leaf was chosen). */
   focus: boolean;
+  /** Then enrich it: refine gathers the references and context into the brief. */
+  refine?: boolean;
   n: number;
 }
 
@@ -61,10 +65,11 @@ export function Composer({
   initialText,
   repo,
   fill,
+  onPickAction,
+  onRefine,
 }: {
   lang: Locale;
-  /** `mode: "plan"` when the text came from the navigator and the chip is still on. */
-  onSend: (text: string, mode?: "plan") => void;
+  onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
   actions: QuickAction[];
@@ -73,8 +78,12 @@ export function Composer({
   initialText?: string;
   /** The selected repository: its media library feeds the attach menu. */
   repo?: string;
-  /** The navigator's sentence: replaces the text (autocomplete), "" clears an untouched one. */
+  /** An option's brief: replaces the text, "" clears it. */
   fill?: Fill | null;
+  /** A quick action from `+`: the parent fills its brief and its route. */
+  onPickAction?: (q: QuickAction) => void;
+  /** Rewrites the text as a professional brief; null when it could not. */
+  onRefine?: (text: string) => Promise<string | null>;
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
@@ -85,13 +94,10 @@ export function Composer({
   const [library, setLibrary] = useState(false);
   const [attached, setAttached] = useState<Attachment[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
-  /** The text came from the navigator: it goes out as a plan turn until the chip's x or an empty box. */
-  const [plan, setPlan] = useState(false);
-  const lastFill = useRef("");
-  const textRef = useRef(text);
-  textRef.current = text;
-  const planRef = useRef(plan);
-  planRef.current = plan;
+  const [refining, setRefining] = useState(false);
+  const [refineError, setRefineError] = useState(false);
+  /** The text before the last refine, and what refine wrote: ⌘Z swaps back while it is untouched. */
+  const beforeRefine = useRef<{ before: string; after: string } | null>(null);
 
   // `field-sizing: content` is not in Safari yet.
   useLayoutEffect(() => {
@@ -108,14 +114,13 @@ export function Composer({
       el.setSelectionRange(el.value.length, el.value.length);
   }, [initialText]);
 
-  // The navigator's sentence replaces the box, live at every step. An empty one (back at the
-  // root) only clears text that is still the navigator's: the chip is on, or it is untouched.
+  // An option's brief replaces the box; the caret goes to its end so the person edits on.
   useEffect(() => {
     if (!fill) return;
+    beforeRefine.current = null;
+    setText(fill.text);
+    if (fill.text && fill.refine) void refineRef.current(fill.text);
     if (fill.text) {
-      lastFill.current = fill.text;
-      setText(fill.text);
-      setPlan(true);
       if (fill.focus) {
         requestAnimationFrame(() => {
           const el = ref.current;
@@ -124,19 +129,38 @@ export function Composer({
           el.setSelectionRange(el.value.length, el.value.length);
         });
       }
-    } else if (planRef.current || textRef.current === lastFill.current) {
-      lastFill.current = "";
-      setText("");
-      setPlan(false);
     }
   }, [fill]);
 
+  const refine = async (input: string = text) => {
+    if (!onRefine || refining || !input.trim()) return;
+    const before = input;
+    setRefining(true);
+    setRefineError(false);
+    const out = await onRefine(before).catch(() => null);
+    setRefining(false);
+    if (!out) {
+      setRefineError(true);
+      return;
+    }
+    beforeRefine.current = { before, after: out };
+    setText(out);
+    requestAnimationFrame(() => {
+      const el = ref.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
+
+  const refineRef = useRef(refine);
+  refineRef.current = refine;
   const hasText = !!text.trim();
   const submit = () => {
     if (busy || !hasText) return;
-    onSend(withReferences(text, attached), plan ? "plan" : undefined);
+    onSend(withReferences(text, attached));
     setText("");
-    setPlan(false);
+    beforeRefine.current = null;
     setAttached([]);
   };
   const addFiles = async () => {
@@ -254,7 +278,8 @@ export function Composer({
                               disabled={busy}
                               onClick={() => {
                                 setPlus(false);
-                                onSend(q.prompt);
+                                if (onPickAction) onPickAction(q);
+                                else onSend(q.prompt);
                               }}
                               className={row}
                             >
@@ -341,9 +366,16 @@ export function Composer({
             value={text}
             onChange={(e) => {
               setText(e.target.value);
-              if (!e.target.value.trim()) setPlan(false);
+              setRefineError(false);
             }}
             onKeyDown={(e) => {
+              const undo = beforeRefine.current;
+              if (e.key === "z" && (e.metaKey || e.ctrlKey) && !e.shiftKey && undo && text === undo.after) {
+                e.preventDefault();
+                beforeRefine.current = null;
+                setText(undo.before);
+                return;
+              }
               if (
                 e.key === "Enter" &&
                 !e.shiftKey &&
@@ -362,6 +394,23 @@ export function Composer({
             aria-label={t(copy.placeholder)}
             className="min-w-0 flex-1 resize-none self-center bg-transparent px-1 py-2 text-[17px] leading-6 outline-none placeholder:text-muted-foreground"
           />
+
+          {!busy && onRefine && hasText && (
+            <button
+              type="button"
+              onClick={() => void refine()}
+              disabled={refining}
+              aria-label={t(refining ? copy.refining : refineError ? copy.refineFailed : copy.refine)}
+              title={t(refining ? copy.refining : refineError ? copy.refineFailed : copy.refine)}
+              className={cn(icon, "text-foreground hover:bg-muted", refineError && "text-destructive")}
+            >
+              {refining ? (
+                <LoaderIcon className="size-5 animate-spin" strokeWidth={1.5} aria-hidden />
+              ) : (
+                <SparklesIcon className="size-5" strokeWidth={1.5} aria-hidden />
+              )}
+            </button>
+          )}
 
           {!busy && (
             <span className="contents">

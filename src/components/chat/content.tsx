@@ -7,18 +7,19 @@ import { ArrowDownIcon, RotateCcwIcon } from "lucide-react";
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
 import { packInfo } from "../pack/actions";
-import type { PackInfo } from "../pack/types";
+import type { PackInfo, QuickAction } from "../pack/types";
 import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
 import { useReadAloud } from "../menu/use-read-aloud";
 import { getSession } from "../sessions/actions";
 import { OpenInMachine, useInMachine } from "../shell/content";
 import { storedLang, swapLocale } from "../shell/lang";
 import { speak } from "../voice/actions";
-import { ask, stop } from "./actions";
+import { ask, refine, stop } from "./actions";
 import { ActivityRows, StatusLine } from "./activity";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
+import { parseRefined } from "./refine";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
@@ -66,6 +67,8 @@ export default function ChatContent({
   const [speakReplies] = useReadAloud();
   /** The navigator's sentence for the home composer. */
   const [fill, setFill] = useState<Fill | null>(null);
+  /** Where the next prompt runs: one of the pack's routes, remembered per department. */
+  const [routeId, setRouteId] = useState<string | null>(null);
   const fillN = useRef(0);
   const speakRef = useRef(false);
   speakRef.current = speakReplies;
@@ -84,6 +87,17 @@ export default function ChatContent({
     if (!inApp || !ctx.dept) return;
     void packInfo(ctx.dept, ctx.repo || undefined).then(setPack).catch(() => setPack(null));
   }, [inApp, ctx.dept, ctx.repo]);
+
+  // A new chat (or another department) starts on the department's remembered route.
+  const isEmpty = messages.length === 0;
+  useEffect(() => {
+    if (!isEmpty || !ctx.dept) return;
+    try {
+      setRouteId(localStorage.getItem(`machine.route.${ctx.dept}`));
+    } catch {
+      setRouteId(null);
+    }
+  }, [ctx.dept, isEmpty]);
 
   useEffect(() => {
     if (!inApp || !resume) return;
@@ -150,7 +164,7 @@ export default function ChatContent({
   );
 
   const send = useCallback(
-    async (prompt: string, base: Message[] = messages, mode?: "plan") => {
+    async (prompt: string, base: Message[] = messages, route?: string | null) => {
       const text = prompt.trim();
       if (!text || busy) return;
       setFill(null);
@@ -163,7 +177,7 @@ export default function ChatContent({
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, mode }, onEvent);
+        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -225,6 +239,38 @@ export default function ChatContent({
       ? scopedQuick
       : allQuick.filter((q) => q.repos.length === 0)
   ).slice(0, 3);
+  const routes = pack?.routes ?? [];
+  const routeKey = `machine.route.${ctx.dept}`;
+  const chosen =
+    routes.find((r) => r.id === routeId) ??
+    routes.find((r) => r.id === pack?.default_route) ??
+    routes[0] ??
+    null;
+  /** The route that carries work on: the first that is not plan mode. */
+  const working = routes.find((r) => r.mode !== "plan") ?? null;
+  const chooseRoute = (id: string) => {
+    setRouteId(id);
+    try {
+      localStorage.setItem(routeKey, id);
+    } catch {}
+  };
+  /** Sends on the chosen route; once a plan turn is out, the reply that answers it does the work. */
+  const sendRouted = (text: string) => {
+    void send(text, undefined, chosen?.id ?? null);
+    if (chosen?.mode === "plan" && working) setRouteId(working.id);
+  };
+  /** An option writes its brief into the box, picks its route, then refine fills in the references and context; nothing is sent. */
+  const pickOption = (q: QuickAction) => {
+    setFill({ text: q.prompt, focus: true, refine: routes.length > 0, n: ++fillN.current });
+    if (q.route && routes.some((r) => r.id === q.route)) setRouteId(q.route);
+  };
+  const refineText = async (text: string) => {
+    const raw = await refine(text, ctx.repo || null);
+    const out = parseRefined(raw, routes.map((r) => r.id));
+    if (!out.text) return null;
+    if (out.route) setRouteId(out.route);
+    return out.text;
+  };
   const contextLine = (
     <ContextLine
       lang={lang}
@@ -236,7 +282,10 @@ export default function ChatContent({
       repo={ctx.repo}
       onRepo={ctx.setRepo}
       health={health}
-      onAsk={(p) => void send(p)}
+      onAsk={(p) => void send(p, undefined, working?.id ?? null)}
+      routes={routes}
+      route={chosen?.id ?? null}
+      onRoute={chooseRoute}
       disabled={busy}
     />
   );
@@ -266,13 +315,15 @@ export default function ChatContent({
               <div className="w-full">
                 <Composer
                   lang={lang}
-                  onSend={(text, mode) => void send(text, undefined, mode)}
+                  onSend={sendRouted}
                   onStop={() => jobId && void stop(jobId)}
                   busy={busy}
                   actions={quick}
                   initialText={prompt}
                   fill={fill}
                   repo={ctx.repo}
+                  onPickAction={pickOption}
+                  onRefine={routes.length ? refineText : undefined}
                   autoFocus
                 />
                 {contextLine}
@@ -280,7 +331,7 @@ export default function ChatContent({
               <Suggestions
                 actions={quick}
                 isAr={isAr}
-                onPick={(p) => setFill({ text: p, focus: true, n: ++fillN.current })}
+                onPick={pickOption}
                 disabled={busy}
               />
             </div>
@@ -341,11 +392,13 @@ export default function ChatContent({
           )}
           <Composer
             lang={lang}
-            onSend={(text, mode) => void send(text, undefined, mode)}
+            onSend={sendRouted}
             onStop={() => jobId && void stop(jobId)}
             busy={busy}
             actions={quick}
             repo={ctx.repo}
+            onPickAction={pickOption}
+            onRefine={routes.length ? refineText : undefined}
             autoFocus
           />
           {contextLine}
