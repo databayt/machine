@@ -46,7 +46,7 @@ export function SettingsTabs() {
   const t = tr(lang === "ar");
   const tabs = SETTINGS_TABS.filter((x) => (!("app" in x) || inApp) && (!("engine" in x) || engine));
   return (
-    <nav aria-label={t(copy.settings)} className="-mx-1 flex min-w-0 flex-wrap gap-1">
+    <nav aria-label={t(copy.settings)} className="-mx-3 flex min-w-0 flex-wrap gap-1">
       {tabs.map((x) => {
         const active = rest === x.path || rest.startsWith(`${x.path}/`);
         return (

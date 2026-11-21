@@ -17,7 +17,7 @@ import { SHELL_TOP } from "./grid";
 import { inSettings, splitPath } from "./tabs";
 
 /**
- * The one sidebar of the app, in the menu's item style: Home, Sessions, Catalog and Settings (with
+ * The one sidebar of the app, in the menu's item style: Sessions, Catalog and Settings (with
  * the readiness %), then Docs and Mathematics, then the tools row. No departments: those live in
  * Settings. The mega menu's first column renders this same component, and both sit on the shared
  * shell grid, so opening or closing the menu never moves it. Large screens only; below `lg` the
@@ -51,9 +51,8 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
   });
 
   const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
-  // Four parents; the machine pages are tabs inside Settings.
+  // Three parents (no Home: closing the menu returns to the chat); the machine pages are tabs inside Settings.
   const parents = [
-    { href: `${base}/`, label: t(copy.home), active: is("") },
     page("/sessions", copy.sessions),
     page("/catalog", copy.catalog),
     { ...page("/settings", copy.settings, notReady), active: inSettings(splitPath(pathname).rest) },
