@@ -11,13 +11,13 @@ import type { PackInfo } from "../pack/types";
 import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
 import { useReadAloud } from "../menu/use-read-aloud";
 import { getSession } from "../sessions/actions";
-import { loadSettings } from "../settings/actions";
 import { OpenInMachine, useInMachine } from "../shell/content";
 import { storedLang, swapLocale } from "../shell/lang";
 import { speak } from "../voice/actions";
 import { ask, stop } from "./actions";
 import { ActivityRows, StatusLine } from "./activity";
 import { Composer } from "./composer";
+import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { Suggestions } from "./suggestions";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
@@ -56,6 +56,7 @@ export default function ChatContent({
   const router = useRouter();
   const inApp = useInMachine();
   const [pack, setPack] = useState<PackInfo | null>(null);
+  const ctx = useWorkingContext(inApp === true);
   const [messages, setMessages] = useState<Message[]>([]);
   const [session, setSession] = useState<string | null>(resume ?? null);
   const [resumed, setResumed] = useState<string | null>(null);
@@ -73,14 +74,17 @@ export default function ChatContent({
       );
   }, [lang, router]);
 
+  // The department's pack follows Settings live (the menu, chat and sidebar share one department).
   useEffect(() => {
-    if (!inApp) return;
-    void (async () => {
-      const s = await loadSettings();
-      if (s) setPack(await packInfo(s.department).catch(() => null));
-      if (resume)
-        setResumed((await getSession(resume).catch(() => null))?.title ?? null);
-    })();
+    if (!inApp || !ctx.dept) return;
+    void packInfo(ctx.dept).then(setPack).catch(() => setPack(null));
+  }, [inApp, ctx.dept]);
+
+  useEffect(() => {
+    if (!inApp || !resume) return;
+    void getSession(resume)
+      .then((s) => setResumed(s?.title ?? null))
+      .catch(() => setResumed(null));
   }, [inApp, resume]);
 
   const busy = jobId !== null;
@@ -153,7 +157,7 @@ export default function ChatContent({
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null }, onEvent);
+        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -166,7 +170,7 @@ export default function ChatContent({
         setJobId(null);
       }
     },
-    [messages, busy, session, onEvent, patchLast, scrollToBottom],
+    [messages, busy, session, task, ctx.repo, onEvent, patchLast, scrollToBottom],
   );
 
   /** Runs the last prompt again, in place of the failed answer. */
@@ -207,6 +211,17 @@ export default function ChatContent({
 
   const empty = messages.length === 0;
   const quick = pack?.quick_actions ?? [];
+  const contextLine = (
+    <ContextLine
+      lang={lang}
+      profile={ctx.profile}
+      dept={ctx.dept}
+      repos={ctx.repos}
+      repo={ctx.repo}
+      onRepo={ctx.setRepo}
+      disabled={busy}
+    />
+  );
 
   return (
     <div className="flex h-full flex-col overflow-x-clip">
@@ -230,15 +245,18 @@ export default function ChatContent({
                   </p>
                 )}
               </div>
+              <div className="w-full">
+                {contextLine}
               <Composer
-                lang={lang}
-                onSend={(text) => void send(text)}
-                onStop={() => jobId && void stop(jobId)}
-                busy={busy}
-                actions={quick}
-                initialText={prompt}
-                autoFocus
-              />
+                  lang={lang}
+                  onSend={(text) => void send(text)}
+                  onStop={() => jobId && void stop(jobId)}
+                  busy={busy}
+                  actions={quick}
+                  initialText={prompt}
+                  autoFocus
+                />
+              </div>
               <Suggestions
                 actions={quick}
                 isAr={isAr}
@@ -301,6 +319,7 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
+          {contextLine}
           <Composer
             lang={lang}
             onSend={(text) => void send(text)}

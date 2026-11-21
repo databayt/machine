@@ -2,42 +2,43 @@
 
 import { useCallback, useEffect, useState } from "react";
 
-import type { MachineProfile } from "../profile/types";
-import { DEPT_KEY } from "./config";
-
-const DEPT_EVENT = "kun:dept";
+import { loadSettings, saveSettings } from "../settings/actions";
+import { DEPT_EVENT } from "./config";
 
 /**
- * The selected department: the remembered choice (localStorage, `DEPT_KEY`) if the profile still has
- * it, else the profile's first. The menu and the app sidebar both read it, so a pick in one reaches
- * the other in the same tab through a window event.
+ * The department, from one place: `settings.department` (Rust resolves it against the machine's
+ * registry, so it is always one this machine may use). `choose` saves it through the settings
+ * action, which refuses one the profile does not authorize, and tells the other components in the
+ * same tab with a window event. Outside the app there are no settings and `dept` stays empty.
  */
-export function useDepartment(profile: Pick<MachineProfile, "departments"> | null): {
+export function useDepartment(): {
   dept: string;
-  choose: (name: string) => void;
+  choose: (name: string) => Promise<void>;
 } {
   const [dept, setDept] = useState("");
 
   useEffect(() => {
-    if (!profile?.departments.length) return;
-    const names = profile.departments.map((d) => d.name);
-    const read = () => {
-      let saved = "";
-      try {
-        saved = localStorage.getItem(DEPT_KEY) ?? "";
-      } catch {}
-      setDept(names.includes(saved) ? saved : names[0]);
-    };
-    read();
+    let live = true;
+    const read = () =>
+      loadSettings()
+        .then((s) => live && setDept(s?.department ?? ""))
+        .catch(() => {});
+    void read();
     window.addEventListener(DEPT_EVENT, read);
-    return () => window.removeEventListener(DEPT_EVENT, read);
-  }, [profile]);
+    return () => {
+      live = false;
+      window.removeEventListener(DEPT_EVENT, read);
+    };
+  }, []);
 
-  const choose = useCallback((name: string) => {
-    setDept(name);
+  const choose = useCallback(async (name: string) => {
+    const now = await loadSettings();
+    if (!now) return;
     try {
-      localStorage.setItem(DEPT_KEY, name);
-    } catch {}
+      await saveSettings({ ...now, department: name });
+    } catch {
+      return; // not authorized: nothing changes
+    }
     window.dispatchEvent(new Event(DEPT_EVENT));
   }, []);
 

@@ -3,7 +3,9 @@
 import { cn } from "@/lib/utils";
 
 /**
- * The only chrome: a fixed button at the top start corner. Its two lines (space's menu mark) meet in
+ * The only chrome: a fixed button at the top start corner. Its icon sits on the content edge: 26px
+ * below `lg` (the `ps-[26px]` of the pages), 46px on `lg` (the shell grid's `ps-[46px]`), level with the
+ * sidebar's first item; logical offsets, so RTL mirrors it. Its two lines (space's menu mark) meet in
  * the middle and rotate ±45° into an X when open, and back. 200ms ease-out; instant under
  * prefers-reduced-motion. It sits above the dialog, so it is also the close button.
  */
@@ -42,7 +44,7 @@ export function MorphButton({
       aria-haspopup="dialog"
       aria-expanded={open}
       className={cn(
-        "fixed start-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] inline-flex size-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/5",
+        "fixed start-3 top-[max(0.75rem,env(safe-area-inset-top))] z-[60] lg:start-8 lg:top-[3.65rem] inline-flex size-11 items-center justify-center rounded-full text-foreground transition-colors hover:bg-foreground/5",
       )}
     >
       {/* Same mark as space: d="M4 8h16M4 16h16" — as two lines so each can move. */}

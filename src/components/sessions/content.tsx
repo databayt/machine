@@ -80,8 +80,11 @@ export default function SessionsContent({ lang }: { lang: Locale }): React.JSX.E
                     </>
                   ) : (
                     <>
-                      <Link href={`/${lang}/?s=${encodeURIComponent(s.id)}`} className="min-w-0 flex-1 truncate py-4 font-medium">
+                      <Link href={`/${lang}/?s=${encodeURIComponent(s.id)}`} className="min-w-0 flex-1 truncate py-3 font-medium">
                         <span dir="auto">{s.title || t(COPY.untitled)}</span>
+                        <span dir="ltr" className="block truncate text-xs font-normal text-muted-foreground">
+                          {s.repo ? `${s.department} · ${s.repo}` : s.department}
+                        </span>
                       </Link>
                       <button
                         type="button"

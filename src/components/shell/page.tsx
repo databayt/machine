@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils"
 
+import { SHELL_TOP } from "./grid"
 import { SettingsTabs } from "./tabs"
 
 /**
@@ -22,7 +23,7 @@ export function PageShell({
   children: React.ReactNode
 }) {
   return (
-    <div className="min-w-0 ps-[26px] pe-6 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16 lg:pt-16">
+    <div className={cn("min-w-0 ps-[26px] pe-6 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16", SHELL_TOP)}>
       <div className={cn("flex min-w-0 max-w-4xl flex-col gap-10", className)}>
         <SettingsTabs />
         <header className="flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-3">

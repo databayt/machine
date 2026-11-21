@@ -1,20 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
 import type { HealthReport } from "./data";
 import { tr } from "../chat/config";
 import { useInMachine } from "../shell/content";
+import { SHELL_GRID, SHELL_TOP } from "../shell/grid";
+import { AppSidebar } from "../shell/sidebar";
 import { getProfile, type MachineProfile } from "../profile/actions";
-import { copy, promptHref } from "./config";
+import { copy } from "./config";
 import { useDepartment } from "./use-department";
 import { loadHealth, loadTasks, type TasksView } from "./data";
-import { Departments } from "./departments";
 import { Footer } from "./footer";
-import { Tools } from "./tools";
 import { Keywords } from "./keywords";
 import { MorphButton } from "./morph-button";
 import { Issues, upcoming } from "./issues";
@@ -28,16 +28,16 @@ const reduced = () => typeof window !== "undefined" && window.matchMedia("(prefe
 
 /**
  * The machine's mega menu. A fixed two-line button morphs into an X; the full-screen dialog fades and
- * lifts in. Departments on the first column; the rest is the work area: the banner, the department's workflows as a carousel, then the upcoming issues as cards. A footer strip below.
+ * lifts in. The first column is the app's sidebar (the same component every page has); the rest is the work area: the banner, the department's workflows as a carousel, then the upcoming issues as cards. A footer strip below.
  */
 export function MachineMenu({ lang }: { lang: Locale }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
   const inApp = useInMachine();
   const pathname = usePathname();
+  const router = useRouter();
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
-  const firstDept = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const [mounted, setMounted] = useState(false);
@@ -54,7 +54,16 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     document.documentElement.style.overflow = "hidden";
     requestAnimationFrame(() => requestAnimationFrame(() => setVisible(true)));
   }, []);
-  const close = useCallback(() => {
+  /**
+   * `home`: the X button and Esc, which return to the chat unless already there. A link click or a
+   * pathname change closes without redirecting.
+   */
+  const atHome = (pathname ?? "").replace(/\/+$/, "") === `/${lang}` || !pathname;
+  const homeRef = useRef(atHome);
+  homeRef.current = atHome;
+  const close = useCallback(
+    (opts?: { home?: boolean }) => {
+    if (opts?.home && !homeRef.current) router.push(`/${lang}/`);
     setVisible(false);
     clearTimeout(timer.current);
     const done = () => {
@@ -64,7 +73,9 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     if (reduced()) done();
     else timer.current = setTimeout(done, MS);
     trigger.current?.focus();
-  }, []);
+    },
+    [router, lang],
+  );
   useEffect(() => () => clearTimeout(timer.current), []);
 
   // Navigating closes it.
@@ -79,7 +90,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     getProfile().then(setProfile).catch(() => setProfile(null));
   }, [inApp]);
 
-  const { dept, choose } = useDepartment(profile);
+  const { dept } = useDepartment();
 
   useEffect(() => {
     if (!visible || !inApp) return;
@@ -116,18 +127,16 @@ export function MachineMenu({ lang }: { lang: Locale }) {
     };
   }, [inApp]);
 
-  // Focus into the dialog on open — once, not again on every department change (that moved focus
-  // to whichever button held the ref mid-render and lit a second department).
+  // Focus into the dialog on open — once, onto the dialog itself, so no item is lit.
   useEffect(() => {
-    if (visible) firstDept.current?.focus({ preventScroll: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- open only, by design
+    if (visible) root.current?.focus({ preventScroll: true });
   }, [visible]);
 
   // Esc closes; Tab stays inside the dialog and the button that closes it.
   useEffect(() => {
     if (!mounted) return;
     const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape") return close();
+      if (e.key === "Escape") return close({ home: true });
       if (e.key !== "Tab" || !root.current) return;
       const items = [
         trigger.current,
@@ -174,7 +183,7 @@ export function MachineMenu({ lang }: { lang: Locale }) {
         buttonRef={trigger}
         open={visible}
         label={t(visible ? copy.close : copy.open)}
-        onClick={visible ? close : open}
+        onClick={visible ? () => close({ home: true }) : open}
       />
       {mounted && (
         <div
@@ -183,49 +192,33 @@ export function MachineMenu({ lang }: { lang: Locale }) {
           aria-modal="true"
           aria-label={t(copy.title)}
           dir={isAr ? "rtl" : "ltr"}
+          tabIndex={-1}
           onClick={(e) => {
             const a = (e.target as HTMLElement).closest("a");
             if (a && a.target !== "_blank") close();
           }}
           className={cn(
-            "fixed inset-0 z-50 flex h-dvh flex-col overflow-y-auto overscroll-contain bg-muted text-foreground transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+            "fixed inset-0 z-50 flex h-dvh outline-none flex-col overflow-y-auto overscroll-contain bg-muted text-foreground transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
             visible ? "translate-y-0 opacity-100" : "translate-y-2 opacity-0",
           )}
         >
           <nav
             aria-label={t(copy.title)}
-            className="flex w-full flex-1 flex-col justify-center gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:grid lg:grid-cols-[12rem_minmax(0,1fr)] lg:content-center lg:items-center lg:gap-x-28 lg:py-32 lg:ps-[46px] lg:pe-16"
+            className={cn(
+              "flex w-full flex-1 flex-col gap-8 ps-[26px] pe-6 pb-4 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:pb-16 lg:pe-16 lg:pt-0",
+              SHELL_GRID,
+            )}
           >
+            <AppSidebar lang={lang} />
             {inApp && profile && profile.departments.length > 0 ? (
-              <>
-                <Departments
-                  isAr={isAr}
-                  profile={profile}
-                  selected={dept}
-                  label={t(copy.title)}
-                  onSelect={choose}
-                  first={firstDept}
-                  links={[
-                    { href: `/${lang}/`, label: t(copy.home) },
-                    { href: `/${lang}/sessions/`, label: t(copy.sessions) },
-                    { href: `/${lang}/catalog/`, label: t(copy.catalog) },
-                    { href: `/${lang}/settings/`, label: t(copy.settings) },
-                    { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },
-                    { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },
-                  ]}
-                  tools={<Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />}
-                />
-                <div className="flex min-w-0 flex-col gap-10">
-                  <Banner items={spotlight} lang={lang} onNavigate={close} />
-                  <Workflows lang={lang} workflows={workflows} />
-                  <Keywords lang={lang} department={current} />
-                  <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={close} />
-                </div>
-              </>
+              <div className={cn("flex min-w-0 flex-col gap-10", SHELL_TOP)}>
+                <Banner items={spotlight} lang={lang} onNavigate={() => close()} />
+                <Workflows lang={lang} workflows={workflows} />
+                <Keywords lang={lang} department={current} />
+                <Issues lang={lang} view={tasks} tasks={queue} login={profile.login} loading={tasksLoading} onStarted={() => close()} />
+              </div>
             ) : (
-              <p className={cn(quiet, "lg:col-span-4 lg:text-center")}>
-                {inApp ? t(copy.noDept) : t(copy.appOnly)}
-              </p>
+              <p className={cn(quiet, SHELL_TOP)}>{inApp ? t(copy.noDept) : t(copy.appOnly)}</p>
             )}
           </nav>
           <Footer lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />

@@ -18,6 +18,12 @@ export const copy = {
     ar: "اشرح لي منهج الرياضيات الذي نغطيه: الصفوف والكتب وكيف يدرّسه هوغورتس.",
   },
   settings: { en: "Settings", ar: "الإعدادات" },
+  department: { en: "Department", ar: "القسم" },
+  departmentSetBy: { en: "Set by your machine ID.", ar: "يحدّده معرّف جهازك." },
+  departmentPick: { en: "Choose the department you work in. Your machine ID allows these.", ar: "اختر القسم الذي تعمل فيه. معرّف جهازك يسمح بهذه الأقسام." },
+  repository: { en: "Repository", ar: "المستودع" },
+  allRepos: { en: "All repos", ar: "كل المستودعات" },
+  noRepoHere: { en: "No repository of this department is cloned yet.", ar: "لم يُستنسخ أي مستودع لهذا القسم بعد." },
   general: { en: "General", ar: "عام" },
   catalog: { en: "Catalog", ar: "الكتالوج" },
   docs: { en: "Docs", ar: "التوثيق" },
@@ -83,4 +89,5 @@ export const promptHref = (lang: string, prompt: string) => `/${lang}/?prompt=${
 export const NEW_CHAT_EVENT = "kun:new-chat"
 export const CHAT_DELETED_EVENT = "kun:chat-deleted"
 
-export const DEPT_KEY = "kun.machine.dept"
+/** Fired on `window` when the department changes, so the menu, chat and sidebar follow at once. */
+export const DEPT_EVENT = "kun:dept"

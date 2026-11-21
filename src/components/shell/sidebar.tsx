@@ -3,21 +3,25 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
+import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
 import { tr } from "../chat/config";
-import { copy } from "../menu/config";
-import { Departments } from "../menu/departments";
-import { useDepartment } from "../menu/use-department";
+import { copy, promptHref } from "../menu/config";
+import { loadHealth, type HealthReport } from "../menu/data";
+import { NavLinks } from "../menu/departments";
+import { Tools } from "../menu/tools";
 import { readinessState } from "../readiness/actions";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { useInMachine } from "./content";
+import { SHELL_TOP } from "./grid";
 import { inSettings, splitPath } from "./tabs";
 
 /**
- * The persistent app sidebar: the menu's Departments column (same component, same look) kept on
- * screen beside every page. Departments, then a few links with the current one highlighted; the
- * hamburger menu (on every screen size) carries every page. Large screens only. Outside the app
- * (a plain browser) there is no profile, so only the links show.
+ * The one sidebar of the app, in the menu's item style: Home, Sessions, Catalog and Settings (with
+ * the readiness %), then Docs and Mathematics, then the tools row. No departments: those live in
+ * Settings. The mega menu's first column renders this same component, and both sit on the shared
+ * shell grid, so opening or closing the menu never moves it. Large screens only; below `lg` the
+ * menu's footer carries the same links.
  */
 export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   const isAr = lang === "ar";
@@ -25,12 +29,13 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
   const inApp = useInMachine();
   const pathname = usePathname() ?? "";
   const [profile, setProfile] = useState<MachineProfile | null>(null);
+  const [health, setHealth] = useState<HealthReport | null>(null);
   const [readyPct, setReadyPct] = useState<number | null>(null);
-  const { dept, choose } = useDepartment(profile);
 
   useEffect(() => {
     if (!inApp) return;
     getProfile().then(setProfile).catch(() => setProfile(null));
+    loadHealth().then(setHealth);
     readinessState().then((v) => setReadyPct(v && v.hasState ? Math.round(v.percent) : null)).catch(() => setReadyPct(null));
   }, [inApp]);
 
@@ -47,23 +52,27 @@ export function AppSidebar({ lang }: { lang: Locale }): React.JSX.Element {
 
   const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
   // Four parents; the machine pages are tabs inside Settings.
-  const links = [
+  const parents = [
     { href: `${base}/`, label: t(copy.home), active: is("") },
     page("/sessions", copy.sessions),
     page("/catalog", copy.catalog),
     { ...page("/settings", copy.settings, notReady), active: inSettings(splitPath(pathname).rest) },
   ];
+  const more = [
+    { href: `https://kun.databayt.org/${lang}/docs`, label: t(copy.docs) },
+    { href: promptHref(lang, t(copy.mathematicsStarter)), label: t(copy.mathematics) },
+  ];
+  const showEngine = inApp === true && (!profile || profile.access.engine);
 
   return (
-    <aside className="hidden min-h-0 min-w-0 overflow-y-auto overscroll-contain lg:block lg:pt-16">
-      <Departments
-        isAr={isAr}
-        profile={inApp && profile ? profile : { departments: [] }}
-        selected={dept}
-        label={t(copy.title)}
-        onSelect={choose}
-        links={links}
-      />
+    <aside className={cn("hidden min-h-0 min-w-0 overflow-y-auto overscroll-contain lg:block lg:self-stretch", SHELL_TOP)}>
+      <nav aria-label={t(copy.title)} className="lg:w-36">
+        <NavLinks links={parents} />
+        <hr className="my-4 border-foreground/10" />
+        <NavLinks links={more} />
+        <hr className="my-4 border-foreground/10" />
+        <Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />
+      </nav>
     </aside>
   );
 }

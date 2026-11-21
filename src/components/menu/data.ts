@@ -23,13 +23,22 @@ export async function runStart(id: string): Promise<void> {
   await m.startTask(id);
 }
 
-export async function loadHealth(): Promise<HealthReport | null> {
-  try {
-    const m = await import("../network/actions");
-    return await m.getHealth();
-  } catch {
-    return null;
-  }
+let healthAt = 0;
+let healthPending: Promise<HealthReport | null> | null = null;
+
+/** The sidebar and the menu both ask; one call serves them within a few seconds. */
+export function loadHealth(): Promise<HealthReport | null> {
+  if (healthPending && Date.now() - healthAt < 5000) return healthPending;
+  healthAt = Date.now();
+  healthPending = (async () => {
+    try {
+      const m = await import("../network/actions");
+      return await m.getHealth();
+    } catch {
+      return null;
+    }
+  })();
+  return healthPending;
 }
 
 export async function loadTeam(department: string): Promise<TeamResponse | null> {
