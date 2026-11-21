@@ -76,20 +76,17 @@ export interface NavLink {
   hint?: string;
   /** Literal text (a folder name) reads left to right in any language. */
   ltr?: boolean;
-  /** The path under this link, indented and smaller. */
+  /** The path under this link, indented, at the same size. */
   children?: NavLink[];
 }
-
-/** The sub-links under an active parent: smaller and lighter than `item`, free to wrap inside the column. */
-const sub =
-  "relative block py-0.5 text-start text-sm font-medium leading-snug tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4";
 
 /** A column of the sidebar's links; a link with `children` lists them under it (the path doubles as the breadcrumb). */
 export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: number }): React.JSX.Element {
   return (
-    <ul className={cn("flex flex-col", depth === 0 ? "gap-1" : "ps-4")}>
+    <ul className={cn("flex flex-col gap-1", depth > 0 && "mt-1 ps-4")}>
       {links.map((l) => {
-        const tone = l.active || l.mark ? "text-foreground" : "text-muted-foreground hover:text-foreground";
+        // Only the deepest link of the path is strong; the links above it (the parent too) go quiet.
+        const tone = l.current || l.mark ? "text-foreground" : "text-muted-foreground hover:text-foreground";
         return (
           <li key={l.href}>
             {/^https?:\/\//.test(l.href) ? (
@@ -100,7 +97,7 @@ export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: numbe
               <Link
                 href={l.href}
                 aria-current={l.current ? "page" : undefined}
-                className={cn(depth === 0 ? item : sub, tone)}
+                className={cn(item, depth > 0 && "whitespace-normal", tone)}
               >
                 <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
                 {l.hint && (

@@ -72,7 +72,6 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            hint: k.hint,
             ltr: node.id === "claude",
             active: on,
             mark: on && !leaf,
