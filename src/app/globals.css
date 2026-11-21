@@ -92,13 +92,6 @@
   [dir="rtl"] {
     text-align: right;
   }
-  /* As in the marketing repo: Geist for English, Rubik for Arabic. */
-  body {
-    font-family: var(--font-sans), sans-serif;
-  }
-  html[dir="rtl"] body {
-    font-family: var(--font-rubik), var(--font-sans), sans-serif;
-  }
 }
 
 /* machine chat — the agent's thinking mark (components/chat/activity.tsx <Dots>)

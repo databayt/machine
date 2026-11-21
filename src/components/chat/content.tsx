@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownIcon, RotateCcwIcon } from "lucide-react";
 
-import { headline } from "@/components/atom/fonts";
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
 import { packInfo } from "../pack/actions";
@@ -236,7 +235,7 @@ export default function ChatContent({
             <div className="mx-auto flex min-h-full w-full max-w-3xl flex-col items-center justify-center gap-8 px-6 pb-[12vh] pt-20 lg:px-10 lg:pt-24">
               <div className="text-center">
                 <h1
-                  className={`text-balance leading-snug ${headline} ${isAr ? "text-3xl sm:text-4xl" : "text-xl sm:text-2xl"}`}
+                  className={`text-balance font-['thmanyah_serif_display',var(--font-sans)] font-bold leading-snug ${isAr ? "text-3xl sm:text-4xl" : "text-xl tracking-tight sm:text-2xl"}`}
                 >
                   {greeting(isAr)}
                 </h1>

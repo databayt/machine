@@ -1,4 +1,3 @@
-import { headline } from "@/components/atom/fonts"
 import { cn } from "@/lib/utils"
 
 import { SHELL_TOP } from "./grid"
@@ -29,7 +28,7 @@ export function PageShell({
         <SettingsTabs />
         <header className="flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
-            <h1 className={cn("text-balance text-3xl leading-snug lg:text-[38px]", headline)}>
+            <h1 className="text-balance font-['thmanyah_serif_display',var(--font-sans)] text-3xl font-bold leading-snug tracking-tight lg:text-[38px]">
               {title}
             </h1>
             {description && <p className="mt-2 text-sm text-muted-foreground">{description}</p>}

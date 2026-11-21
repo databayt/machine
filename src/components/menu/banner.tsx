@@ -396,8 +396,7 @@ function SortingHeadline({
         "transition-[filter,translate] duration-500 ease-out motion-reduce:transition-none",
         leaving ? "-translate-y-1.5 blur-[6px]" : "translate-y-0 blur-none",
       )}
-      // English in Geist (the marketing repo's type); Arabic keeps thmanyah sans.
-      style={{ fontFamily: locale === "ar" ? '"thmanyah sans", sans-serif' : "var(--font-sans), sans-serif" }}
+      style={{ fontFamily: '"thmanyah sans", sans-serif' }}
     >
       <span aria-hidden="true">
         {pieces.map((piece, i) => (

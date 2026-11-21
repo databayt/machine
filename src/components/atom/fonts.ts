@@ -15,10 +15,3 @@ export const fontRubik = Rubik({
 })
 
 export const fontVariables = cn(fontSans.variable, fontMono.variable, fontRubik.variable)
-
-/**
- * Headlines, as in the marketing repo's hero: English in Geist 700 at -0.04em, Arabic in the
- * Thmanyah serif (Rubik behind it until the face loads).
- */
-export const headline =
-  "font-sans font-bold tracking-[-0.04em] rtl:font-['thmanyah_serif_display',var(--font-rubik)] rtl:tracking-normal"
