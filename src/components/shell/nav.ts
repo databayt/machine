@@ -78,6 +78,27 @@ export function trailOf(pathname: string, params: Params): Trail {
   return none
 }
 
+const PARENT_HREF: Record<ParentId, string> = {
+  sessions: "/sessions/",
+  install: "/install/",
+  claude: "/catalog/",
+  settings: "/settings/",
+}
+
+/** One level up from the address: the leaf goes to its child, a child to its parent, a parent to the chat. */
+export function backHref(pathname: string, params: Params): string {
+  const { lang } = splitPath(pathname)
+  const { parent, child, leaf } = trailOf(pathname, params)
+  const home = `/${lang}/`
+  if (!parent) return home
+  if (leaf && child) {
+    if (parent === "install") return `/${lang}/install/?stage=${encodeURIComponent(child)}`
+    if (parent === "claude") return `/${lang}/catalog/?dir=${encodeURIComponent(child)}`
+  }
+  if (child) return `/${lang}${PARENT_HREF[parent]}`
+  return home
+}
+
 const DONE: StepStatus[] = ["pass", "fixed", "updated"]
 
 /** `done/total` per stage; a step with status `skip` counts in neither number. */

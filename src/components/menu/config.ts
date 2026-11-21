@@ -23,6 +23,7 @@ export const copy = {
   departmentPick: { en: "Choose the department you work in. Your machine ID allows these.", ar: "اختر القسم الذي تعمل فيه. معرّف جهازك يسمح بهذه الأقسام." },
   repository: { en: "Repository", ar: "المستودع" },
   allRepos: { en: "All repos", ar: "كل المستودعات" },
+  back: { en: "Back", ar: "رجوع" },
   searchRepos: { en: "Search repositories…", ar: "ابحث في المستودعات…" },
   notCloned: { en: "Not cloned yet: picking it clones it", ar: "غير مستنسخ بعد: اختياره يستنسخه" },
   noRepoHere: { en: "No repository of this department is cloned yet.", ar: "لم يُستنسخ أي مستودع لهذا القسم بعد." },

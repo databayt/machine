@@ -1,5 +1,8 @@
+import { Suspense } from "react"
+
 import { cn } from "@/lib/utils"
 
+import { BackButton } from "./back"
 import { SHELL_TOP } from "./grid"
 
 /**
@@ -23,9 +26,13 @@ export function PageShell({
       <div
         className={cn(
           "min-h-0 flex-1 overflow-y-auto overscroll-contain ps-[26px] pe-6 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16",
+          "flex flex-col",
           SHELL_TOP,
         )}
       >
+        <Suspense fallback={<div className="mb-4 size-10" aria-hidden />}>
+          <BackButton />
+        </Suspense>
         <div className={cn("flex min-w-0 max-w-4xl flex-col gap-10", className)}>{children}</div>
       </div>
     </section>

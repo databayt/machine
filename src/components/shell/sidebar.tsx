@@ -13,10 +13,10 @@ import { itemName, type NavNode } from "./nav";
 import { useNav } from "./use-nav";
 
 /**
- * The one sidebar of the app, in the menu's item style: a tree of four parents (Sessions, Install,
- * .claude, Settings), then Docs and Mathematics, then the tools row. The active parent opens its
- * children under it and the deepest open level opens one more line, so the sidebar doubles as the
- * breadcrumb; every line above the deepest is a link back up. One white mark, on the deepest listed
+ * The one sidebar of the app, in the menu's item style: four parents (Sessions, Install, .claude,
+ * Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
+ * parent it lists only the path taken (the card opened on its page, then the step or item under it),
+ * nothing before a card is opened; every line above the deepest is a link back up. One white mark, on the deepest listed
  * line. The mega menu's first column renders this same component on the same shell grid. It reads the
  * address (`useSearchParams`), so it needs a `<Suspense>` above it. Large screens only; below `lg` the
  * menu's footer carries the four parents.
@@ -24,7 +24,7 @@ import { useNav } from "./use-nav";
 export function AppSidebar({ lang, className }: { lang: Locale; className?: string }): React.JSX.Element {
   const isAr = lang === "ar";
   const t = tr(isAr);
-  const { inApp, engine, view, readyPct, tree, trail } = useNav(lang);
+  const { inApp, engine, view, tree, trail } = useNav(lang);
   const [health, setHealth] = useState<HealthReport | null>(null);
 
   useEffect(() => {
@@ -32,7 +32,6 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
   }, [inApp]);
 
   const text = (n: NavNode) => (typeof n.label === "string" ? n.label : t(n.label));
-  const notReady = readyPct !== null && readyPct < 100 ? ` · ${readyPct}%` : "";
 
   /** The line under the active child, naming the open step or item. */
   const leafLink = (parent: NavNode, child: NavNode): NavLink | null => {
@@ -64,8 +63,10 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       const id = trail.child;
       kids = [...kids, { id, label: id, href: (l) => `/${l}/install/?stage=${encodeURIComponent(id)}` }];
     }
-    const children: NavLink[] | undefined = open
-      ? kids.map((k) => {
+    // A breadcrumb, not a menu: nothing under the parent until a card on its page is opened, then
+    // only that card (and the step or item open under it).
+    const children: NavLink[] | undefined = open && trail.child
+      ? kids.filter((k) => k.id === trail.child).map((k) => {
           const on = trail.child === k.id;
           const leaf = on ? leafLink(node, k) : null;
           return {
@@ -83,7 +84,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
     const here = open && !trail.child;
     return {
       href: node.href(lang),
-      label: text(node) + (node.id === "install" ? notReady : ""),
+      label: text(node),
       active: open,
       mark: here,
       current: here,

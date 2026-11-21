@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { buildTree, dirOfItem, splitPath, stageCounts, trailOf } from "./nav.ts"
+import { backHref, buildTree, dirOfItem, splitPath, stageCounts, trailOf } from "./nav.ts"
 
 const q = (s: string) => new URLSearchParams(s)
 const trail = (path: string, search = "") => trailOf(path, q(search))
@@ -65,4 +65,15 @@ test("an item id names its folder", () => {
   assert.equal(dirOfItem("pack:sales"), "departments")
   assert.equal(dirOfItem("hook:x"), "hooks")
   assert.equal(dirOfItem("nope:x"), null)
+})
+
+test("back goes one level up the breadcrumb, and from a parent to the chat", () => {
+  const back = (path: string, search = "") => backHref(path, q(search))
+  assert.equal(back("/en/install/", "stage=core&step=git"), "/en/install/?stage=core")
+  assert.equal(back("/en/install/", "stage=core"), "/en/install/")
+  assert.equal(back("/en/install/"), "/en/")
+  assert.equal(back("/ar/catalog/", "dir=skills&item=skill:funnel"), "/ar/catalog/?dir=skills")
+  assert.equal(back("/ar/catalog/", "dir=skills"), "/ar/catalog/")
+  assert.equal(back("/en/config/"), "/en/settings/")
+  assert.equal(back("/en/sessions/"), "/en/")
 })
