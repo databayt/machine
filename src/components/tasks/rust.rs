@@ -81,13 +81,13 @@ fn work_dir() -> Result<PathBuf, TaskError> {
             .map_err(|e| local(e.to_string()))?
             .dir)
     } else {
-        pack::workdir(&s.department).map_err(|e| local(e.to_string()))
+        pack::workdir(&profile::effective_department(&resolved.profile, &s.department)).map_err(|e| local(e.to_string()))
     }
 }
 
 fn departments_to_search() -> Vec<String> {
     let mut out = Vec::new();
-    if let Ok(s) = settings::load() {
+    if let Ok(s) = settings::load_effective() {
         out.push(s.department);
     }
     if let Ok(r) = profile::current() {

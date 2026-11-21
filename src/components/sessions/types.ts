@@ -4,4 +4,8 @@ import type { DriverKind } from "../driver/types";
 /**
  * One remembered conversation.
  */
-export type Session = { id: string, title: string, department: string, driver: DriverKind, created_at: number, updated_at: number, };
+export type Session = { id: string, title: string, department: string, 
+/**
+ * The repository the run was limited to; absent for "all repos" and for older sessions.
+ */
+repo: string | null, driver: DriverKind, created_at: number, updated_at: number, };

@@ -128,6 +128,7 @@ use crate::profile::{
 
 fn profile(code: CodeAccess) -> MachineProfile {
     MachineProfile {
+        department: String::new(),
         login: "moed".into(),
         name: "معد".into(),
         os: "windows".into(),

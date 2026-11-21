@@ -37,7 +37,12 @@ href: string, };
 /**
  * What the UI knows about this machine.
  */
-export type MachineProfile = { login: string, name: string, os: string, driver: DriverKind, departments: Array<Department>, repos: Array<string>, access: Access, 
+export type MachineProfile = { login: string, name: string, os: string, driver: DriverKind, departments: Array<Department>, 
+/**
+ * The default department: the registry's `department` when it is one of `departments`, else
+ * the first. Empty only when the machine has no department at all.
+ */
+department: string, repos: Array<string>, access: Access, 
 /**
  * Catalog ids this machine never sees, even inside its packs (e.g. `skill:edit` on a machine
  * where that lane is Mac-only). Filtered from the menu, the catalog and the workspace.

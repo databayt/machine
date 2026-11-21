@@ -14,11 +14,12 @@ fn upsert_keeps_title_and_bumps_time() {
         "abc-1",
         "  عرض   سعر  ",
         "sales",
+        None,
         DriverKind::Claude,
     )
     .unwrap();
     assert_eq!(a.title, "عرض سعر");
-    let b = upsert_in(d.path(), "abc-1", "ignored", "sales", DriverKind::Claude).unwrap();
+    let b = upsert_in(d.path(), "abc-1", "ignored", "sales", None, DriverKind::Claude).unwrap();
     assert_eq!((b.title.as_str(), b.created_at), ("عرض سعر", a.created_at));
     assert_eq!(list_in(d.path()).unwrap().len(), 1);
 }
@@ -26,7 +27,7 @@ fn upsert_keeps_title_and_bumps_time() {
 #[test]
 fn rename_get_delete() {
     let d = tempfile::tempdir().unwrap();
-    upsert_in(d.path(), "s1", "one", "sales", DriverKind::Codex).unwrap();
+    upsert_in(d.path(), "s1", "one", "sales", None, DriverKind::Codex).unwrap();
     assert_eq!(rename_in(d.path(), "s1", "two").unwrap().title, "two");
     assert_eq!(get_in(d.path(), "s1").unwrap().driver, DriverKind::Codex);
     delete_in(d.path(), "s1").unwrap();
@@ -46,14 +47,14 @@ fn validates_input() {
     for id in ["", "a/b", "../x", "a b"] {
         assert!(
             matches!(
-                upsert_in(d.path(), id, "t", "sales", DriverKind::Claude),
+                upsert_in(d.path(), id, "t", "sales", None, DriverKind::Claude),
                 Err(SessionsError::BadId)
             ),
             "{id}"
         );
     }
     assert!(matches!(
-        upsert_in(d.path(), "ok", "   ", "sales", DriverKind::Claude),
+        upsert_in(d.path(), "ok", "   ", "sales", None, DriverKind::Claude),
         Err(SessionsError::BadTitle)
     ));
     assert!(matches!(
@@ -67,7 +68,7 @@ fn damaged_file_is_reported_not_overwritten() {
     let d = tempfile::tempdir().unwrap();
     fs::write(d.path().join("sessions.json"), "{oops").unwrap();
     assert!(matches!(
-        upsert_in(d.path(), "s1", "t", "sales", DriverKind::Claude),
+        upsert_in(d.path(), "s1", "t", "sales", None, DriverKind::Claude),
         Err(SessionsError::Corrupt(_))
     ));
     assert_eq!(
@@ -83,6 +84,7 @@ fn newest_first() {
         id: id.into(),
         title: id.into(),
         department: "sales".into(),
+        repo: None,
         driver: DriverKind::Claude,
         created_at: at,
         updated_at: at,
@@ -94,4 +96,22 @@ fn newest_first() {
         .map(|s| s.id)
         .collect();
     assert_eq!(ids, ["new", "old"]);
+}
+
+#[test]
+fn a_session_stores_its_repo_and_keeps_it() {
+    let d = tempfile::tempdir().unwrap();
+    let a = upsert_in(d.path(), "r1", "t", "tech", Some("kun"), DriverKind::Claude).unwrap();
+    assert_eq!(a.repo.as_deref(), Some("kun"));
+    // A later turn from another context does not rewrite where the session started.
+    let b = upsert_in(d.path(), "r1", "t", "tech", None, DriverKind::Claude).unwrap();
+    assert_eq!(b.repo.as_deref(), Some("kun"));
+    assert_eq!(get_in(d.path(), "r1").unwrap().repo.as_deref(), Some("kun"));
+    // Older files without the field still load.
+    fs::write(
+        d.path().join("sessions.json"),
+        r#"{"sessions":[{"id":"o","title":"t","department":"sales","driver":"claude","created_at":1,"updated_at":1}]}"#,
+    )
+    .unwrap();
+    assert_eq!(get_in(d.path(), "o").unwrap().repo, None);
 }

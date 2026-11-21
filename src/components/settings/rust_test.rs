@@ -17,6 +17,7 @@ fn round_trips_and_trims() {
             driver: DriverKind::Opencode,
             login: " moed ".into(),
             auto_run: true,
+            ..Settings::default()
         },
     )
     .unwrap();
@@ -85,4 +86,63 @@ fn partial_file_fills_defaults_and_bad_driver_is_corrupt() {
     assert_eq!((s.person.as_str(), s.driver), ("Ali", DriverKind::Claude));
     fs::write(d.path().join("settings.json"), r#"{"driver":"gpt"}"#).unwrap();
     assert!(matches!(load_in(d.path()), Err(SettingsError::Corrupt(_))));
+}
+
+fn profile_of(names: &[&str]) -> MachineProfile {
+    use crate::profile::{Access, Department};
+    MachineProfile {
+        login: "moed".into(),
+        name: String::new(),
+        os: "macos".into(),
+        driver: DriverKind::Claude,
+        departments: names
+            .iter()
+            .map(|n| Department {
+                name: (*n).into(),
+                title: (*n).into(),
+                title_ar: None,
+                quick_actions: Vec::new(),
+                skills: Vec::new(),
+                cards: Vec::new(),
+                repos: Vec::new(),
+            })
+            .collect(),
+        department: names.first().map(|n| (*n).to_owned()).unwrap_or_default(),
+        repos: Vec::new(),
+        access: Access::FULL,
+        hidden: Vec::new(),
+    }
+}
+
+#[test]
+fn an_unauthorized_department_is_refused_and_a_stale_one_falls_back() {
+    let p = profile_of(&["tech", "sales"]);
+    let pick = |d: &str| Settings {
+        department: d.into(),
+        ..Settings::default()
+    };
+    assert!(pick("sales").authorized_for(&p).is_ok());
+    assert!(pick("").authorized_for(&p).is_ok());
+    assert!(matches!(
+        pick("video").authorized_for(&p),
+        Err(SettingsError::Unauthorized)
+    ));
+    // What is acted on: an authorized pick, else the registry default.
+    assert_eq!(pick("sales").effective(&p).department, "sales");
+    assert_eq!(pick("video").effective(&p).department, "tech");
+    assert_eq!(pick("").effective(&p).department, "tech");
+}
+
+#[test]
+fn repo_memory_is_per_department_and_validated() {
+    let d = tempfile::tempdir().unwrap();
+    let mut s = Settings::default();
+    s.repo_by_department.insert("tech".into(), "kun".into());
+    let saved = save_in(d.path(), s.clone()).unwrap();
+    assert_eq!(load_in(d.path()).unwrap(), saved);
+    s.repo_by_department.insert("tech".into(), "../x".into());
+    assert!(matches!(
+        save_in(d.path(), s),
+        Err(SettingsError::BadRepo)
+    ));
 }

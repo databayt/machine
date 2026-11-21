@@ -26,6 +26,9 @@ pub struct Session {
     pub id: String,
     pub title: String,
     pub department: String,
+    /// The repository the run was limited to; absent for "all repos" and for older sessions.
+    #[serde(default)]
+    pub repo: Option<String>,
     pub driver: DriverKind,
     #[ts(type = "number")]
     pub created_at: u64,
@@ -133,7 +136,7 @@ pub fn get_in(dir: &Path, id: &str) -> Result<Session, SessionsError> {
         .ok_or(SessionsError::NotFound)
 }
 
-/// Adds the session, or bumps `updated_at` on one that exists (its title is kept).
+/// Adds the session, or bumps `updated_at` on one that exists (its title, department and repo are kept).
 ///
 /// # Errors
 /// On a bad id or title, or a file failure.
@@ -142,6 +145,7 @@ pub fn upsert_in(
     id: &str,
     title: &str,
     department: &str,
+    repo: Option<&str>,
     driver: DriverKind,
 ) -> Result<Session, SessionsError> {
     if !valid_id(id) {
@@ -159,6 +163,7 @@ pub fn upsert_in(
                 id: id.into(),
                 title,
                 department: department.into(),
+                repo: repo.map(Into::into),
                 driver,
                 created_at: at,
                 updated_at: at,
@@ -223,9 +228,10 @@ pub fn touch(
     id: &str,
     title: &str,
     department: &str,
+    repo: Option<&str>,
     driver: DriverKind,
 ) -> Result<Session, SessionsError> {
-    upsert_in(&machine_dir()?, id, title, department, driver)
+    upsert_in(&machine_dir()?, id, title, department, repo, driver)
 }
 
 /// `list` — every session, newest first.

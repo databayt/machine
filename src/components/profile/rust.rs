@@ -165,6 +165,9 @@ pub struct MachineProfile {
     pub os: String,
     pub driver: DriverKind,
     pub departments: Vec<Department>,
+    /// The default department: the registry's `department` when it is one of `departments`, else
+    /// the first. Empty only when the machine has no department at all.
+    pub department: String,
     pub repos: Vec<String>,
     pub access: Access,
     /// Catalog ids this machine never sees, even inside its packs (e.g. `skill:edit` on a machine
@@ -216,6 +219,9 @@ struct RawProfile {
     driver: Option<DriverKind>,
     #[serde(default)]
     departments: Vec<String>,
+    /// The default among `departments`; missing means the first.
+    #[serde(default)]
+    department: Option<String>,
     #[serde(default)]
     repos: Vec<String>,
     #[serde(default)]
@@ -342,6 +348,7 @@ pub fn resolve_in(
                 name: String::new(),
                 os: default_os(),
                 driver: fallback_driver,
+                department: departments.first().map(|d| d.name.clone()).unwrap_or_default(),
                 departments,
                 repos: Vec::new(),
                 access: Access::FULL,
@@ -372,6 +379,7 @@ pub fn resolve_in(
         .departments
         .iter()
         .chain(&raw.repos)
+        .chain(raw.department.as_ref())
         .find(|n| !pack::valid_name(n))
     {
         return Err(corrupt(format!("unsafe name `{bad}`")));
@@ -387,6 +395,11 @@ pub fn resolve_in(
         .iter()
         .map(|d| department(kun, d, &raw.hidden))
         .collect::<Result<Vec<_>, _>>()?;
+    let default_department = raw
+        .department
+        .filter(|d| raw.departments.contains(d))
+        .or_else(|| raw.departments.first().cloned())
+        .unwrap_or_default();
     let a = raw.access;
     Ok(Resolved {
         profile: MachineProfile {
@@ -398,6 +411,7 @@ pub fn resolve_in(
                 raw.os
             },
             driver: raw.driver.unwrap_or(fallback_driver),
+            department: default_department,
             departments,
             repos: raw.repos,
             access: Access {
@@ -412,6 +426,17 @@ pub fn resolve_in(
         driver_locked: raw.driver.is_some(),
         explicit: true,
     })
+}
+
+/// The department a run works for: the saved one while this machine may use it, else the
+/// profile's default (a stored value that is no longer authorized falls back).
+#[must_use]
+pub fn effective_department(profile: &MachineProfile, saved: &str) -> String {
+    if !saved.is_empty() && profile.departments.iter().any(|d| d.name == saved) {
+        saved.to_owned()
+    } else {
+        profile.department.clone()
+    }
 }
 
 /// The profile of the login saved in settings, from the local kun checkout.

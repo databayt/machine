@@ -76,6 +76,7 @@ fn resolved(driver: DriverKind, locked: bool) -> Resolved {
             os: "windows".into(),
             driver,
             departments: Vec::new(),
+            department: String::new(),
             repos: vec!["kun".into(), "mkan".into()],
             access: Access::FULL,
             hidden: Vec::new(),
@@ -225,4 +226,89 @@ fn a_task_run_needs_the_seed_that_start_wrote() {
 fn the_task_prompt_points_at_the_seed() {
     let p = task_prompt("databayt/kun#3", "start");
     assert!(p.contains("TASK.md") && p.contains("databayt/kun#3") && p.ends_with("start"));
+}
+
+fn ws_in(root: &Path) -> Workspace {
+    Workspace {
+        dir: root.join("moed"),
+        repos: root.join("repos"),
+        work: root.join("moed/work"),
+        settings_file: root.join("moed/.claude-settings.json"),
+    }
+}
+
+#[test]
+fn a_repo_limits_the_run_to_that_repo_and_must_be_known_and_cloned() {
+    let root = tempfile::tempdir().unwrap();
+    let ws = ws_in(root.path());
+    std::fs::create_dir_all(ws.repos.join("kun")).unwrap();
+    std::fs::create_dir_all(ws.repos.join("mkan")).unwrap();
+    std::fs::create_dir_all(ws.repos.join("secret")).unwrap();
+    let r = resolved(DriverKind::Claude, true);
+    // Known and cloned.
+    assert_eq!(
+        validate_repo(&r, "tech", Some("kun"), &ws.repos).unwrap().as_deref(),
+        Some("kun")
+    );
+    // None or empty means all repos.
+    assert_eq!(validate_repo(&r, "tech", None, &ws.repos).unwrap(), None);
+    assert_eq!(validate_repo(&r, "tech", Some(""), &ws.repos).unwrap(), None);
+    // On disk but not one of the profile's repos; or listed but not cloned; or unsafe.
+    for bad in ["secret", "hogwarts", "../kun"] {
+        assert!(
+            matches!(validate_repo(&r, "tech", Some(bad), &ws.repos), Err(ChatError::BadRepo)),
+            "{bad}"
+        );
+    }
+    std::fs::remove_dir_all(ws.repos.join("mkan")).unwrap();
+    assert!(matches!(
+        validate_repo(&r, "tech", Some("mkan"), &ws.repos),
+        Err(ChatError::BadRepo)
+    ));
+    // The extras: only that repo's --add-dir (not mkan's, though the profile lists it).
+    let all = job_extras(DriverKind::Claude, &r.profile.repos, &ws);
+    let one = job_extras(DriverKind::Claude, &["kun".to_owned()], &ws);
+    assert_eq!(
+        one,
+        vec![
+            "--add-dir".to_owned(),
+            ws.repos.join("kun").display().to_string(),
+            "--settings".into(),
+            ws.settings_file.display().to_string(),
+        ]
+    );
+    assert_eq!(all, one, "mkan is no longer cloned, so both agree here");
+    std::fs::create_dir_all(ws.repos.join("mkan")).unwrap();
+    let all = job_extras(DriverKind::Claude, &r.profile.repos, &ws);
+    assert_eq!(all.iter().filter(|a| *a == "--add-dir").count(), 2);
+}
+
+#[test]
+fn the_default_profile_takes_its_repos_from_the_department() {
+    use crate::profile::{Department, RepoTag};
+    let root = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(root.path().join("hogwarts")).unwrap();
+    let mut r = resolved(DriverKind::Claude, false);
+    r.profile.repos = Vec::new();
+    r.profile.departments = vec![Department {
+        name: "tech".into(),
+        title: "Tech".into(),
+        title_ar: None,
+        quick_actions: Vec::new(),
+        skills: Vec::new(),
+        cards: Vec::new(),
+        repos: vec![RepoTag { name: "hogwarts".into(), blocks: Vec::new() }],
+    }];
+    assert!(validate_repo(&r, "tech", Some("hogwarts"), root.path()).is_ok());
+    assert!(validate_repo(&r, "sales", Some("hogwarts"), root.path()).is_err());
+}
+
+#[test]
+fn only_a_new_session_gets_the_working_in_line() {
+    assert_eq!(
+        with_preface("hi".into(), Some("kun"), "tech", true),
+        "Working in kun for the tech department.\n\nhi"
+    );
+    assert_eq!(with_preface("hi".into(), Some("kun"), "tech", false), "hi");
+    assert_eq!(with_preface("hi".into(), None, "tech", true), "hi");
 }

@@ -159,6 +159,7 @@ fn the_ts_shape_is_the_contract() {
         keys,
         [
             "access",
+            "department",
             "departments",
             "driver",
             "hidden",
@@ -276,4 +277,53 @@ fn department_cards_come_from_the_home_registry_in_pack_order() {
     let cards: Vec<&str> = r.profile.departments[0].cards.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(cards, ["social-hub", "captain"], "unknown ids drop, order is the pack's");
     assert_eq!(r.profile.departments[0].cards[0].image.as_deref(), Some("like.png"));
+}
+
+#[test]
+fn the_registry_department_is_the_default_and_falls_back_to_the_first() {
+    let kun = kun();
+    let machines = kun.path().join("machines");
+    // Missing: the first authorized department.
+    let r = resolve_in(kun.path(), "moed", DriverKind::Claude).unwrap();
+    assert_eq!(r.profile.department, "sales");
+    // Present and authorized: it wins over the order.
+    fs::write(
+        machines.join("both.json"),
+        r#"{"login":"both","departments":["sales","video"],"department":"video"}"#,
+    )
+    .unwrap();
+    let r = resolve_in(kun.path(), "both", DriverKind::Claude).unwrap();
+    assert_eq!(r.profile.department, "video");
+    // Not in the authorized list: the first.
+    fs::write(
+        machines.join("stray.json"),
+        r#"{"login":"stray","departments":["sales","video"],"department":"hr"}"#,
+    )
+    .unwrap();
+    let r = resolve_in(kun.path(), "stray", DriverKind::Claude).unwrap();
+    assert_eq!(r.profile.department, "sales");
+    // Full access: the first department of the pack.
+    let r = resolve_in(kun.path(), "", DriverKind::Claude).unwrap();
+    assert_eq!(r.profile.department, "sales");
+    // An unsafe name is a damaged file.
+    fs::write(
+        machines.join("evil2.json"),
+        r#"{"login":"evil2","departments":["sales"],"department":"../x"}"#,
+    )
+    .unwrap();
+    assert!(matches!(
+        resolve_in(kun.path(), "evil2", DriverKind::Claude),
+        Err(ProfileError::Corrupt(..))
+    ));
+}
+
+#[test]
+fn a_saved_department_counts_only_while_it_is_authorized() {
+    let kun = kun();
+    let p = resolve_in(kun.path(), "moed", DriverKind::Claude)
+        .unwrap()
+        .profile;
+    assert_eq!(effective_department(&p, "sales"), "sales");
+    assert_eq!(effective_department(&p, "video"), "sales");
+    assert_eq!(effective_department(&p, ""), "sales");
 }

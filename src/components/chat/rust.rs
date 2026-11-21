@@ -36,6 +36,8 @@ pub enum ChatError {
     BadJobId,
     #[error("a job with this id is already running")]
     Duplicate,
+    #[error("that repository is not available for this machine or is not cloned here")]
+    BadRepo,
     #[error("task id is invalid")]
     BadTask,
     #[error("that task was not started here: start it from the task list first")]
@@ -185,6 +187,45 @@ fn task_prompt(task_id: &str, prompt: &str) -> String {
     )
 }
 
+/// The repo a run is limited to. It must be one the machine works in (the profile's repos, or when
+/// the profile lists none, the department's) and be cloned under `root`.
+fn validate_repo(
+    resolved: &Resolved,
+    department: &str,
+    repo: Option<&str>,
+    root: &Path,
+) -> Result<Option<String>, ChatError> {
+    let Some(repo) = repo.filter(|r| !r.is_empty()) else {
+        return Ok(None);
+    };
+    let profile = &resolved.profile;
+    let known = if profile.repos.is_empty() {
+        profile
+            .departments
+            .iter()
+            .filter(|d| d.name == department)
+            .flat_map(|d| d.repos.iter())
+            .any(|r| r.name == repo)
+    } else {
+        profile.repos.iter().any(|r| r == repo)
+    };
+    if known && pack::valid_name(repo) && root.join(repo).is_dir() {
+        Ok(Some(repo.to_owned()))
+    } else {
+        Err(ChatError::BadRepo)
+    }
+}
+
+/// A new session that works in one repo opens with a line saying where; a resumed one already has it.
+fn with_preface(prompt: String, repo: Option<&str>, department: &str, is_new: bool) -> String {
+    match repo {
+        Some(repo) if is_new => format!(
+            "Working in {repo} for the {department} department.\n\n{prompt}"
+        ),
+        _ => prompt,
+    }
+}
+
 /// The driver for a run: the profile's when it fixes one, else the request, else the saved default.
 fn pick_driver(
     resolved: &Resolved,
@@ -231,18 +272,27 @@ fn prepare_run(
     department: &str,
     kind: DriverKind,
     task_id: Option<&str>,
+    repo: Option<&str>,
+    root: &Path,
 ) -> Result<RunSetup, ChatError> {
     let (cwd, mut extras, env) = if resolved.explicit {
         let ws = pack::workspace(&resolved.profile)?;
+        let names = repo.map_or_else(|| resolved.profile.repos.clone(), |r| vec![r.to_owned()]);
         (
             ws.dir.display().to_string(),
-            job_extras(kind, &resolved.profile.repos, &ws),
+            job_extras(kind, &names, &ws),
             profile::secret_env(&OsStore, resolved)?,
         )
     } else {
+        let extras = match repo {
+            Some(r) if kind == DriverKind::Claude => {
+                vec!["--add-dir".to_owned(), root.join(r).display().to_string()]
+            }
+            _ => Vec::new(),
+        };
         (
             pack::workdir(department)?.display().to_string(),
-            Vec::new(),
+            extras,
             Vec::new(),
         )
     };
@@ -255,7 +305,9 @@ fn prepare_run(
 
 /// `ask` — runs one prompt, streaming events to `channel`. The frontend supplies `job_id`
 /// so it can call `stop` before this command returns. With `task_id` the run is a task's: its
-/// repos join as `--add-dir` and the prompt points at `TASK.md`. Run-time failures arrive as an
+/// repos join as `--add-dir` and the prompt points at `TASK.md`. With `repo` the run is limited to
+/// that repository (`--add-dir` only it) and a new session opens with a line naming it and the
+/// department. Run-time failures arrive as an
 /// `error` event; only bad arguments reject the call.
 #[tauri::command]
 async fn ask(
@@ -264,15 +316,19 @@ async fn ask(
     driver: Option<DriverKind>,
     job_id: String,
     task_id: Option<String>,
+    repo: Option<String>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
     let settings = settings::load()?;
     let resolved = profile::current()?;
     let kind = pick_driver(&resolved, driver, settings.driver);
-    let department = settings.department.clone();
+    let department = profile::effective_department(&resolved.profile, &settings.department);
+    let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
+    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
     let for_run = task_id.clone();
+    let (for_dept, for_repo) = (department.clone(), repo.clone());
     let (cwd, extras, env) = tokio::task::spawn_blocking(move || {
-        prepare_run(&resolved, &department, kind, for_run.as_deref())
+        prepare_run(&resolved, &for_dept, kind, for_run.as_deref(), for_repo.as_deref(), &root)
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
@@ -282,6 +338,7 @@ async fn ask(
         (Some(id), None) => task_prompt(id, &prompt),
         _ => prompt,
     };
+    let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
     let job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
     let (tx, rx) = oneshot::channel();
     let _registration = register(&job.job_id, tx)?;
@@ -297,7 +354,7 @@ async fn ask(
                 _ => None,
             };
             if let Some(id) = id {
-                if let Err(e) = sessions::touch(&id, &title, &settings.department, kind) {
+                if let Err(e) = sessions::touch(&id, &title, &department, repo.as_deref(), kind) {
                     tracing::warn!("could not record session: {e}");
                 }
                 seen = Some(id);

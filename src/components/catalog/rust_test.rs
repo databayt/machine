@@ -317,6 +317,7 @@ fn profile_for(depts: &[&str], catalog: CatalogAccess) -> MachineProfile {
         profile::{Access, Department},
     };
     MachineProfile {
+        department: String::new(),
         login: "moed".into(),
         name: String::new(),
         os: "windows".into(),
