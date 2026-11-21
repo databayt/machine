@@ -163,7 +163,7 @@ const DEFAULT_TIMEOUT_SECS: u32 = 30 * 60;
 const MAX_PROMPT_BYTES: usize = 64 * 1024;
 const MAX_EXTRA_ARGS: usize = 32;
 /// The only flags a caller may add, each with one value.
-const EXTRA_FLAGS: [&str; 2] = ["--add-dir", "--settings"];
+const EXTRA_FLAGS: [&str; 5] = ["--add-dir", "--settings", "--model", "--effort", "--agent"];
 /// Environment names a run may never override.
 const PROTECTED_ENV: [&str; 6] = [
     "PATH",

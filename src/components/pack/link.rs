@@ -93,3 +93,54 @@ pub(super) fn link_skills(src: &Path, dest: &Path, wanted: &[String]) -> Result<
     }
     Ok(())
 }
+
+#[cfg(unix)]
+fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::unix::fs::symlink(target, link)
+}
+
+/// Windows: a file symlink, else a plain copy (a copy cannot be told from a real file, so it
+/// is never removed as stale).
+#[cfg(windows)]
+fn symlink_file(target: &Path, link: &Path) -> io::Result<()> {
+    std::os::windows::fs::symlink_file(target, link).or_else(|_| fs::copy(target, link).map(|_| ()))
+}
+
+/// Makes `dest/<name>.md` point at `src/<name>.md` for every wanted agent whose file exists
+/// (a missing one is skipped with a warning), and removes our own stale links into `src`.
+/// Real files are never touched.
+pub(super) fn link_agents(src: &Path, dest: &Path, wanted: &[String]) -> Result<(), PackError> {
+    if wanted.is_empty() && !dest.is_dir() {
+        return Ok(());
+    }
+    fs::create_dir_all(dest).map_err(io_err(dest))?;
+    let file_of = |n: &String| format!("{n}.md");
+    for name in wanted {
+        let target = src.join(file_of(name));
+        if !target.is_file() {
+            tracing::warn!("agent {name} not found in {}; skipped", src.display());
+            continue;
+        }
+        let link = dest.join(file_of(name));
+        match fs::symlink_metadata(&link) {
+            Ok(_) => match fs::read_link(&link) {
+                Ok(t) if t == target => continue,
+                Ok(_) => fs::remove_file(&link).map_err(io_err(&link))?,
+                Err(_) => continue,
+            },
+            Err(e) if e.kind() == io::ErrorKind::NotFound => {}
+            Err(e) => return Err(io_err(&link)(e)),
+        }
+        symlink_file(&target, &link).map_err(io_err(&link))?;
+    }
+    for entry in fs::read_dir(dest).map_err(io_err(dest))?.flatten() {
+        let path = entry.path();
+        let keep = wanted
+            .iter()
+            .any(|w| path.file_name().is_some_and(|n| n.to_string_lossy() == file_of(w)));
+        if !keep && fs::read_link(&path).is_ok_and(|t| t.starts_with(src)) {
+            fs::remove_file(&path).map_err(io_err(&path))?;
+        }
+    }
+    Ok(())
+}

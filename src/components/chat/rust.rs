@@ -287,6 +287,7 @@ fn prepare_run(
     task_id: Option<&str>,
     repo: Option<&str>,
     root: &Path,
+    turn: PermissionMode,
 ) -> Result<RunSetup, ChatError> {
     let (cwd, mut extras, env) = if resolved.explicit {
         let ws = pack::workspace(&resolved.profile)?;
@@ -313,6 +314,9 @@ fn prepare_run(
     let meta = pack::meta_in(&pack::kun_dir()?, department)?;
     let more = task_extras(kind, &extras, &pack::pack_dirs(&meta));
     extras.extend(more);
+    if kind == DriverKind::Claude {
+        extras.extend(pack::run_flags(meta.run.as_ref(), turn == PermissionMode::Plan));
+    }
     if let Some(id) = task_id {
         let more = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
         extras.extend(more);
@@ -347,8 +351,9 @@ async fn ask(
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
     let for_run = task_id.clone();
     let (for_dept, for_repo) = (department.clone(), repo.clone());
+    let permission = PermissionMode::parse(mode.as_deref());
     let (cwd, extras, env, timeout) = tokio::task::spawn_blocking(move || {
-        prepare_run(&resolved, &for_dept, kind, for_run.as_deref(), for_repo.as_deref(), &root)
+        prepare_run(&resolved, &for_dept, kind, for_run.as_deref(), for_repo.as_deref(), &root, permission)
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
@@ -361,7 +366,7 @@ async fn ask(
     let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
     let mut job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
     job.timeout_secs = timeout;
-    job.permission_mode = PermissionMode::parse(mode.as_deref());
+    job.permission_mode = permission;
     let (tx, rx) = oneshot::channel();
     let _registration = register(&job.job_id, tx)?;
 

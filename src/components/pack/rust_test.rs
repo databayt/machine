@@ -473,3 +473,82 @@ mod health_tests {
         assert!(h.error.is_some());
     }
 }
+
+#[test]
+fn run_block_parses_and_drops_invalid_fields() {
+    let m = meta_of(
+        r#"{"run":{"plan":{"model":"opus","effort":"high","agent":"producer"},
+            "work":{"model":"claude-sonnet-4-6","effort":"ultra","agent":"../x"}}}"#,
+    );
+    let run = m.run.unwrap();
+    assert_eq!(run.plan.unwrap().effort.as_deref(), Some("high"));
+    let work = run.work.unwrap();
+    assert_eq!(work.model.as_deref(), Some("claude-sonnet-4-6"));
+    assert_eq!((work.effort, work.agent), (None, None));
+    assert!(meta_of("{}").run.is_none());
+}
+
+#[test]
+fn fable_and_unknown_models_are_rejected() {
+    for bad in ["fable", "claude-opus-fable-1", "FABLE", "gpt-5", "claude-opus", "opus 4"] {
+        let m = meta_of(&format!(r#"{{"run":{{"plan":{{"model":"{bad}"}}}}}}"#));
+        assert!(m.run.is_none(), "{bad}");
+    }
+}
+
+#[test]
+fn run_flags_follow_the_turn_type() {
+    let m = meta_of(
+        r#"{"run":{"plan":{"model":"opus","effort":"high","agent":"producer"},"work":{"effort":"medium"}}}"#,
+    );
+    let v = |s: &[&str]| s.iter().map(|x| (*x).to_owned()).collect::<Vec<_>>();
+    assert_eq!(
+        run_flags(m.run.as_ref(), true),
+        v(&["--model", "opus", "--effort", "high", "--agent", "producer"])
+    );
+    assert_eq!(run_flags(m.run.as_ref(), false), v(&["--effort", "medium"]));
+    assert!(run_flags(None, true).is_empty());
+    // They pass the driver's validation, resumed or not.
+    let job = crate::driver::Job {
+        job_id: "j".into(),
+        driver: DriverKind::Claude,
+        prompt: "hi".into(),
+        cwd: "/".into(),
+        session: Some("s-1".into()),
+        timeout_secs: None,
+        extra_args: run_flags(m.run.as_ref(), true),
+        env: vec![],
+        permission_mode: crate::driver::PermissionMode::Plan,
+    };
+    let args = crate::driver::args_for(&job).unwrap();
+    assert!(args.windows(2).any(|w| w == ["--agent", "producer"]));
+    assert!(args.windows(2).any(|w| w == ["--effort", "high"]));
+}
+
+#[test]
+fn agents_link_into_the_workdir_and_stale_links_go() {
+    let kun = tempfile::tempdir().unwrap();
+    let dept = kun.path().join("departments/video");
+    fs::create_dir_all(&dept).unwrap();
+    fs::write(dept.join("prompt.md"), "p").unwrap();
+    let write_pack = |items: &str| {
+        fs::write(dept.join("pack.json"), format!(r#"{{"items":{items}}}"#)).unwrap();
+    };
+    let agents = kun.path().join(".claude/agents");
+    fs::create_dir_all(&agents).unwrap();
+    for a in ["media-qa", "producer"] {
+        fs::write(agents.join(format!("{a}.md")), "a").unwrap();
+    }
+    let machine = tempfile::tempdir().unwrap();
+    write_pack(r#"["agent:media-qa","agent:producer","agent:ghost","edit"]"#);
+    let dir = ensure_in(kun.path(), machine.path(), "video").unwrap();
+    let out = dir.join(".claude/agents");
+    assert!(out.join("media-qa.md").exists() && out.join("producer.md").exists());
+    assert!(!out.join("ghost.md").exists());
+    fs::write(out.join("mine.md"), "real").unwrap();
+    write_pack(r#"["agent:producer"]"#);
+    ensure_in(kun.path(), machine.path(), "video").unwrap();
+    assert!(!out.join("media-qa.md").exists());
+    assert!(out.join("producer.md").exists());
+    assert!(out.join("mine.md").exists());
+}

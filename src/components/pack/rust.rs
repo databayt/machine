@@ -148,6 +148,9 @@ struct RawPack {
     /// An automatic health check (and fix) for the department's home-page light.
     #[serde(default)]
     health: Option<health::HealthSpec>,
+    /// Model, effort and agent per turn type (`plan` / `work`); validated by [`parse_run`].
+    #[serde(default)]
+    run: Option<Value>,
 }
 
 /// A department or skill name: lowercase-ish, no separators, no dots at the start.
@@ -214,6 +217,99 @@ fn item_names(items: &[Value]) -> Vec<String> {
         .collect()
 }
 
+/// Agent names an `items` list asks for: only the catalog id `"agent:media-qa"`.
+fn agent_names(items: &[Value]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|v| match v {
+            Value::String(s) => match s.split_once(':') {
+                Some(("agent", name)) => Some(name.to_owned()),
+                _ => None,
+            },
+            _ => None,
+        })
+        .filter(|n| valid_name(n))
+        .collect()
+}
+
+/// One turn type's Claude settings from `pack.json` `run`; every field is optional.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunSpec {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+    pub agent: Option<String>,
+}
+
+/// The pack's `run` block: `plan` for plan-mode turns, `work` for the rest.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunMeta {
+    pub plan: Option<RunSpec>,
+    pub work: Option<RunSpec>,
+}
+
+fn valid_model(m: &str) -> bool {
+    if m.to_ascii_lowercase().contains("fable") {
+        return false;
+    }
+    if matches!(m, "opus" | "sonnet" | "haiku") {
+        return true;
+    }
+    m.strip_prefix("claude-")
+        .and_then(|r| r.split_once('-'))
+        .is_some_and(|(fam, rest)| {
+            matches!(fam, "opus" | "sonnet" | "haiku")
+                && !rest.is_empty()
+                && rest
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        })
+}
+
+fn parse_run_spec(turn: &str, v: Option<&Value>) -> Option<RunSpec> {
+    let o = v?.as_object()?;
+    let field = |key: &str, ok: &dyn Fn(&str) -> bool| {
+        let raw = o.get(key)?.as_str()?;
+        if ok(raw) {
+            Some(raw.to_owned())
+        } else {
+            tracing::warn!("pack run.{turn}.{key}: invalid value dropped");
+            None
+        }
+    };
+    let spec = RunSpec {
+        model: field("model", &valid_model),
+        effort: field("effort", &|e| {
+            matches!(e, "low" | "medium" | "high" | "xhigh" | "max")
+        }),
+        agent: field("agent", &valid_name),
+    };
+    (spec != RunSpec::default()).then_some(spec)
+}
+
+fn parse_run(v: Option<&Value>) -> Option<RunMeta> {
+    let v = v?;
+    let run = RunMeta {
+        plan: parse_run_spec("plan", v.get("plan")),
+        work: parse_run_spec("work", v.get("work")),
+    };
+    (run != RunMeta::default()).then_some(run)
+}
+
+/// The Claude flags a turn gets from the pack: `--model`, `--effort`, `--agent` (those present).
+#[must_use]
+pub fn run_flags(run: Option<&RunMeta>, plan: bool) -> Vec<String> {
+    let spec = run.and_then(|r| if plan { r.plan.as_ref() } else { r.work.as_ref() });
+    let mut a = Vec::new();
+    if let Some(s) = spec {
+        for (flag, val) in [("--model", &s.model), ("--effort", &s.effort), ("--agent", &s.agent)] {
+            if let Some(v) = val {
+                a.extend([flag.to_owned(), v.clone()]);
+            }
+        }
+    }
+    a
+}
+
 fn read_pack(kun: &Path, dept: &str) -> RawPack {
     fs::read_to_string(kun.join("departments").join(dept).join("pack.json"))
         .ok()
@@ -252,7 +348,8 @@ pub fn ensure_in(kun: &Path, machine: &Path, dept: &str) -> Result<PathBuf, Pack
         ),
     )?;
 
-    let wanted = item_names(&read_pack(kun, dept).items);
+    let pack = read_pack(kun, dept);
+    let wanted = item_names(&pack.items);
     link::link_skills(
         &kun.join(".claude/skills"),
         &dir.join(".claude/skills"),
@@ -262,6 +359,11 @@ pub fn ensure_in(kun: &Path, machine: &Path, dept: &str) -> Result<PathBuf, Pack
     if agents.is_dir() {
         link::link_skills(&agents, &dir.join(".agents/skills"), &wanted)?;
     }
+    link::link_agents(
+        &kun.join(".claude/agents"),
+        &dir.join(".claude/agents"),
+        &agent_names(&pack.items),
+    )?;
     Ok(dir)
 }
 
@@ -291,6 +393,8 @@ pub struct PackMeta {
     pub timeout_secs: Option<u32>,
     /// The health check and fix the pack declares, if any (validated when run, see `health.rs`).
     pub health: Option<health::HealthSpec>,
+    /// Model, effort and agent the pack picks for its Claude turns.
+    pub run: Option<RunMeta>,
 }
 
 /// The shortest and longest turn timeout a pack may ask for.
@@ -378,6 +482,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         repos: raw.repos.iter().filter(|r| valid_name(r)).cloned().collect(),
         dirs: raw.dirs.clone(),
         health: raw.health.clone(),
+        run: parse_run(raw.run.as_ref()),
         timeout_secs: raw
             .timeout_secs
             .map(|t| t.clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS)),
