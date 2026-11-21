@@ -216,6 +216,7 @@ export default function ChatContent({
       lang={lang}
       profile={ctx.profile}
       dept={ctx.dept}
+      onDept={ctx.chooseDept}
       repos={ctx.repos}
       repo={ctx.repo}
       onRepo={ctx.setRepo}

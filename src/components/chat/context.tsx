@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import Link from "next/link";
-import { BookIcon, BriefcaseIcon, CheckIcon, ChevronDownIcon } from "lucide-react";
+import { BookIcon, BriefcaseIcon, CheckIcon, ChevronDownIcon, SearchIcon } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -25,6 +24,7 @@ const DEFAULT_REPO = "hogwarts";
 export function useWorkingContext(enabled: boolean): {
   profile: MachineProfile | null;
   dept: string;
+  chooseDept: (name: string) => void;
   repos: string[];
   repo: string;
   setRepo: (repo: string) => void;
@@ -32,7 +32,7 @@ export function useWorkingContext(enabled: boolean): {
   const [profile, setProfile] = useState<MachineProfile | null>(null);
   const [local, setLocal] = useState<Set<string> | null>(null);
   const [saved, setSaved] = useState<Record<string, string>>({});
-  const { dept } = useDepartment();
+  const { dept, choose } = useDepartment();
 
   useEffect(() => {
     if (!enabled) return;
@@ -64,14 +64,22 @@ export function useWorkingContext(enabled: boolean): {
     [dept],
   );
 
-  return { profile, dept, repos, repo, setRepo };
+  return { profile, dept, chooseDept: (name) => void choose(name), repos, repo, setRepo };
 }
 
-/** `▣ Department ▾   ▤ Repository ▾`, one quiet row under the composer. */
+/** A trigger in the row under the composer: icon, label, chevron; tinted while its menu is open. */
+const trigger =
+  "inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50 data-[state=open]:bg-foreground/5 data-[state=open]:text-foreground";
+/** A row inside a menu. */
+const row =
+  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-muted";
+
+/** `▣ Department ▾   ▤ Repository ▾`: two selects under the composer, each opening its own menu. */
 export function ContextLine({
   lang,
   profile,
   dept,
+  onDept,
   repos,
   repo,
   onRepo,
@@ -80,6 +88,7 @@ export function ContextLine({
   lang: Locale;
   profile: MachineProfile | null;
   dept: string;
+  onDept: (name: string) => void;
   repos: string[];
   repo: string;
   onRepo: (repo: string) => void;
@@ -87,51 +96,105 @@ export function ContextLine({
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
-  const [open, setOpen] = useState(false);
-  const current = profile?.departments.find((d) => d.name === dept);
+  const [deptOpen, setDeptOpen] = useState(false);
+  const [repoOpen, setRepoOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const departments = profile?.departments ?? [];
+  const current = departments.find((d) => d.name === dept);
   if (!current) return null;
-  const title = (isAr && current.title_ar) || current.title;
-  const row = "flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-start text-sm transition-colors hover:bg-muted";
+  const title = (d: (typeof departments)[number]) => (isAr && d.title_ar) || d.title;
+  const q = query.trim().toLowerCase();
+  const others = repos.filter((r) => r !== repo && (!q || r.toLowerCase().includes(q)));
+  const pick = (r: string) => {
+    setRepoOpen(false);
+    setQuery("");
+    onRepo(r);
+  };
 
   return (
-    <div className="mt-2.5 flex min-w-0 items-center gap-5 px-3 text-sm text-foreground/80">
-      <Link href={`/${lang}/settings/`} className="inline-flex min-w-0 items-center gap-1.5 transition-colors hover:text-foreground">
-        <BriefcaseIcon className="size-4 shrink-0" aria-hidden />
-        <span className="truncate">{title}</span>
-        <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      </Link>
-      <Popover open={open} onOpenChange={setOpen}>
+    <div className="mt-2 flex min-w-0 items-center gap-2 px-1.5 text-sm text-foreground/80">
+      <Popover open={deptOpen} onOpenChange={setDeptOpen}>
         <PopoverTrigger asChild>
-          <button
-            type="button"
-            disabled={disabled}
-            aria-label={t(menuCopy.repository)}
-            className="inline-flex min-w-0 items-center gap-1.5 transition-colors hover:text-foreground disabled:opacity-50"
-          >
+          <button type="button" disabled={disabled} aria-label={t(menuCopy.department)} className={trigger}>
+            <BriefcaseIcon className="size-4 shrink-0" aria-hidden />
+            <span className="truncate">{title(current)}</span>
+            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          </button>
+        </PopoverTrigger>
+        <PopoverContent side="top" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+          <ul>
+            {departments.map((d) => (
+              <li key={d.name}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeptOpen(false);
+                    if (d.name !== dept) onDept(d.name);
+                  }}
+                  className={row}
+                >
+                  <BriefcaseIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <span className="flex-1 truncate">{title(d)}</span>
+                  {d.name === dept && <CheckIcon className="size-4 shrink-0" aria-hidden />}
+                </button>
+              </li>
+            ))}
+          </ul>
+        </PopoverContent>
+      </Popover>
+
+      <Popover
+        open={repoOpen}
+        onOpenChange={(o) => {
+          setRepoOpen(o);
+          if (!o) setQuery("");
+        }}
+      >
+        <PopoverTrigger asChild>
+          <button type="button" disabled={disabled} aria-label={t(menuCopy.repository)} className={trigger}>
             <BookIcon className="size-4 shrink-0" aria-hidden />
             <span dir="ltr" className="truncate">{repo || t(menuCopy.allRepos)}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
-        <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
-          <ul>
-            {["", ...repos].map((r) => (
-              <li key={r || "all"}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setOpen(false);
-                    onRepo(r);
-                  }}
-                  className={cn(row, r === repo && "text-foreground")}
-                >
-                  <span dir="ltr" className="truncate">{r || t(menuCopy.allRepos)}</span>
-                  {r === repo && <CheckIcon className="size-4 shrink-0" aria-hidden />}
-                </button>
-              </li>
-            ))}
-          </ul>
-          {repos.length === 0 && <p className="px-3 pb-2 pt-1 text-xs">{t(menuCopy.noRepoHere)}</p>}
+        <PopoverContent side="top" align="start" dir={isAr ? "rtl" : "ltr"} className="w-80 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
+          <label className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-1.5 focus-within:border-foreground/40">
+            <SearchIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <input
+              autoFocus
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && others[0]) pick(others[0]);
+              }}
+              placeholder={t(menuCopy.searchRepos)}
+              className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            />
+          </label>
+          {repo && (
+            <div className="mt-1.5 flex items-center gap-2.5 rounded-lg bg-muted px-2.5 py-1.5 text-sm">
+              <span dir="ltr" className="flex-1 truncate">{repo}</span>
+              <CheckIcon className="size-4 shrink-0" aria-hidden />
+            </div>
+          )}
+          {others.length > 0 && (
+            <ul className="mt-1.5 max-h-64 overflow-y-auto border-t border-border/60 pt-1.5">
+              {others.map((r) => (
+                <li key={r}>
+                  <button type="button" onClick={() => pick(r)} className={row}>
+                    <span dir="ltr" className="truncate">{r}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          {repos.length === 0 && <p className="px-2.5 pb-1 pt-2 text-xs text-muted-foreground">{t(menuCopy.noRepoHere)}</p>}
+          <div className="mt-1.5 border-t border-border/60 pt-1.5">
+            <button type="button" onClick={() => pick("")} className={row}>
+              <span className="flex-1 truncate">{t(menuCopy.allRepos)}</span>
+              {repo === "" && <CheckIcon className="size-4 shrink-0" aria-hidden />}
+            </button>
+          </div>
         </PopoverContent>
       </Popover>
     </div>
