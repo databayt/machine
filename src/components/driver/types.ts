@@ -4,3 +4,36 @@
  * Which agent CLI runs the job.
  */
 export type DriverKind = "claude" | "codex" | "opencode" | "agy" | "hermes";
+
+/**
+ * Whether a driver is usable on this machine.
+ */
+export type DriverStatus = { kind: DriverKind, installed: boolean, path: string | null, };
+
+/**
+ * What the UI sees while a job runs. Normalized across drivers.
+ */
+export type Event = { "kind": "started", session: string, } | { "kind": "text", text: string, } | { "kind": "tool", name: string, } | { "kind": "done", session: string | null, ok: boolean, result: string | null, } | { "kind": "error", message: string, };
+
+/**
+ * One unit of work: a prompt, where to run it, and which session to resume.
+ */
+export type Job = { job_id: string, driver: DriverKind, prompt: string, cwd: string, session: string | null, timeout_secs: number | null, 
+/**
+ * Extra flags, already paired as `[flag, value, flag, value…]`. Only an allow-listed few
+ * are accepted (`--add-dir`, `--settings`, claude only); see [`args_for`].
+ */
+extra_args: Array<string>, 
+/**
+ * Environment for this one run (a profile's secrets). Never sent to or from JS.
+ */
+env: Array<[string, string]>, 
+/**
+ * Claude's `--permission-mode`; the other drivers ignore it.
+ */
+permission_mode: PermissionMode, };
+
+/**
+ * How much Claude may do on its own in a run. `Plan` makes the first answer a plan.
+ */
+export type PermissionMode = "auto" | "plan";
