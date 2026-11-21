@@ -66,6 +66,35 @@ pub struct DriverStatus {
     pub path: Option<String>,
 }
 
+/// How much Claude may do on its own in a run. `Plan` makes the first answer a plan.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "driver/types.ts")]
+#[serde(rename_all = "lowercase")]
+pub enum PermissionMode {
+    #[default]
+    Auto,
+    Plan,
+}
+
+impl PermissionMode {
+    /// The allow-list for what the UI sends: `"plan"` and `"auto"`; anything else is auto.
+    #[must_use]
+    pub fn parse(raw: Option<&str>) -> Self {
+        match raw {
+            Some("plan") => Self::Plan,
+            _ => Self::Auto,
+        }
+    }
+
+    #[must_use]
+    pub const fn flag(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Plan => "plan",
+        }
+    }
+}
+
 /// One unit of work: a prompt, where to run it, and which session to resume.
 #[derive(Debug, Clone, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "driver/types.ts")]
@@ -83,6 +112,9 @@ pub struct Job {
     /// Environment for this one run (a profile's secrets). Never sent to or from JS.
     #[serde(default)]
     pub env: Vec<(String, String)>,
+    /// Claude's `--permission-mode`; the other drivers ignore it.
+    #[serde(default)]
+    pub permission_mode: PermissionMode,
 }
 
 /// What the UI sees while a job runs. Normalized across drivers.
@@ -320,7 +352,7 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
                 "stream-json",
                 "--verbose",
                 "--permission-mode",
-                "auto",
+                job.permission_mode.flag(),
             ]
             .into_iter()
             .map(String::from)

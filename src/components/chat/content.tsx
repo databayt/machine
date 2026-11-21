@@ -16,7 +16,7 @@ import { storedLang, swapLocale } from "../shell/lang";
 import { speak } from "../voice/actions";
 import { ask, stop } from "./actions";
 import { ActivityRows, StatusLine } from "./activity";
-import { Composer } from "./composer";
+import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { Navigator } from "./navigator";
@@ -65,6 +65,9 @@ export default function ChatContent({
   const [resumed, setResumed] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [speakReplies] = useReadAloud();
+  /** The navigator's sentence for the home composer. */
+  const [fill, setFill] = useState<Fill | null>(null);
+  const fillN = useRef(0);
   const speakRef = useRef(false);
   speakRef.current = speakReplies;
 
@@ -148,9 +151,10 @@ export default function ChatContent({
   );
 
   const send = useCallback(
-    async (prompt: string, base: Message[] = messages) => {
+    async (prompt: string, base: Message[] = messages, mode?: "plan") => {
       const text = prompt.trim();
       if (!text || busy) return;
+      setFill(null);
       const id = crypto.randomUUID();
       setJobId(id);
       setMessages([
@@ -160,7 +164,7 @@ export default function ChatContent({
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null }, onEvent);
+        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, mode }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -263,11 +267,12 @@ export default function ChatContent({
               <div className="w-full">
                 <Composer
                   lang={lang}
-                  onSend={(text) => void send(text)}
+                  onSend={(text, mode) => void send(text, undefined, mode)}
                   onStop={() => jobId && void stop(jobId)}
                   busy={busy}
                   actions={quick}
                   initialText={prompt}
+                  fill={fill}
                   repo={ctx.repo}
                   autoFocus
                 />
@@ -279,7 +284,11 @@ export default function ChatContent({
                   dept={ctx.dept}
                   repo={ctx.repo}
                   isAr={isAr}
+                  formula={pack.formula}
                   onPick={(p) => void send(p)}
+                  onFill={(text, focus) =>
+                    setFill({ text, focus, n: ++fillN.current })
+                  }
                   disabled={busy}
                 />
               ) : (
@@ -348,7 +357,7 @@ export default function ChatContent({
           )}
           <Composer
             lang={lang}
-            onSend={(text) => void send(text)}
+            onSend={(text, mode) => void send(text, undefined, mode)}
             onStop={() => jobId && void stop(jobId)}
             busy={busy}
             actions={quick}

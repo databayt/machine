@@ -35,6 +35,14 @@ import {
 import { copy, tr } from "./config";
 import { MediaPicker } from "./media-picker";
 
+/** A sentence the navigator writes into the box; a new object (`n`) is a new fill. */
+export interface Fill {
+  text: string;
+  /** Focus the box with the caret at the end (a leaf was chosen). */
+  focus: boolean;
+  n: number;
+}
+
 /** About six lines of text before the box scrolls. */
 const MAX_HEIGHT_PX = 168;
 
@@ -52,9 +60,11 @@ export function Composer({
   autoFocus,
   initialText,
   repo,
+  fill,
 }: {
   lang: Locale;
-  onSend: (text: string) => void;
+  /** `mode: "plan"` when the text came from the navigator and the chip is still on. */
+  onSend: (text: string, mode?: "plan") => void;
   onStop: () => void;
   busy: boolean;
   actions: QuickAction[];
@@ -63,6 +73,8 @@ export function Composer({
   initialText?: string;
   /** The selected repository: its media library feeds the attach menu. */
   repo?: string;
+  /** The navigator's sentence: replaces the text (autocomplete), "" clears an untouched one. */
+  fill?: Fill | null;
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
@@ -73,6 +85,13 @@ export function Composer({
   const [library, setLibrary] = useState(false);
   const [attached, setAttached] = useState<Attachment[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
+  /** The text came from the navigator: it goes out as a plan turn until the chip's x or an empty box. */
+  const [plan, setPlan] = useState(false);
+  const lastFill = useRef("");
+  const textRef = useRef(text);
+  textRef.current = text;
+  const planRef = useRef(plan);
+  planRef.current = plan;
 
   // `field-sizing: content` is not in Safari yet.
   useLayoutEffect(() => {
@@ -89,11 +108,35 @@ export function Composer({
       el.setSelectionRange(el.value.length, el.value.length);
   }, [initialText]);
 
+  // The navigator's sentence replaces the box, live at every step. An empty one (back at the
+  // root) only clears text that is still the navigator's: the chip is on, or it is untouched.
+  useEffect(() => {
+    if (!fill) return;
+    if (fill.text) {
+      lastFill.current = fill.text;
+      setText(fill.text);
+      setPlan(true);
+      if (fill.focus) {
+        requestAnimationFrame(() => {
+          const el = ref.current;
+          if (!el) return;
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+        });
+      }
+    } else if (planRef.current || textRef.current === lastFill.current) {
+      lastFill.current = "";
+      setText("");
+      setPlan(false);
+    }
+  }, [fill]);
+
   const hasText = !!text.trim();
   const submit = () => {
     if (busy || !hasText) return;
-    onSend(withReferences(text, attached));
+    onSend(withReferences(text, attached), plan ? "plan" : undefined);
     setText("");
+    setPlan(false);
     setAttached([]);
   };
   const addFiles = async () => {
@@ -161,6 +204,22 @@ export function Composer({
           </ul>
         )}
         <div className="flex w-full items-end gap-1">
+          {plan && (
+            <span className="flex h-10 shrink-0 items-center">
+              <span className="flex items-center gap-1 rounded-full bg-muted/60 py-0.5 ps-2.5 pe-1 text-xs text-muted-foreground">
+                {t(copy.planFirst)}
+                <button
+                  type="button"
+                  onClick={() => setPlan(false)}
+                  aria-label={t(copy.planOff)}
+                  title={t(copy.planOff)}
+                  className="flex size-5 items-center justify-center rounded-full transition-colors hover:bg-foreground/10 hover:text-foreground"
+                >
+                  <XIcon className="size-3" aria-hidden />
+                </button>
+              </span>
+            </span>
+          )}
           <Popover
             open={plus}
             onOpenChange={(o) => {
@@ -296,7 +355,10 @@ export function Composer({
           <textarea
             ref={ref}
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              setText(e.target.value);
+              if (!e.target.value.trim()) setPlan(false);
+            }}
             onKeyDown={(e) => {
               if (
                 e.key === "Enter" &&

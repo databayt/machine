@@ -21,7 +21,7 @@ use tauri::{
 use tokio::sync::oneshot;
 
 use crate::{
-    driver::{self, DriverError, DriverKind, Event, Job},
+    driver::{self, DriverError, DriverKind, Event, Job, PermissionMode},
     network::{host::Host, valid_task_id},
     pack::{self, PackError, Workspace},
     profile::{self, OsStore, ProfileError, Resolved},
@@ -272,6 +272,7 @@ fn build_job(
         timeout_secs: None,
         extra_args,
         env,
+        permission_mode: PermissionMode::Auto,
     })
 }
 
@@ -323,9 +324,11 @@ fn prepare_run(
 /// so it can call `stop` before this command returns. With `task_id` the run is a task's: its
 /// repos join as `--add-dir` and the prompt points at `TASK.md`. With `repo` the run is limited to
 /// that repository (`--add-dir` only it) and a new session opens with a line naming it and the
-/// department. Run-time failures arrive as an
+/// department. `mode` (`"plan"` | `"auto"`, anything else is auto) is Claude's permission mode for
+/// the run: the navigator's sentences go out as a plan turn. Run-time failures arrive as an
 /// `error` event; only bad arguments reject the call.
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // the IPC surface: one named argument per field the UI sends
 async fn ask(
     prompt: String,
     session: Option<String>,
@@ -333,6 +336,7 @@ async fn ask(
     job_id: String,
     task_id: Option<String>,
     repo: Option<String>,
+    mode: Option<String>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
     let settings = settings::load()?;
@@ -357,6 +361,7 @@ async fn ask(
     let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
     let mut job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
     job.timeout_secs = timeout;
+    job.permission_mode = PermissionMode::parse(mode.as_deref());
     let (tx, rx) = oneshot::channel();
     let _registration = register(&job.job_id, tx)?;
 

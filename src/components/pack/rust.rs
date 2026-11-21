@@ -93,6 +93,8 @@ pub struct PackInfo {
     pub quick_actions: Vec<QuickAction>,
     /// The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
     pub starters: Vec<starters::Starter>,
+    /// The sentence the navigator writes when the deepest chosen node has no fill of its own.
+    pub formula: Option<starters::Formula>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -128,6 +130,9 @@ struct RawPack {
     /// The home drill-down navigator (`starters.rs`); nodes are parsed one by one.
     #[serde(default)]
     starters: Vec<Value>,
+    /// The navigator's fallback sentence `{ar, en}` (`starters::parse_formula`).
+    #[serde(default)]
+    formula: Option<Value>,
     /// kun.databayt.org home card ids this department shows (`public/r/kun/home.json`).
     #[serde(default)]
     cards: Vec<String>,
@@ -400,6 +405,7 @@ pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
     let meta = meta_in(kun, dept)?;
     let raw = read_pack(kun, dept);
     let starters = starters::parse(&raw.starters);
+    let formula = starters::parse_formula(raw.formula.as_ref());
     let fallback = raw.name.unwrap_or_else(|| dept.to_owned());
     Ok(PackInfo {
         department: dept.to_owned(),
@@ -408,6 +414,7 @@ pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
         default_driver: meta.default_driver,
         quick_actions: meta.quick_actions,
         starters,
+        formula,
     })
 }
 

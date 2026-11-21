@@ -92,3 +92,21 @@ fn repo_filter_hides_and_prunes() {
     let none = filter_repo(vec![tree().remove(1)], "mkan");
     assert!(none.is_empty());
 }
+
+#[test]
+fn fills_and_formula_parse() {
+    let raw = [
+        json!({"id":"f","label_en":"F","fill_en":"Make {{type}}","fill_ar":"  "}),
+        json!({"id":"empty","label_en":"E","fill_en":" "}),
+    ];
+    let t = parse(&raw);
+    assert_eq!(t.len(), 1, "a blank fill leads nowhere");
+    assert_eq!(t[0].fill_en.as_deref(), Some("Make {{type}}"));
+    assert_eq!(t[0].fill_ar, None);
+    assert!(t[0].prompt.is_none());
+    let f = parse_formula(Some(&json!({"ar":" س ","en":"X {{repo}}"}))).unwrap();
+    assert_eq!((f.ar.as_str(), f.en.as_str()), ("س", "X {{repo}}"));
+    assert!(parse_formula(Some(&json!({"ar":" ","en":""}))).is_none());
+    assert!(parse_formula(Some(&json!("nope"))).is_none());
+    assert!(parse_formula(None).is_none());
+}

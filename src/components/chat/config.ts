@@ -36,6 +36,8 @@ export const copy = {
   videos: { en: "Videos", ar: "فيديو" },
   navBack: { en: "Back one level", ar: "رجوع مستوى واحد" },
   navTrail: { en: "Your choices", ar: "اختياراتك" },
+  planFirst: { en: "Plan first", ar: "خطة أولاً" },
+  planOff: { en: "Send without plan mode", ar: "أرسل دون وضع الخطة" },
   navNothing: { en: "Nothing yet", ar: "لا شيء بعد" },
   navMore: { en: "More", ar: "المزيد" },
   langAr: { en: "Arabic", ar: "عربي" },

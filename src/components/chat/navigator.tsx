@@ -24,8 +24,9 @@ import {
 } from "lucide-react";
 
 import { starterSource } from "../pack/actions";
-import type { SourceItem, Starter } from "../pack/types";
+import type { Formula, SourceItem, Starter } from "../pack/types";
 import { copy, tr } from "./config";
+import { facetsOf, fillPrompt, labelOf, sentenceFor } from "./fill";
 
 const ICONS: Record<string, LucideIcon> = {
   Clapperboard: ClapperboardIcon,
@@ -46,13 +47,6 @@ const ICONS: Record<string, LucideIcon> = {
 
 const MAX_ROWS = 5;
 
-/** Fills `{{token}}`s; a token with no value stays as written. */
-export function fillPrompt(prompt: string, facets: Record<string, string>): string {
-  return prompt.replace(/\{\{(\w+)\}\}/g, (m, k: string) => facets[k] ?? m);
-}
-
-const labelOf = (n: Starter, isAr: boolean) => (isAr ? n.label_ar : n.label_en) || n.label_en || n.label_ar;
-
 /** A generated item as a node: its own label + facets, the source's `then` as its children. */
 function fromItem(parent: Starter, item: SourceItem, i: number): Starter {
   return {
@@ -68,39 +62,40 @@ function fromItem(parent: Starter, item: SourceItem, i: number): Starter {
     source: null,
     then: [],
     prompt: null,
+    // A generated item speaks with its source's sentence, now with its own facets.
+    fill_ar: parent.fill_ar,
+    fill_en: parent.fill_en,
   };
-}
-
-/** Facets of a path: every `set` key, plus `<key>_label` = the chosen node's label. */
-function facetsOf(path: Starter[], repo: string, isAr: boolean): Record<string, string> {
-  const out: Record<string, string> = { repo };
-  for (const n of path)
-    for (const [k, v] of Object.entries(n.set)) {
-      out[k] = v;
-      out[`${k}_label`] = labelOf(n, isAr);
-    }
-  return out;
 }
 
 /**
  * The home starters as a drill-down: a few plain rows; tapping a branch swaps them for its
  * children, a quiet trail of small chips above shows the choices (a chip steps back to the level
- * where that choice was made, the arrow steps up one), and a leaf sends its prompt with the
- * facets filled in. Dynamic levels (`source`) load their rows on entry.
+ * where that choice was made, the arrow steps up one). It never sends: every choice writes one
+ * sentence into the composer (`onFill`, live at each step, "" at the root) for the person to edit
+ * and send; a leaf with a fill stays on screen and asks for focus. A leaf with only a legacy
+ * `prompt` still sends (`onPick`). Dynamic levels (`source`) load their rows on entry.
  */
 export function Navigator({
   starters,
   dept,
   repo,
   isAr,
+  formula,
   onPick,
+  onFill,
   disabled,
 }: {
   starters: Starter[];
   dept: string;
   repo: string;
   isAr: boolean;
+  /** The pack's fallback sentence for a choice with no fill of its own. */
+  formula: Formula | null;
+  /** A legacy leaf's prompt: sent as it is. */
   onPick: (prompt: string) => void;
+  /** The sentence for the current path; `focus` when a leaf was chosen. */
+  onFill: (text: string, focus: boolean) => void;
   disabled?: boolean;
 }) {
   const t = tr(isAr);
@@ -110,14 +105,21 @@ export function Navigator({
   const [loaded, setLoaded] = useState<{ key: string; items: SourceItem[] } | null>(null);
 
   // A new department or repo starts from the top.
+  const fillRef = useRef(onFill);
+  fillRef.current = onFill;
   useEffect(() => {
     setPath([]);
     setMore(false);
+    fillRef.current("", false);
   }, [dept, repo]);
 
-  const current = path.at(-1);
+  // A chosen leaf stays in the trail while its siblings stay listed.
+  const last = path.at(-1);
+  const leafChosen = !!last && last.children.length === 0 && !last.source;
+  const level = leafChosen ? path.slice(0, -1) : path;
+  const current = level.at(-1);
   const source = current?.source ?? null;
-  const facets = facetsOf(path, repo, isAr);
+  const facets = facetsOf(level, repo, isAr);
   const key = source ? `${dept}|${source}|${repo}|${facets.project ?? ""}` : "";
   useEffect(() => {
     if (!source) return;
@@ -142,20 +144,23 @@ export function Navigator({
       : current.children;
   const shown = more ? rows : rows.slice(0, MAX_ROWS);
 
-  const go = (next: Starter[], d: number) => {
+  const go = (next: Starter[], d: number, focus = false) => {
     dir.current = d;
     setPath(next);
     setMore(false);
+    onFill(sentenceFor(next, repo, isAr, formula), focus);
   };
 
   const choose = (n: Starter) => {
     const leaf = n.children.length === 0 && !n.source;
-    if (leaf && n.prompt) {
-      onPick(fillPrompt(n.prompt, facetsOf([...path, n], repo, isAr)));
-      go([], -1);
+    if (leaf && !n.fill_ar && !n.fill_en && n.prompt) {
+      onPick(fillPrompt(n.prompt, facetsOf([...level, n], repo, isAr)));
+      dir.current = -1;
+      setPath([]);
+      setMore(false);
       return;
     }
-    go([...path, n], 1);
+    go([...level, n], 1, leaf);
   };
 
   const Back = isAr ? ChevronRightIcon : ChevronLeftIcon;
@@ -190,7 +195,7 @@ export function Navigator({
         </div>
       )}
       <div
-        key={path.map((n) => n.id).join("/")}
+        key={level.map((n) => n.id).join("/")}
         className="machine-nav-in"
         style={{ "--nav-x": `${sign * 16}px` } as React.CSSProperties}
       >
@@ -210,6 +215,7 @@ export function Navigator({
             {shown.map((n) => {
               const Icon = ICONS[n.icon ?? ""] ?? LightbulbIcon;
               const branch = n.children.length > 0 || !!n.source;
+              const picked = leafChosen && last?.id === n.id;
               const about = (isAr ? n.description_ar : n.description_en) || "";
               return (
                 <li key={n.id}>
@@ -218,7 +224,7 @@ export function Navigator({
                     onClick={() => choose(n)}
                     disabled={disabled}
                     title={about || undefined}
-                    className="flex w-full min-w-0 items-center gap-4 px-2 py-3.5 text-start text-[17px] text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                    className={`flex w-full min-w-0 items-center gap-4 px-2 py-3.5 text-start text-[17px] transition-colors hover:text-foreground disabled:opacity-50 ${picked ? "text-foreground" : "text-muted-foreground"}`}
                   >
                     <Icon className="size-5 shrink-0" strokeWidth={1.5} aria-hidden />
                     <span dir="auto" className="min-w-0 flex-1 truncate">

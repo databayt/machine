@@ -27,4 +27,13 @@ extra_args: Array<string>,
 /**
  * Environment for this one run (a profile's secrets). Never sent to or from JS.
  */
-env: Array<[string, string]>, };
+env: Array<[string, string]>, 
+/**
+ * Claude's `--permission-mode`; the other drivers ignore it.
+ */
+permission_mode: PermissionMode, };
+
+/**
+ * How much Claude may do on its own in a run. `Plan` makes the first answer a plan.
+ */
+export type PermissionMode = "auto" | "plan";

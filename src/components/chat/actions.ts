@@ -12,18 +12,20 @@ export interface AskOptions {
   taskId?: string | null
   /** Limits the run to one repository of the department (null: all repos). */
   repo?: string | null
+  /** Claude's permission mode: "plan" answers with a plan first. Anything else runs as auto. */
+  mode?: "plan" | "auto" | null
 }
 
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null }: AskOptions,
+  { jobId, session = null, driver, taskId = null, repo = null, mode = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, channel })
 }
 
 /** Cancels a running job. False when it was not running. */

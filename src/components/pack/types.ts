@@ -2,6 +2,11 @@
 import type { DriverKind } from "../driver/types";
 
 /**
+ * The pack's fallback sentence (`formula`), used when the deepest chosen node has no fill.
+ */
+export type Formula = { ar: string, en: string, };
+
+/**
  * The light and what is behind it.
  */
 export type Health = { level: HealthLevel, percent: number, rows: Array<HealthRow>, error: string | null, checked_at: number, };
@@ -24,7 +29,11 @@ export type PackInfo = { department: string, title_ar: string, title_en: string,
 /**
  * The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
  */
-starters: Array<Starter>, };
+starters: Array<Starter>, 
+/**
+ * The sentence the navigator writes when the deepest chosen node has no fill of its own.
+ */
+formula: Formula | null, };
 
 /**
  * A one-tap prompt shown under the greeting.
@@ -77,4 +86,9 @@ then: Array<Starter>,
 /**
  * The leaf's prompt template (`{{repo}}`, `{{facet}}`, `{{facet_label}}`).
  */
-prompt: string | null, };
+prompt: string | null, 
+/**
+ * One concise sentence the navigator writes into the composer instead of sending (same
+ * tokens as `prompt`). A node with a fill never sends; the person edits and sends it.
+ */
+fill_ar: string | null, fill_en: string | null, };

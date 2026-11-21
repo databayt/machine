@@ -320,6 +320,7 @@ async fn heal_with_agent(
         timeout_secs: Some(1800),
         extra_args: Vec::new(),
         env: Vec::new(),
+        permission_mode: crate::driver::PermissionMode::Auto,
     };
     crate::driver::run(&job, |e| {
         let _ = channel.send(e);

@@ -54,6 +54,28 @@ pub struct Starter {
     pub then: Vec<Starter>,
     /// The leaf's prompt template (`{{repo}}`, `{{facet}}`, `{{facet_label}}`).
     pub prompt: Option<String>,
+    /// One concise sentence the navigator writes into the composer instead of sending (same
+    /// tokens as `prompt`). A node with a fill never sends; the person edits and sends it.
+    pub fill_ar: Option<String>,
+    pub fill_en: Option<String>,
+}
+
+/// The pack's fallback sentence (`formula`), used when the deepest chosen node has no fill.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Formula {
+    pub ar: String,
+    pub en: String,
+}
+
+/// Parses the pack's raw `formula`; absent, malformed or blank gives none.
+#[must_use]
+pub fn parse_formula(raw: Option<&Value>) -> Option<Formula> {
+    let mut f = serde_json::from_value::<Formula>(raw?.clone()).ok()?;
+    let (ar, en) = (f.ar.trim().to_owned(), f.en.trim().to_owned());
+    f = Formula { ar, en };
+    (!f.ar.is_empty() || !f.en.is_empty()).then_some(f)
 }
 
 fn clean_key(k: &str) -> bool {
@@ -76,10 +98,13 @@ fn sanitize_one(mut s: Starter, depth: usize) -> Option<Starter> {
     s.repos.retain(|r| valid_name(r));
     s.set.retain(|k, _| clean_key(k));
     s.prompt = s.prompt.filter(|p| !p.trim().is_empty());
+    s.fill_ar = s.fill_ar.filter(|p| !p.trim().is_empty());
+    s.fill_en = s.fill_en.filter(|p| !p.trim().is_empty());
     s.children = sanitize(s.children, depth + 1);
     s.then = sanitize(s.then, depth + 1);
     // A node that leads nowhere is dropped.
-    (s.prompt.is_some() || !s.children.is_empty() || s.source.is_some()).then_some(s)
+    let fills = s.fill_ar.is_some() || s.fill_en.is_some();
+    (s.prompt.is_some() || fills || !s.children.is_empty() || s.source.is_some()).then_some(s)
 }
 
 fn sanitize(nodes: Vec<Starter>, depth: usize) -> Vec<Starter> {
@@ -106,10 +131,11 @@ pub fn filter_repo(nodes: Vec<Starter>, repo: &str) -> Vec<Starter> {
         .filter_map(|mut n| {
             let had_children = !n.children.is_empty();
             let had_then = !n.then.is_empty();
+            let fills = n.fill_ar.is_some() || n.fill_en.is_some();
             n.children = filter_repo(n.children, repo);
             n.then = filter_repo(n.then, repo);
-            let emptied = (had_children && n.children.is_empty() && n.source.is_none() && n.prompt.is_none())
-                || (had_then && n.then.is_empty() && n.prompt.is_none() && n.children.is_empty());
+            let emptied = (had_children && n.children.is_empty() && n.source.is_none() && n.prompt.is_none() && !fills)
+                || (had_then && n.then.is_empty() && n.prompt.is_none() && !fills && n.children.is_empty());
             (!emptied).then_some(n)
         })
         .collect()

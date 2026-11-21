@@ -14,6 +14,7 @@ fn job(driver: DriverKind, prompt: &str, session: Option<&str>) -> Job {
         timeout_secs: None,
         extra_args: Vec::new(),
         env: Vec::new(),
+        permission_mode: PermissionMode::Auto,
     }
 }
 
@@ -98,6 +99,24 @@ fn claude_args_end_options_before_prompt() {
     assert_eq!(args[dashdash + 1], "--dangerous");
     assert!(args.windows(2).any(|w| w == ["--resume", "abc-123"]));
     assert!(args.windows(2).any(|w| w == ["--permission-mode", "auto"]));
+}
+
+#[test]
+fn permission_mode_allowlist_and_claude_arg_vector() {
+    assert_eq!(PermissionMode::parse(Some("plan")), PermissionMode::Plan);
+    assert_eq!(PermissionMode::parse(Some("auto")), PermissionMode::Auto);
+    for other in [None, Some(""), Some("PLAN"), Some("bypassPermissions"), Some("plan ")] {
+        assert_eq!(PermissionMode::parse(other), PermissionMode::Auto, "{other:?}");
+    }
+    let plan = Job { permission_mode: PermissionMode::Plan, ..job(DriverKind::Claude, "hi", None) };
+    let args = args_for(&plan).unwrap();
+    assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));
+    assert!(!args.iter().any(|a| a == "auto"));
+    // The other drivers ignore it.
+    for kind in [DriverKind::Codex, DriverKind::Opencode, DriverKind::Agy, DriverKind::Hermes] {
+        let j = Job { permission_mode: PermissionMode::Plan, ..job(kind, "hi", None) };
+        assert_eq!(args_for(&j).unwrap(), args_for(&job(kind, "hi", None)).unwrap(), "{kind:?}");
+    }
 }
 
 #[test]
