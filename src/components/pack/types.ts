@@ -20,7 +20,11 @@ level: string, critical: boolean, detail: string, };
 /**
  * What the UI shows about a department's pack.
  */
-export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, quick_actions: Array<QuickAction>, };
+export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, quick_actions: Array<QuickAction>, 
+/**
+ * The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
+ */
+starters: Array<Starter>, };
 
 /**
  * A one-tap prompt shown under the greeting.
@@ -34,3 +38,43 @@ description_en: string, description_ar: string,
  * Repos this starter belongs to; empty = shown for any repo.
  */
 repos: Array<string>, };
+
+/**
+ * What a source may depend on.
+ */
+export type SourceCtx = { repo: string, project: string | null, };
+
+/**
+ * One generated child of a dynamic level.
+ */
+export type SourceItem = { label_ar: string, label_en: string, description_ar: string, description_en: string, set: { [key in string]: string }, };
+
+/**
+ * Where a branch's children come from when they are generated.
+ */
+export type SourceKind = "markets" | "projects" | "variants";
+
+/**
+ * One row of the navigator: a branch (children / source) or a leaf (prompt).
+ */
+export type Starter = { id: string, label_ar: string, label_en: string, description_ar: string, description_en: string, 
+/**
+ * A lucide icon name from a small fixed set; the UI falls back to a bulb.
+ */
+icon: string | null, 
+/**
+ * Visible only when the selected repo is listed; empty = any repo.
+ */
+repos: Array<string>, 
+/**
+ * Facets recorded when this node is chosen.
+ */
+set: { [key in string]: string }, children: Array<Starter>, source: SourceKind | null, 
+/**
+ * The subtree under every generated child of `source`.
+ */
+then: Array<Starter>, 
+/**
+ * The leaf's prompt template (`{{repo}}`, `{{facet}}`, `{{facet_label}}`).
+ */
+prompt: string | null, };

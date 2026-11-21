@@ -31,6 +31,8 @@ use crate::driver::DriverKind;
 pub mod health;
 #[path = "link.rs"]
 mod link;
+#[path = "starters.rs"]
+pub mod starters;
 #[path = "workspace.rs"]
 mod workspace;
 
@@ -89,6 +91,8 @@ pub struct PackInfo {
     pub title_en: String,
     pub default_driver: Option<DriverKind>,
     pub quick_actions: Vec<QuickAction>,
+    /// The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
+    pub starters: Vec<starters::Starter>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -121,6 +125,9 @@ struct RawPack {
     default_driver: Option<DriverKind>,
     #[serde(default, rename = "quickActions")]
     quick_actions: Vec<RawQuick>,
+    /// The home drill-down navigator (`starters.rs`); nodes are parsed one by one.
+    #[serde(default)]
+    starters: Vec<Value>,
     /// kun.databayt.org home card ids this department shows (`public/r/kun/home.json`).
     #[serde(default)]
     cards: Vec<String>,
@@ -391,13 +398,16 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
 /// On a bad name.
 pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
     let meta = meta_in(kun, dept)?;
-    let fallback = read_pack(kun, dept).name.unwrap_or_else(|| dept.to_owned());
+    let raw = read_pack(kun, dept);
+    let starters = starters::parse(&raw.starters);
+    let fallback = raw.name.unwrap_or_else(|| dept.to_owned());
     Ok(PackInfo {
         department: dept.to_owned(),
         title_ar: meta.title_ar.unwrap_or_else(|| fallback.clone()),
         title_en: meta.title_en.unwrap_or(fallback),
         default_driver: meta.default_driver,
         quick_actions: meta.quick_actions,
+        starters,
     })
 }
 
@@ -422,11 +432,25 @@ fn departments() -> Result<Vec<String>, PackError> {
     Ok(departments_in(&kun_dir()?))
 }
 
-/// `info` — one department's title and quick actions.
+/// `info` — one department's title, quick actions and starters (filtered to `repo` when given).
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
-fn info(department: String) -> Result<PackInfo, PackError> {
-    info_in(&kun_dir()?, &department)
+fn info(department: String, repo: Option<String>) -> Result<PackInfo, PackError> {
+    let mut pack = info_in(&kun_dir()?, &department)?;
+    if let Some(repo) = repo {
+        pack.starters = starters::filter_repo(pack.starters, &repo);
+    }
+    Ok(pack)
+}
+
+/// `starter_source` — the generated children of a dynamic starter level (cached 60 s).
+#[tauri::command]
+async fn starter_source(
+    dept: String,
+    source: starters::SourceKind,
+    ctx: starters::SourceCtx,
+) -> Result<Vec<starters::SourceItem>, PackError> {
+    starters::items_for(&dept, source, &ctx).await
 }
 
 /// `health` — runs the department's declared check and returns the light.
@@ -512,7 +536,8 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             prepare,
             sync_repos,
             health,
-            health_fix
+            health_fix,
+            starter_source
         ])
         .build()
 }

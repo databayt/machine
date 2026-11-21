@@ -19,6 +19,7 @@ import { ActivityRows, StatusLine } from "./activity";
 import { Composer } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
+import { Navigator } from "./navigator";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
@@ -79,8 +80,8 @@ export default function ChatContent({
   // The department's pack follows Settings live (the menu, chat and sidebar share one department).
   useEffect(() => {
     if (!inApp || !ctx.dept) return;
-    void packInfo(ctx.dept).then(setPack).catch(() => setPack(null));
-  }, [inApp, ctx.dept]);
+    void packInfo(ctx.dept, ctx.repo || undefined).then(setPack).catch(() => setPack(null));
+  }, [inApp, ctx.dept, ctx.repo]);
 
   useEffect(() => {
     if (!inApp || !resume) return;
@@ -272,12 +273,23 @@ export default function ChatContent({
                 />
                 {contextLine}
               </div>
-              <Suggestions
-                actions={quick}
-                isAr={isAr}
-                onPick={(p) => void send(p)}
-                disabled={busy}
-              />
+              {pack && pack.starters.length > 0 ? (
+                <Navigator
+                  starters={pack.starters}
+                  dept={ctx.dept}
+                  repo={ctx.repo}
+                  isAr={isAr}
+                  onPick={(p) => void send(p)}
+                  disabled={busy}
+                />
+              ) : (
+                <Suggestions
+                  actions={quick}
+                  isAr={isAr}
+                  onPick={(p) => void send(p)}
+                  disabled={busy}
+                />
+              )}
             </div>
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">

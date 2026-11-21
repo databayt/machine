@@ -160,7 +160,7 @@ pub fn safe_argv(argv: &[String], home: &Path, kun: &Path) -> Result<Vec<String>
 }
 
 /// Runs one validated argv with no shell, `node` found on the GUI-safe search dirs; stdout on success.
-async fn run(argv: &[String], timeout: Duration, home: &Path) -> Result<String, String> {
+pub(super) async fn run(argv: &[String], timeout: Duration, home: &Path) -> Result<String, String> {
     let dirs = crate::driver::search_dirs();
     let node = dirs
         .iter()

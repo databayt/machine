@@ -2,12 +2,18 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { SyncEvent } from "../repos/types"
-import type { Health, PackInfo } from "./types"
+import type { Health, PackInfo, SourceCtx, SourceItem, SourceKind } from "./types"
 
 /** A department's title and quick actions; null outside the machine app. */
-export async function packInfo(department: string): Promise<PackInfo | null> {
+export async function packInfo(department: string, repo?: string): Promise<PackInfo | null> {
   if (!isTauri()) return null
-  return invoke<PackInfo>("plugin:pack|info", { department })
+  return invoke<PackInfo>("plugin:pack|info", { department, repo: repo ?? null })
+}
+
+/** The generated children of a dynamic starter level (markets, projects, variants); cached 60 s in Rust. */
+export async function starterSource(dept: string, source: SourceKind, ctx: SourceCtx): Promise<SourceItem[]> {
+  if (!isTauri()) return []
+  return invoke<SourceItem[]>("plugin:pack|starter_source", { dept, source, ctx })
 }
 
 /** Departments that ship a pack in this kun checkout. */
