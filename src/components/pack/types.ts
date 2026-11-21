@@ -2,6 +2,22 @@
 import type { DriverKind } from "../driver/types";
 
 /**
+ * The light and what is behind it.
+ */
+export type Health = { level: HealthLevel, percent: number, rows: Array<HealthRow>, error: string | null, checked_at: number, };
+
+export type HealthLevel = "green" | "orange" | "red" | "none";
+
+/**
+ * One line of a health check.
+ */
+export type HealthRow = { name: string, 
+/**
+ * `ok`, `warn` or `fail`.
+ */
+level: string, critical: boolean, detail: string, };
+
+/**
  * What the UI shows about a department's pack.
  */
 export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, quick_actions: Array<QuickAction>, };

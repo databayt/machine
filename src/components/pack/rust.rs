@@ -27,6 +27,8 @@ use ts_rs::TS;
 
 use crate::driver::DriverKind;
 
+#[path = "health.rs"]
+pub mod health;
 #[path = "link.rs"]
 mod link;
 #[path = "workspace.rs"]
@@ -131,6 +133,9 @@ struct RawPack {
     /// A longer turn timeout for departments whose runs take hours (clamped on read).
     #[serde(default, rename = "timeoutSecs")]
     timeout_secs: Option<u32>,
+    /// An automatic health check (and fix) for the department's home-page light.
+    #[serde(default)]
+    health: Option<health::HealthSpec>,
 }
 
 /// A department or skill name: lowercase-ish, no separators, no dots at the start.
@@ -272,6 +277,8 @@ pub struct PackMeta {
     pub dirs: Vec<String>,
     /// The turn timeout the pack asks for, clamped to [`MIN_TIMEOUT_SECS`]..=[`MAX_TIMEOUT_SECS`].
     pub timeout_secs: Option<u32>,
+    /// The health check and fix the pack declares, if any (validated when run, see `health.rs`).
+    pub health: Option<health::HealthSpec>,
 }
 
 /// The shortest and longest turn timeout a pack may ask for.
@@ -358,6 +365,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         cards: raw.cards.iter().filter(|c| valid_name(c)).cloned().collect(),
         repos: raw.repos.iter().filter(|r| valid_name(r)).cloned().collect(),
         dirs: raw.dirs.clone(),
+        health: raw.health.clone(),
         timeout_secs: raw
             .timeout_secs
             .map(|t| t.clamp(MIN_TIMEOUT_SECS, MAX_TIMEOUT_SECS)),
@@ -419,6 +427,25 @@ fn departments() -> Result<Vec<String>, PackError> {
 #[allow(clippy::needless_pass_by_value)]
 fn info(department: String) -> Result<PackInfo, PackError> {
     info_in(&kun_dir()?, &department)
+}
+
+/// `health` — runs the department's declared check and returns the light.
+#[tauri::command]
+async fn health(department: String) -> Result<health::Health, PackError> {
+    run_health(&department, false).await
+}
+
+/// `health_fix` — runs the department's declared fix, then the check again.
+#[tauri::command]
+async fn health_fix(department: String) -> Result<health::Health, PackError> {
+    run_health(&department, true).await
+}
+
+async fn run_health(department: &str, fix: bool) -> Result<health::Health, PackError> {
+    let kun = kun_dir()?;
+    let home = dirs::home_dir().ok_or(PackError::NoHome)?;
+    let meta = meta_in(&kun, department)?;
+    Ok(health::evaluate(meta.health.as_ref(), &home, &kun, fix).await)
 }
 
 /// The base folder for profile workspaces: `KUN_HOME/Kun` when `KUN_HOME` is set, else `~/Kun`.
@@ -483,7 +510,9 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             departments,
             info,
             prepare,
-            sync_repos
+            sync_repos,
+            health,
+            health_fix
         ])
         .build()
 }

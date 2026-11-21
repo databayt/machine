@@ -144,7 +144,7 @@ const PROTECTED_ENV: [&str; 6] = [
 
 /// Apps launched from the Finder or Start menu get a minimal PATH, so look where
 /// the CLIs' own installers put them before falling back to PATH.
-fn search_dirs() -> Vec<PathBuf> {
+pub(crate) fn search_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Some(home) = dirs::home_dir() {
         for sub in [

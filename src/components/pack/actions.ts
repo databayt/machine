@@ -2,7 +2,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { SyncEvent } from "../repos/types"
-import type { PackInfo } from "./types"
+import type { Health, PackInfo } from "./types"
 
 /** A department's title and quick actions; null outside the machine app. */
 export async function packInfo(department: string): Promise<PackInfo | null> {
@@ -22,4 +22,16 @@ export async function syncRepos(onEvent: (event: SyncEvent) => void): Promise<vo
   const channel = new Channel<SyncEvent>()
   channel.onmessage = onEvent
   return invoke<void>("plugin:pack|sync_repos", { channel })
+}
+
+/** The department's health light (its pack's `health.check`); null outside the machine app. */
+export async function health(department: string): Promise<Health | null> {
+  if (!isTauri()) return null
+  return invoke<Health>("plugin:pack|health", { department })
+}
+
+/** Runs the pack's `health.fix`, then the check again. */
+export async function healthFix(department: string): Promise<Health | null> {
+  if (!isTauri()) return null
+  return invoke<Health>("plugin:pack|health_fix", { department })
 }

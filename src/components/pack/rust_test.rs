@@ -392,3 +392,84 @@ fn pack_dirs_expand_home_and_refuse_escapes() {
     assert!(real.join("media").is_dir());
     assert!(!real.join("missing-parent").exists());
 }
+
+mod health_tests {
+    use super::super::health::*;
+    use std::fs;
+
+    fn row(level: &str, critical: bool) -> HealthRow {
+        HealthRow { name: "x".into(), level: level.into(), critical, detail: String::new() }
+    }
+
+    #[test]
+    fn level_computation() {
+        assert_eq!(level_of(&[row("ok", true), row("ok", false)]), HealthLevel::Green);
+        assert_eq!(level_of(&[row("ok", true), row("warn", true)]), HealthLevel::Orange);
+        assert_eq!(level_of(&[row("ok", true), row("fail", false)]), HealthLevel::Orange);
+        assert_eq!(level_of(&[row("ok", false), row("fail", true)]), HealthLevel::Red);
+        assert_eq!(percent_of(&[row("ok", true), row("warn", false), row("fail", true), row("ok", false)]), 50);
+    }
+
+    struct Fx {
+        home: tempfile::TempDir,
+        kun: tempfile::TempDir,
+    }
+
+    fn fx() -> Fx {
+        let home = tempfile::tempdir().unwrap();
+        let kun = tempfile::tempdir().unwrap();
+        fs::create_dir_all(home.path().join(".claude/skills/produce/scripts")).unwrap();
+        fs::write(home.path().join(".claude/skills/produce/scripts/p.mjs"), "").unwrap();
+        fs::create_dir_all(home.path().join("other")).unwrap();
+        fs::write(home.path().join("other/p.mjs"), "").unwrap();
+        Fx { home, kun }
+    }
+
+    fn argv(a: &[&str]) -> Vec<String> {
+        a.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    #[test]
+    fn argv_safety() {
+        let f = fx();
+        let ok = safe_argv(&argv(&["node", "~/.claude/skills/produce/scripts/p.mjs", "readiness", "--json"]), f.home.path(), f.kun.path()).unwrap();
+        assert_eq!(ok[0], "node");
+        assert!(ok[1].ends_with("produce/scripts/p.mjs"));
+        assert_eq!(&ok[2..], ["readiness", "--json"]);
+
+        assert!(safe_argv(&argv(&["/bin/sh", "-c", "id"]), f.home.path(), f.kun.path()).is_err());
+        assert!(safe_argv(&argv(&["node", "~/other/p.mjs"]), f.home.path(), f.kun.path()).is_err());
+        assert!(safe_argv(&argv(&["node", "~/.claude/skills/../../other/p.mjs"]), f.home.path(), f.kun.path()).is_err());
+        assert!(safe_argv(&argv(&["node"]), f.home.path(), f.kun.path()).is_err());
+    }
+
+    #[test]
+    fn argv_allows_kun_skills_root() {
+        let f = fx();
+        fs::create_dir_all(f.kun.path().join(".claude/skills/s")).unwrap();
+        fs::write(f.kun.path().join(".claude/skills/s/a.mjs"), "").unwrap();
+        let p = f.kun.path().join(".claude/skills/s/a.mjs").display().to_string();
+        assert!(safe_argv(&argv(&["node", &p]), f.home.path(), f.kun.path()).is_ok());
+    }
+
+    #[test]
+    fn unparseable_output_is_red() {
+        let h = parse_output("not json at all");
+        assert_eq!(h.level, HealthLevel::Red);
+        assert!(h.error.is_some() && h.rows.is_empty());
+        let g = parse_output(r#"{"ok":true,"rows":[{"name":"a","level":"ok","critical":true,"detail":""}]}"#);
+        assert_eq!((g.level, g.percent), (HealthLevel::Green, 100));
+        let noisy = parse_output("log line\n{\"ok\":false,\"rows\":[{\"name\":\"a\",\"level\":\"warn\"}]}");
+        assert_eq!(noisy.level, HealthLevel::Orange);
+    }
+
+    #[tokio::test]
+    async fn no_health_is_none_and_bad_argv_is_red() {
+        let f = fx();
+        assert_eq!(evaluate(None, f.home.path(), f.kun.path(), false).await.level, HealthLevel::None);
+        let spec = HealthSpec { check: argv(&["/bin/sh", "-c", "echo"]), fix: vec![] };
+        let h = evaluate(Some(&spec), f.home.path(), f.kun.path(), false).await;
+        assert_eq!(h.level, HealthLevel::Red);
+        assert!(h.error.is_some());
+    }
+}

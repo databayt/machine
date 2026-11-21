@@ -27,6 +27,7 @@ import { cloneRepo } from "../repos/actions";
 import { useDepartment } from "../menu/use-department";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { loadSettings, saveSettings } from "../settings/actions";
+import { HealthLight, type DeptHealth } from "../pack/health";
 import { tr } from "./config";
 
 /**
@@ -123,6 +124,8 @@ export function ContextLine({
   local,
   repo,
   onRepo,
+  health,
+  onAsk,
   disabled,
 }: {
   lang: Locale;
@@ -134,6 +137,10 @@ export function ContextLine({
   local: Set<string> | null;
   repo: string;
   onRepo: (repo: string) => Promise<void>;
+  /** The department's health light; hidden when its pack declares none. */
+  health?: DeptHealth;
+  /** Sends a prompt to the agent (the home suggestions' path). */
+  onAsk?: (prompt: string) => void;
   disabled?: boolean;
 }) {
   const isAr = lang === "ar";
@@ -248,6 +255,8 @@ export function ContextLine({
           )}
         </PopoverContent>
       </Popover>
+
+      {health && onAsk && <HealthLight lang={lang} dept={dept} state={health} onAsk={onAsk} />}
     </div>
   );
 }

@@ -20,6 +20,7 @@ import { Composer } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { Suggestions } from "./suggestions";
+import { useDeptHealth } from "../pack/health";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
 import { useStickToBottom } from "./use-stick-to-bottom";
 
@@ -57,6 +58,7 @@ export default function ChatContent({
   const inApp = useInMachine();
   const [pack, setPack] = useState<PackInfo | null>(null);
   const ctx = useWorkingContext(inApp === true);
+  const health = useDeptHealth(inApp === true ? ctx.dept : "");
   const [messages, setMessages] = useState<Message[]>([]);
   const [session, setSession] = useState<string | null>(resume ?? null);
   const [resumed, setResumed] = useState<string | null>(null);
@@ -229,6 +231,8 @@ export default function ChatContent({
       local={ctx.local}
       repo={ctx.repo}
       onRepo={ctx.setRepo}
+      health={health}
+      onAsk={(p) => void send(p)}
       disabled={busy}
     />
   );
