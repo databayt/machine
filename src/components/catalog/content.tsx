@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useSearchParams } from "next/navigation"
 import { useMemo, useState } from "react"
 
 import type { Locale } from "@/components/local/config"
@@ -10,6 +11,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 
 import { copy, statusLabel, TYPES, typeLabel, type ItemType } from "./config"
 import { PageShell, Section } from "../shell/page"
+import { dirOfItem, typeOfDir } from "../shell/nav"
 import { ItemActions } from "./item-actions"
 import { useCanInstall, useCatalog } from "./use-catalog"
 
@@ -18,7 +20,12 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
   const t = (k: { en: string; ar: string }) => (isAr ? k.ar : k.en)
   const { items, error, reload } = useCatalog()
   const canInstallHere = useCanInstall()
-  const [type, setType] = useState<ItemType | "all">("pack")
+  const dir = useSearchParams().get("dir") ?? ""
+  // `?dir` preselects the type tab (the route remounts this on a new dir); `mcp` has no tab.
+  const [type, setType] = useState<ItemType | "all">(() => {
+    const preset = typeOfDir(dir)
+    return (TYPES as readonly string[]).includes(preset ?? "") ? (preset as ItemType) : "pack"
+  })
   const [query, setQuery] = useState("")
 
   const shown = useMemo(() => {
@@ -31,12 +38,12 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
   }, [items, type, query])
 
   return (
-    <PageShell title={t(copy.title)} description={t(copy.subtitle)}>
+    <PageShell title={t(copy.title)}>
 
       {!canInstallHere && (
         <div className="bg-background flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4 text-sm">
           <span>{t(copy.getMachine)}</span>
-          <Link href={`/${lang}/`} className="text-primary font-medium underline-offset-4 hover:underline">
+          <Link href={`/${lang}/`} className="inline-flex h-9 items-center rounded-full bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90">
             {t(copy.getMachineButton)}
           </Link>
         </div>
@@ -68,12 +75,12 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
 
       <ul className="grid gap-3 sm:grid-cols-2">
         {shown.map((item) => (
-          <li key={item.id} className="bg-background flex flex-col justify-between gap-3 rounded-2xl p-4">
+          <li key={item.id} className="bg-background relative flex flex-col justify-between gap-3 rounded-2xl p-4 transition-colors focus-within:ring-2 focus-within:ring-foreground/40 hover:bg-background/60">
             <div>
               <div className="flex items-center justify-between gap-2">
                 <Link
-                  href={`/${lang}/catalog/item/?id=${encodeURIComponent(item.id)}`}
-                  className="font-medium hover:underline"
+                  href={`/${lang}/catalog/?dir=${dir || dirOfItem(item.id) || ""}&item=${encodeURIComponent(item.id)}`}
+                  className="font-medium no-underline outline-none after:absolute after:inset-0 after:rounded-2xl"
                 >
                   {(isAr && item.title_ar) || item.title}
                 </Link>
@@ -85,7 +92,9 @@ export default function CatalogContent({ lang }: { lang: Locale }) {
               </div>
               <p className="text-muted-foreground mt-1 line-clamp-3 text-sm">{(isAr && item.description_ar) || item.description}</p>
             </div>
-            <ItemActions item={item} isAr={isAr} onChanged={reload} />
+            <div className="relative z-10 self-start">
+              <ItemActions item={item} isAr={isAr} onChanged={reload} />
+            </div>
           </li>
         ))}
       </ul>

@@ -1,43 +1,34 @@
 import { cn } from "@/lib/utils"
 
 import { SHELL_TOP } from "./grid"
-import { SettingsTabs } from "./tabs"
 
 /**
- * The work area frame, the same as the mega menu's column 2: a `min-w-0` column of sections with
- * `gap-10`, a heading and a quiet description on top. The layout scrolls it; below `lg` it clears the
- * floating menu button, on `lg` it sits level with the sidebar.
+ * The work area: bare. No title, no description, no toolbar, no tab row: the sidebar is the breadcrumb
+ * and the content is the whole screen. `title` is only the screen's accessible name. A full-height
+ * column whose content region is the one scroller (the frame around it does not scroll); below `lg`
+ * it clears the floating menu button, on `lg` it sits level with the sidebar.
  */
 export function PageShell({
   title,
-  description,
-  actions,
   className,
   children,
 }: {
+  /** The screen's accessible name; never drawn. */
   title: string
-  description?: React.ReactNode
-  /** Buttons at the heading's end. */
-  actions?: React.ReactNode
   className?: string
   children: React.ReactNode
 }) {
   return (
-    <div className={cn("min-w-0 ps-[26px] pe-6 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16", SHELL_TOP)}>
-      <div className={cn("flex min-w-0 max-w-4xl flex-col gap-10", className)}>
-        <SettingsTabs />
-        <header className="flex min-w-0 flex-wrap items-start justify-between gap-x-6 gap-y-3">
-          <div className="min-w-0">
-            <h1 className="text-balance font-['thmanyah_serif_display',var(--font-sans)] text-3xl font-bold leading-snug tracking-tight lg:text-[38px]">
-              {title}
-            </h1>
-            {description && <p className="mt-2 text-sm text-muted-foreground">{description}</p>}
-          </div>
-          {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
-        </header>
-        {children}
+    <section aria-label={title} className="flex h-full min-h-0 min-w-0 flex-col">
+      <div
+        className={cn(
+          "min-h-0 flex-1 overflow-y-auto overscroll-contain ps-[26px] pe-6 pb-10 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16",
+          SHELL_TOP,
+        )}
+      >
+        <div className={cn("flex min-w-0 max-w-4xl flex-col gap-10", className)}>{children}</div>
       </div>
-    </div>
+    </section>
   )
 }
 

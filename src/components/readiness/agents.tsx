@@ -13,7 +13,7 @@ import { OpenInMachine, useInMachine } from "../shell/content"
 import { agentsTools, readinessFix, readinessRun, type AgentToolRow } from "./actions"
 import { statusWord, tone } from "./config"
 
-const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
 
 /** The Agents & tools tab: installed or not, install and update per row, and the default agent. */
 export default function AgentsContent({ lang }: { lang: Locale }) {

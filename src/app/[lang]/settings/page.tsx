@@ -1,4 +1,6 @@
-import SettingsContent from "@/components/settings/content"
+import { Suspense } from "react"
+
+import SettingsRoute from "@/components/settings/route"
 import type { Locale } from "@/components/local/config"
 
 export const metadata = { title: "Settings" }
@@ -9,5 +11,9 @@ interface PageProps {
 
 export default async function SettingsPage({ params }: PageProps) {
   const { lang } = await params
-  return <SettingsContent lang={lang as Locale} />
+  return (
+    <Suspense fallback={null}>
+      <SettingsRoute lang={lang as Locale} />
+    </Suspense>
+  )
 }

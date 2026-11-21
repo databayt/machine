@@ -23,7 +23,7 @@ import {
   type WriteOutcome,
 } from "./actions"
 
-const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
 const field = "h-10 min-w-0 flex-1 rounded-full bg-muted px-4 text-sm outline-none"
 const card = "space-y-3 rounded-2xl bg-background p-4"
 
@@ -95,13 +95,7 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
     )
 
   return (
-    <PageShell
-      title={t("Configuration", "التهيئة")}
-      description={t(
-        "Every change is backed up first and the engine's health check runs after; a RED result restores the backup.",
-        "كل تغيير يُنسخ احتياطياً أولاً ثم يُشغَّل فحص صحة المحرك؛ النتيجة الحمراء تستعيد النسخة.",
-      )}
-    >
+    <PageShell title={t("Configuration", "التهيئة")}>
       {message && <p className={`text-sm ${message.ok ? "text-muted-foreground" : "text-destructive"}`}>{message.text}</p>}
 
       {settings && (
@@ -165,7 +159,7 @@ export default function ConfigContent({ lang }: { lang: Locale }) {
                 <p className="font-medium" dir="ltr">{s.name}</p>
                 <p className="truncate text-xs text-muted-foreground" dir="ltr">{s.connected === true ? "✓ " : s.connected === false ? "✗ " : ""}{s.summary}</p>
               </div>
-              <button className="text-sm font-medium text-destructive underline-offset-4 hover:underline disabled:opacity-50" disabled={busy} onClick={() => write(() => mcpRemove(s.name), loadMcp)}>
+              <button className="text-sm font-medium text-destructive rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50" disabled={busy} onClick={() => write(() => mcpRemove(s.name), loadMcp)}>
                 {t("Remove", "أزل")}
               </button>
             </li>
@@ -219,7 +213,7 @@ function SettingRow({ entry, busy, isAr, onSave, onRemove }: { entry: ConfigView
         <>
           <input dir="ltr" className={field} value={value} onChange={(e) => setValue(e.target.value)} aria-label={entry.key} />
           <button className={link} disabled={busy || value === entry.value} onClick={() => onSave(value)}>{isAr ? "حفظ" : "Save"}</button>
-          <button className="text-sm font-medium text-destructive underline-offset-4 hover:underline disabled:opacity-50" disabled={busy} onClick={onRemove}>{isAr ? "أزل" : "Remove"}</button>
+          <button className="text-sm font-medium text-destructive rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50" disabled={busy} onClick={onRemove}>{isAr ? "أزل" : "Remove"}</button>
         </>
       )}
     </li>

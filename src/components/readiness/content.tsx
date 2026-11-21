@@ -13,7 +13,7 @@ import type { Mode, ReadinessView, RunEvent, StepStatus, StepView } from "./type
 const button =
   "inline-flex h-9 items-center rounded-full bg-foreground px-4 text-sm font-medium text-background transition-colors hover:bg-foreground/90 disabled:opacity-50"
 const quiet = "inline-flex h-9 items-center rounded-full bg-muted px-4 text-sm font-medium transition-colors hover:bg-muted/70 disabled:opacity-50"
-const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
 
 type Live = Record<string, { status: StepStatus; detail: string }>
 
@@ -128,7 +128,7 @@ export default function ReadinessContent({ lang }: { lang: Locale }) {
   const busy = running !== null
 
   return (
-    <PageShell title={t(copy.title)} description={t(copy.subtitle)}>
+    <PageShell title={t(copy.title)}>
       <Section>
       <div className="rounded-2xl bg-background p-4">
         <div className="mb-2 flex items-baseline justify-between text-sm">

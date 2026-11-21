@@ -10,6 +10,7 @@ import { tr } from "../chat/config";
 import { listSessions } from "../sessions/actions";
 import type { Session } from "../sessions/types";
 import { storeLang, swapLocale } from "../shell/lang";
+import { useNav } from "../shell/use-nav";
 import { copy, NEW_CHAT_EVENT } from "./config";
 import { Dot } from "./ui";
 
@@ -19,15 +20,16 @@ const item = "shrink-0 whitespace-nowrap transition-colors hover:text-foreground
 export function Footer({
   lang,
   inApp,
-  showEngine,
   health,
 }: {
   lang: Locale;
   inApp: boolean;
-  showEngine: boolean;
+  /** Kept for the menu's call; the footer reads the same tree as the sidebar, which gates the engine itself. */
+  showEngine?: boolean;
   health: HealthReport | null;
 }) {
   const t = tr(lang === "ar");
+  const { tree, trail } = useNav(lang);
   const router = useRouter();
   const pathname = usePathname();
   const [chats, setChats] = useState<Session[] | null>(null);
@@ -83,12 +85,20 @@ export function Footer({
                 </div>
               )}
             </span>
-            <Link href={`/${lang}/repos/`} className={item}>{t(copy.repos)}</Link>
           </>
         )}
-        <a href={`https://kun.databayt.org/${lang}/docs`} target="_blank" rel="noreferrer" className={`${item} lg:hidden`}>{t(copy.docs)}</a>
-        {showEngine && <Link href={`/${lang}/engine/`} title={t(copy.engineHint)} className={item}>{t(copy.engine)}</Link>}
-        <Link href={`/${lang}/settings/`} className={`${item} lg:hidden`}>{t(copy.settings)}</Link>
+        {/* The same four parents the sidebar has; the open one reads darker. */}
+        {tree.map((n) => (
+          <Link
+            key={n.id}
+            href={n.href(lang)}
+            aria-current={trail.parent === n.id ? "page" : undefined}
+            className={`${item} ${trail.parent === n.id ? "font-medium text-foreground" : ""}`}
+          >
+            {typeof n.label === "string" ? n.label : t(n.label)}
+          </Link>
+        ))}
+        <a href={`https://kun.databayt.org/${lang}/docs`} target="_blank" rel="noreferrer" className={item}>{t(copy.docs)}</a>
         <button
           type="button"
           lang={other}

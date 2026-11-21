@@ -23,7 +23,7 @@ import {
 } from "./actions"
 import { copy, lossesText } from "./config"
 
-const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
 
 export default function ReposContent({ lang }: { lang: Locale }) {
   const isAr = lang === "ar"
@@ -53,7 +53,7 @@ export default function ReposContent({ lang }: { lang: Locale }) {
     )
 
   return (
-    <PageShell title={isAr ? "المستودعات" : "Repositories"} description={t(copy.subtitle)}>
+    <PageShell title={isAr ? "المستودعات" : "Repositories"}>
       <RootPicker isAr={isAr} onChanged={reload} />
       {error && <p className="text-sm text-destructive">{error}</p>}
       {!rows && !error && <p className="text-muted-foreground">{t(copy.loading)}</p>}
@@ -146,7 +146,7 @@ function Row({ row, isAr, onChanged }: { row: RepoRow; isAr: boolean; onChanged:
             {confirming ? (
               <span className="inline-flex items-center gap-3 text-sm">
                 <span className="text-muted-foreground">{t(copy.confirmRemove)}</span>
-                <button className="font-medium text-destructive underline-offset-4 hover:underline" disabled={busy} onClick={() => run(() => removeRepo(row.name))}>
+                <button className="font-medium text-destructive rounded-full px-2.5 py-1 transition-colors hover:bg-background" disabled={busy} onClick={() => run(() => removeRepo(row.name))}>
                   {t(copy.yes)}
                 </button>
                 <button className={link} onClick={() => setConfirming(false)}>
@@ -154,7 +154,7 @@ function Row({ row, isAr, onChanged }: { row: RepoRow; isAr: boolean; onChanged:
                 </button>
               </span>
             ) : (
-              <button className="text-sm font-medium text-destructive underline-offset-4 hover:underline disabled:opacity-50" disabled={busy} onClick={() => setConfirming(true)}>
+              <button className="text-sm font-medium text-destructive rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50" disabled={busy} onClick={() => setConfirming(true)}>
                 {t(copy.remove)}
               </button>
             )}

@@ -66,30 +66,50 @@ export function DepartmentList({
 export interface NavLink {
   href: string;
   label: string;
+  /** Dark text: this link is on the path. */
   active?: boolean;
+  /** The white mark: the deepest listed link of the path. */
+  mark?: boolean;
+  /** The deepest link of the path (`aria-current="page"`). */
+  current?: boolean;
+  /** A muted count after the label. */
+  hint?: string;
+  /** Literal text (a folder name) reads left to right in any language. */
+  ltr?: boolean;
+  /** The path under this link, indented and smaller. */
+  children?: NavLink[];
 }
 
-/** A column of the sidebar's links. An outside page opens outside the app window. */
-export function NavLinks({ links }: { links: NavLink[] }): React.JSX.Element {
+/** The sub-links under an active parent: smaller and lighter than `item`, free to wrap inside the column. */
+const sub =
+  "relative block py-0.5 text-start text-sm font-medium leading-snug tracking-tight outline-none transition-colors focus-visible:underline focus-visible:underline-offset-4";
+
+/** A column of the sidebar's links; a link with `children` lists them under it (the path doubles as the breadcrumb). */
+export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: number }): React.JSX.Element {
   return (
-    <ul className="flex flex-col gap-1">
-      {links.map((l) => (
-        <li key={l.href}>
-          {/^https?:\/\//.test(l.href) ? (
-            <a href={l.href} target="_blank" rel="noreferrer" className={cn(item, "text-muted-foreground hover:text-foreground")}>
-              {l.label}
-            </a>
-          ) : (
-            <Link
-              href={l.href}
-              aria-current={l.active ? "page" : undefined}
-              className={cn(item, l.active ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
-            >
-              <Label on={!!l.active}>{l.label}</Label>
-            </Link>
-          )}
-        </li>
-      ))}
+    <ul className={cn("flex flex-col", depth === 0 ? "gap-1" : "ps-4")}>
+      {links.map((l) => {
+        const tone = l.active || l.mark ? "text-foreground" : "text-muted-foreground hover:text-foreground";
+        return (
+          <li key={l.href}>
+            {/^https?:\/\//.test(l.href) ? (
+              <a href={l.href} target="_blank" rel="noreferrer" className={cn(item, "text-muted-foreground hover:text-foreground")}>
+                {l.label}
+              </a>
+            ) : (
+              <Link
+                href={l.href}
+                aria-current={l.current ? "page" : undefined}
+                className={cn(depth === 0 ? item : sub, tone)}
+              >
+                <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
+                {l.hint && <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums" dir="ltr">{l.hint}</span>}
+              </Link>
+            )}
+            {l.children && l.children.length > 0 && <NavLinks links={l.children} depth={depth + 1} />}
+          </li>
+        );
+      })}
     </ul>
   );
 }

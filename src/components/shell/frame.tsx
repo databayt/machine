@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 
 import type { Locale } from "@/components/local/config";
@@ -18,8 +19,10 @@ export function ShellFrame({ lang, children }: { lang: Locale; children: React.R
   if (home) return <div className="h-full min-w-0">{children}</div>;
   return (
     <div className={`h-full lg:grid-rows-[minmax(0,1fr)] ${SHELL_GRID}`}>
-      <AppSidebar lang={lang} />
-      <div className="h-full min-w-0 overflow-y-auto overscroll-contain lg:self-stretch">{children}</div>
+      <Suspense fallback={null}>
+        <AppSidebar lang={lang} />
+      </Suspense>
+      <div className="h-full min-w-0 overflow-hidden lg:self-stretch">{children}</div>
     </div>
   );
 }

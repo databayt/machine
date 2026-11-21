@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import Link from "next/link"
 
 import type { Locale } from "@/components/local/config"
 import { PageShell } from "../shell/page"
@@ -31,10 +30,7 @@ export default function SettingsContent({ lang }: { lang: Locale }) {
   if (inApp === null) return null
 
   return (
-    <PageShell
-      title={isAr ? "الإعدادات" : "Settings"}
-      description={inApp ? (isAr ? "من أنت، وفي أي قسم تعمل." : "Who you are and which department you work in.") : undefined}
-    >
+    <PageShell title={isAr ? "الإعدادات" : "Settings"}>
       <LanguageToggle lang={lang} />
       {!inApp ? (
         <OpenInMachine lang={lang} />
@@ -43,9 +39,6 @@ export default function SettingsContent({ lang }: { lang: Locale }) {
           {error && <p className="text-destructive text-sm">{error}</p>}
           {state && <SettingsForm isAr={isAr} initial={state} />}
           <DepartmentSection lang={lang} />
-          <p className="text-muted-foreground text-sm">
-            <Link href={`/${lang}/agents/`} className="underline underline-offset-4">{isAr ? "الوكيل الافتراضي والأدوات" : "Default agent, auto tasks and tools"}</Link>
-          </p>
         </>
       )}
     </PageShell>

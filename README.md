@@ -28,9 +28,19 @@ Rust 1.90, Node 22, pnpm 10.
 
 ## Routes
 
-`/{ar,en}/` chat (`?s=<session>`, `?prompt=`, `?task=`) · `/catalog/` · `/catalog/item/?id=<type>:<name>`
-· `/repos/` · `/engine/` · `/settings/`. Query strings are read in the client (`useSearchParams`), since
-a static export has no server to read them.
+The app is a drill-down: the sidebar is a tree, each click swaps the whole screen to the next level, and
+the sidebar shows the current path under the active parent (it is the breadcrumb). The work area is bare:
+no title, no toolbar, only content. All paths are under `/{ar,en}/`; levels below a route are query
+params, read in the client (`useSearchParams`), since a static export has no dynamic segments.
+
+| Parent (sidebar) | Level 1 | Level 2 | Level 3 |
+| --- | --- | --- | --- |
+| Sessions | `/sessions/` | | |
+| Install (` · 82%` while not ready) | `/install/` | `/install/?stage=<stageId>` | `/install/?stage=<stageId>&step=<stepId>` |
+| .claude | `/catalog/` | `/catalog/?dir=<skills\|agents\|rules\|hooks\|departments\|mcp>` | `/catalog/?dir=<dir>&item=<type:name>` |
+| Settings | `/settings/` | `/settings/?view=general`, `/config/`, `/health/`, `/engine/` | |
+
+The chat is `/` (`?s=<session>`, `?prompt=`, `?task=`). The tree lives in `src/components/shell/nav.ts`.
 
 ## Feature-colocated Rust
 

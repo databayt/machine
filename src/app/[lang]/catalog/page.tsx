@@ -1,15 +1,17 @@
-import CatalogContent from "@/components/catalog/content"
+import { Suspense } from "react"
+
+import CatalogRoute from "@/components/catalog/route"
 import { type Locale } from "@/components/local/config"
 
 export const metadata = {
-  title: "Catalog",
+  title: ".claude",
 }
 
-interface CatalogPageProps {
-  params: Promise<{ lang: string }>
-}
-
-export default async function CatalogPage({ params }: CatalogPageProps) {
+export default async function CatalogPage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params
-  return <CatalogContent lang={lang as Locale} />
+  return (
+    <Suspense fallback={null}>
+      <CatalogRoute lang={lang as Locale} />
+    </Suspense>
+  )
 }

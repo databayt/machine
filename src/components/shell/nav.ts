@@ -1,0 +1,156 @@
+// shell — the one navigation tree (the sidebar, the menu footer and the Settings cards read it) and
+// the pure function that turns the address into "where am I". No React here, so node can test it.
+import type { Copy } from "../chat/config.ts"
+import { copy } from "../menu/config.ts"
+import type { Stage, StepStatus } from "../readiness/types.ts"
+
+export type ParentId = "sessions" | "install" | "claude" | "settings"
+
+export interface NavNode {
+  id: string
+  /** A translated pair, or a literal (folder names, stage titles already resolved). */
+  label: Copy | string
+  href: (lang: string) => string
+  /** A muted count after the label (`done/total`). */
+  hint?: string
+  children?: NavNode[]
+}
+
+export interface Trail {
+  parent: ParentId | null
+  /** Level 1 id: a stage, a folder, a Settings view. */
+  child: string | null
+  /** Level 2 id: a step, a catalog item. */
+  leaf: string | null
+}
+
+/** The `.claude` folders, in the order the sidebar lists them. */
+export const CLAUDE_DIRS = ["skills", "agents", "rules", "hooks", "departments", "mcp"] as const
+export type ClaudeDir = (typeof CLAUDE_DIRS)[number]
+
+/** The registry type each folder shows; `mcp` has no registry type yet. */
+const TYPE_OF_DIR: Record<ClaudeDir, string | null> = {
+  skills: "skill",
+  agents: "agent",
+  rules: "rule",
+  hooks: "hook",
+  departments: "pack",
+  mcp: null,
+}
+
+export const typeOfDir = (dir: string): string | null => TYPE_OF_DIR[dir as ClaudeDir] ?? null
+
+/** The folder an item id (`skill:funnel`) lives in. */
+export function dirOfItem(id: string): ClaudeDir | null {
+  const type = id.split(":")[0]
+  return CLAUDE_DIRS.find((d) => TYPE_OF_DIR[d] === type) ?? null
+}
+
+/** The part of an item id after the colon. */
+export const itemName = (id: string): string => (id.includes(":") ? id.slice(id.indexOf(":") + 1) : id)
+
+/** `/ar/install/` → { lang: "ar", rest: "/install" } */
+export function splitPath(pathname: string): { lang: string; rest: string } {
+  const [, lang = "", ...more] = pathname.replace(/\/+$/, "").split("/")
+  return { lang, rest: more.length ? `/${more.join("/")}` : "" }
+}
+
+type Params = { get(name: string): string | null }
+
+const SETTINGS_ROUTES: Record<string, string> = { "/config": "config", "/health": "health", "/engine": "engine" }
+
+/** Where the address is in the tree. Anything outside the four parents (the chat, a typo) is all null. */
+export function trailOf(pathname: string, params: Params): Trail {
+  const { rest } = splitPath(pathname)
+  const none: Trail = { parent: null, child: null, leaf: null }
+  if (rest === "/sessions") return { ...none, parent: "sessions" }
+  if (rest === "/install") {
+    const stage = params.get("stage") || null
+    return { parent: "install", child: stage, leaf: stage ? params.get("step") || null : null }
+  }
+  if (rest === "/catalog") {
+    const dir = params.get("dir")
+    const child = (CLAUDE_DIRS as readonly string[]).includes(dir ?? "") ? dir : null
+    return { parent: "claude", child, leaf: child ? params.get("item") || null : null }
+  }
+  if (rest === "/settings") return { ...none, parent: "settings", child: params.get("view") === "general" ? "general" : null }
+  if (rest in SETTINGS_ROUTES) return { ...none, parent: "settings", child: SETTINGS_ROUTES[rest] }
+  return none
+}
+
+const DONE: StepStatus[] = ["pass", "fixed", "updated"]
+
+/** `done/total` per stage; a step with status `skip` counts in neither number. */
+export function stageCounts(steps: { stage: string; status: StepStatus }[]): Record<string, { done: number; total: number }> {
+  const out: Record<string, { done: number; total: number }> = {}
+  for (const s of steps) {
+    if (s.status === "skip") continue
+    const c = (out[s.stage] ??= { done: 0, total: 0 })
+    c.total += 1
+    if (DONE.includes(s.status)) c.done += 1
+  }
+  return out
+}
+
+export interface SettingsChild {
+  id: string
+  label: Copy
+  hint: Copy
+  href: (lang: string) => string
+  /** Only inside the app. */
+  app?: boolean
+  /** Only when the profile allows the engine. */
+  engine?: boolean
+}
+
+/** Settings' children: the same four everywhere (sidebar, footer, cards). */
+export const SETTINGS_CHILDREN: SettingsChild[] = [
+  { id: "general", label: copy.general, hint: copy.generalHint, href: (l) => `/${l}/settings/?view=general` },
+  { id: "config", label: copy.configuration, hint: copy.configHint, href: (l) => `/${l}/config/`, app: true },
+  { id: "health", label: copy.healthUpdates, hint: copy.healthHint, href: (l) => `/${l}/health/`, app: true },
+  { id: "engine", label: copy.engine, hint: copy.engineHint, href: (l) => `/${l}/engine/`, app: true, engine: true },
+]
+
+export function settingsChildren(inApp: boolean, engine: boolean): SettingsChild[] {
+  return SETTINGS_CHILDREN.filter((c) => (!c.app || inApp) && (!c.engine || engine))
+}
+
+export interface TreeInput {
+  isAr: boolean
+  inApp: boolean
+  /** Whether the profile allows the engine. */
+  engine: boolean
+  stages: Stage[]
+  steps: { stage: string; status: StepStatus }[]
+}
+
+/** The tree. Install's children are the readiness stages, each with its `done/total`. */
+export function buildTree({ isAr, inApp, engine, stages, steps }: TreeInput): NavNode[] {
+  const counts = stageCounts(steps)
+  return [
+    { id: "sessions", label: copy.sessions, href: (l) => `/${l}/sessions/` },
+    {
+      id: "install",
+      label: copy.install,
+      href: (l) => `/${l}/install/`,
+      children: stages.map((s) => ({
+        id: s.id,
+        label: (s.title && (isAr ? s.title.ar : s.title.en)) || s.id,
+        href: (l) => `/${l}/install/?stage=${encodeURIComponent(s.id)}`,
+        hint: counts[s.id] ? `${counts[s.id].done}/${counts[s.id].total}` : undefined,
+      })),
+    },
+    {
+      id: "claude",
+      label: copy.claude,
+      href: (l) => `/${l}/catalog/`,
+      children: CLAUDE_DIRS.map((d) => ({ id: d, label: d, href: (l: string) => `/${l}/catalog/?dir=${d}` })),
+    },
+    {
+      id: "settings",
+      label: copy.settings,
+      href: (l) => `/${l}/settings/`,
+      children: settingsChildren(inApp, engine).map((c) => ({ id: c.id, label: c.label, href: c.href })),
+    },
+  ]
+}

@@ -13,7 +13,7 @@
     "tauri": "tauri",
     "lint": "cd machine && cargo clippy --all-targets -- -D warnings",
     "typecheck": "tsc --noEmit",
-    "test": "node --test src/components/menu/spotlight.test.ts src/components/menu/keywords-rank.test.ts"
+    "test": "node --test src/components/shell/nav.test.ts src/components/menu/spotlight.test.ts src/components/menu/keywords-rank.test.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

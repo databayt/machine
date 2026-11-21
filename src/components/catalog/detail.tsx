@@ -6,8 +6,7 @@ import type { Locale } from "@/components/local/config"
 import { Badge } from "@/components/ui/badge"
 
 import { copy, statusLabel } from "./config"
-import { ChevronLeftIcon } from "lucide-react"
-
+import { dirOfItem } from "../shell/nav"
 import { PageShell, Section } from "../shell/page"
 import { ItemActions } from "./item-actions"
 import { useCanInstall, useCatalog } from "./use-catalog"
@@ -20,24 +19,13 @@ export default function CatalogDetail({ lang, type, name }: { lang: Locale; type
   const item = items?.find((i) => i.id === `${type}:${name}`)
 
   return (
-    <PageShell
-      title={(item && ((isAr && item.title_ar) || item.title)) || t(copy.title)}
-      description={item ? ((isAr && item.description_ar) || item.description) : undefined}
-      actions={
-        <Link
-          href={`/${lang}/catalog/`}
-          className="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ChevronLeftIcon className="size-4 rtl:rotate-180" aria-hidden />
-          {t(copy.back)}
-        </Link>
-      }
-    >
+    <PageShell title={(item && ((isAr && item.title_ar) || item.title)) || t(copy.title)}>
       {error && <p className="text-destructive text-sm">{error}</p>}
       {!items && !error && <p className="text-muted-foreground">{t(copy.loading)}</p>}
       {items && !item && <p>{t(copy.notFound)}</p>}
       {item && (
         <>
+          <p className="text-muted-foreground">{(isAr && item.description_ar) || item.description}</p>
           <div className="flex flex-wrap items-center gap-3">
             <Badge variant="outline">{type}</Badge>
             {canInstallHere && <Badge>{t(statusLabel[item.status])}</Badge>}
@@ -49,7 +37,7 @@ export default function CatalogDetail({ lang, type, name }: { lang: Locale; type
               <ul className="flex flex-wrap gap-2">
                 {item.dependencies.map((d) => (
                   <li key={d}>
-                    <Link href={`/${lang}/catalog/item/?id=${encodeURIComponent(d)}`}>
+                    <Link href={`/${lang}/catalog/?${dirOfItem(d) ? `dir=${dirOfItem(d)}&` : ""}item=${encodeURIComponent(d)}`} className="no-underline">
                       <Badge variant="secondary">{d}</Badge>
                     </Link>
                   </li>

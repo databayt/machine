@@ -11,7 +11,7 @@ import { OpenInMachine, useInMachine } from "../shell/content"
 import { updateCheck, updateInstall, type UpdateInfo } from "./actions"
 
 const DAY_MS = 24 * 60 * 60 * 1000
-const link = "text-sm font-medium text-primary underline-offset-4 hover:underline disabled:opacity-50"
+const link = "text-sm font-medium text-primary rounded-full px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
 
 /** Checks for a new version now and every 24 hours while the app is open. */
 export function useUpdateCheck() {
