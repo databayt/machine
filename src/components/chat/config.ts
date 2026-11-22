@@ -10,6 +10,7 @@ export const copy = {
   quick: { en: "Quick actions", ar: "إجراءات سريعة" },
   send: { en: "Send", ar: "إرسال" },
   stop: { en: "Stop", ar: "إيقاف" },
+  settings: { en: "Settings", ar: "الإعدادات" },
   scrollDown: { en: "Scroll to the latest message", ar: "انتقل إلى آخر رسالة" },
   copy: { en: "Copy", ar: "نسخ" },
   copied: { en: "Copied", ar: "تم النسخ" },

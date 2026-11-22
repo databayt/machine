@@ -3,6 +3,7 @@
 import { Fragment, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowUpIcon,
+  SettingsIcon,
   ClapperboardIcon,
   FileIcon,
   FileTextIcon,
@@ -81,8 +82,11 @@ export function Composer({
   slashEntries,
   onPickFormula,
   onAttachVideo,
+  settings,
 }: {
   lang: Locale;
+  /** The /social/publish pattern: a gear beside send that opens the settings panel above the box (the film). */
+  settings?: { available: boolean; open: boolean; onToggle: () => void };
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
@@ -552,6 +556,23 @@ export function Composer({
             </span>
           )}
 
+          {settings?.available && !busy && hasText && (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={settings.onToggle}
+              aria-label={t(copy.settings)}
+              title={t(copy.settings)}
+              aria-expanded={settings.open}
+              className={cn(
+                icon,
+                "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                settings.open && "bg-foreground/10 text-foreground",
+              )}
+            >
+              <SettingsIcon className="size-5" aria-hidden />
+            </button>
+          )}
           {busy ? (
             <button
               type="button"
@@ -561,6 +582,18 @@ export function Composer({
               className={cn(icon, "bg-foreground text-background")}
             >
               <SquareIcon className="size-3.5 fill-current" aria-hidden />
+            </button>
+          ) : settings?.available && !hasText ? (
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={settings.onToggle}
+              aria-label={t(copy.settings)}
+              title={t(copy.settings)}
+              aria-expanded={settings.open}
+              className={cn(icon, "bg-foreground text-background hover:bg-foreground/85")}
+            >
+              <SettingsIcon className="size-5" aria-hidden />
             </button>
           ) : (
             <button

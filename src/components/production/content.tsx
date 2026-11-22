@@ -27,6 +27,9 @@ export function ProductionStrip({
   busy,
   onPick,
   onFilm,
+  open,
+  onOpenChange,
+  onAvailable,
 }: {
   isAr: boolean
   repo: string
@@ -36,12 +39,16 @@ export function ProductionStrip({
   onPick: (formula: string, set: Record<string, string>) => void
   /** The selected film, so the chat can fill `project` for formulas that typed text reaches. */
   onFilm: (id: string | null) => void
+  /** The settings panel is open: the composer's gear toggles it (the /social/publish pattern). */
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  /** Whether there is a film to show, so the composer shows its gear only then. */
+  onAvailable: (available: boolean) => void
 }) {
   const t = tr(isAr)
   const [films, setFilms] = useState<FilmSummary[]>([])
   const [id, setId] = useState<string | null>(null)
   const [data, setData] = useState<FilmData | null>(null)
-  const [open, setOpen] = useState(false)
   const [tab, setTab] = useState("stages")
 
   // The films of the repo: read on mount, when the repo changes and when a run ends.
@@ -73,6 +80,18 @@ export function ProductionStrip({
   }, [id, busy])
 
   const current = data && data.film.id === id ? data : null
+  // Esc closes the panel, as in the CLI.
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onOpenChange(false)
+    window.addEventListener("keydown", onKey)
+    return () => window.removeEventListener("keydown", onKey)
+  }, [open, onOpenChange])
+  const available = films.length > 0 && !!id && !!current
+  useEffect(() => {
+    onAvailable(available)
+    if (!available) onOpenChange(false)
+  }, [available, onAvailable, onOpenChange])
   const scenes = useMemo(() => (current ? parseScenes(current.shotList, current.manifest, isAr ? "ar" : "en") : []), [current, isAr])
   if (films.length === 0 || !id || !current) return null
 
@@ -82,13 +101,48 @@ export function ProductionStrip({
   const pick = (formula: string, scene?: Scene) => onPick(formula, slotsFor(film.id, scene))
 
   return (
-    <div dir="ltr" className="relative mb-1.5 font-mono text-[12px] leading-5">
+    <div dir="ltr" className="relative font-mono text-[12px] leading-5">
       {open && (
         <div
           role="region"
           aria-label={t(copy.label)}
           className="absolute inset-x-0 bottom-full z-30 mb-1 max-h-[min(60vh,28rem)] overflow-y-auto rounded-xl border border-[color:var(--cli-dim)]/40 bg-background p-3 shadow-[0_2px_14px_rgba(0,0,0,0.12)]"
         >
+      <div className={cn("mb-2 flex items-center gap-2 px-1.5", dim)}>
+        <div className="flex min-w-0 flex-1 items-baseline gap-2">
+          <span className="shrink-0 text-foreground/80">{film.slug}</span>
+          <span aria-hidden>·</span>
+          <span aria-hidden className="shrink-0 tracking-[-0.08em]">
+            {c.dots.map((d, i) => (
+              <span key={i} className={d ? accent : undefined}>{d ? "●" : "○"}</span>
+            ))}
+          </span>
+          {c.next && <span className={cn("shrink-0", accent)}>{c.next}</span>}
+          {c.gates.length > 0 && <span aria-hidden>·</span>}
+          <span className="min-w-0 truncate">
+            {c.gates.map((g, i) => (
+              <span key={g.name} className={g.signed ? "text-foreground/80" : undefined}>
+                {i > 0 && " "}
+                {g.name} {g.signed ? "✔" : "○"}
+              </span>
+            ))}
+          </span>
+        </div>
+        {films.length > 1 && (
+          <select
+            value={id}
+            onChange={(e) => setId(e.target.value)}
+            aria-label={t(copy.film)}
+            className="max-w-[40%] shrink-0 truncate rounded bg-transparent px-1 text-[12px] outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-[color:var(--cli-accent)]"
+          >
+            {films.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.slug} {f.version}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
           <Tabs value={tab} onValueChange={setTab} className="gap-2">
             <TabsList className="h-auto w-fit gap-3 rounded-none bg-transparent p-0">
               {(["stages", "scenes", "brand"] as const).map((k) => (
@@ -155,48 +209,6 @@ export function ProductionStrip({
         </div>
       )}
 
-      <div className={cn("flex items-center gap-2 px-1", dim)}>
-        <button
-          type="button"
-          onClick={() => setOpen(!open)}
-          aria-expanded={open}
-          aria-label={open ? t(copy.close) : t(copy.open)}
-          className="flex min-w-0 flex-1 items-baseline gap-2 text-start transition-colors hover:text-foreground"
-        >
-          <span aria-hidden>{open ? "▾" : "▸"}</span>
-          <span className="shrink-0 text-foreground/80">{film.slug}</span>
-          <span aria-hidden>·</span>
-          <span aria-hidden className="shrink-0 tracking-[-0.08em]">
-            {c.dots.map((d, i) => (
-              <span key={i} className={d ? accent : undefined}>{d ? "●" : "○"}</span>
-            ))}
-          </span>
-          {c.next && <span className={cn("shrink-0", accent)}>{c.next}</span>}
-          {c.gates.length > 0 && <span aria-hidden>·</span>}
-          <span className="min-w-0 truncate">
-            {c.gates.map((g, i) => (
-              <span key={g.name} className={g.signed ? "text-foreground/80" : undefined}>
-                {i > 0 && " "}
-                {g.name} {g.signed ? "✔" : "○"}
-              </span>
-            ))}
-          </span>
-        </button>
-        {films.length > 1 && (
-          <select
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            aria-label={t(copy.film)}
-            className="max-w-[40%] shrink-0 truncate rounded bg-transparent px-1 text-[12px] outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-[color:var(--cli-accent)]"
-          >
-            {films.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.slug} {f.version}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
     </div>
   )
 }

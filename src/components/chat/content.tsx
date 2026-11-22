@@ -91,6 +91,10 @@ export default function ChatContent({
   runModel.current = { model: familyOf(formulaModel), effort: formulaEffort };
   /** The film selected in the production strip: formulas on an existing film fill `project` with it. */
   const filmRef = useRef<string | null>(null);
+  // The settings panel (the /social/publish gear): the film's stages, scenes and brand.
+  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [filmAvailable, setFilmAvailable] = useState(false)
+  const toggleSettings = useCallback(() => setSettingsOpen((o) => !o), [])
   const onFilm = useCallback((id: string | null) => {
     filmRef.current = id;
   }, []);
@@ -560,7 +564,19 @@ export default function ChatContent({
 
   const strip =
     ctx.dept === "video" ? (
-      <ProductionStrip isAr={isAr} repo={ctx.repo} busy={busy} onPick={(id, set) => void tapFormula(id, set)} onFilm={onFilm} />
+      <ProductionStrip
+        isAr={isAr}
+        repo={ctx.repo}
+        busy={busy}
+        onPick={(id, set) => {
+          setSettingsOpen(false)
+          void tapFormula(id, set)
+        }}
+        onFilm={onFilm}
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        onAvailable={setFilmAvailable}
+      />
     ) : null;
 
   return (
@@ -588,6 +604,7 @@ export default function ChatContent({
               <div className="w-full">
                 {strip}
                 <Composer
+                  settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings } : undefined}
                   lang={lang}
                   onSend={(text) => void submitText(text)}
                   onStop={() => jobId && void stop(jobId)}
@@ -715,6 +732,7 @@ export default function ChatContent({
           )}
           {strip}
           <Composer
+            settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings } : undefined}
             lang={lang}
             onSend={(text) => void submitText(text)}
             onStop={() => jobId && void stop(jobId)}
