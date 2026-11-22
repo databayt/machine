@@ -303,3 +303,13 @@ fn a_proxy_run_drops_inherited_anthropic_vars_and_the_telemetry_switch() {
     let other = Job { driver: DriverKind::Codex, ..j };
     assert!(inherited_to_remove(&other, inherited()).is_empty());
 }
+
+#[test]
+fn run_path_keeps_existing_dirs_once_in_order() {
+    let tmp = std::env::temp_dir();
+    let missing = tmp.join("kun-no-such-dir-xyz");
+    let dirs = vec![tmp.clone(), missing, tmp.clone(), std::path::PathBuf::from("/")];
+    let joined = super::run_path(&dirs);
+    let parts: Vec<_> = std::env::split_paths(&joined).collect();
+    assert_eq!(parts, vec![tmp, std::path::PathBuf::from("/")]);
+}

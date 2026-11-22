@@ -203,6 +203,17 @@ pub(crate) fn search_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// `dirs` as a PATH value: existing folders only, each once, in order.
+pub(crate) fn run_path(dirs: &[PathBuf]) -> std::ffi::OsString {
+    let mut seen: Vec<&PathBuf> = Vec::new();
+    for d in dirs {
+        if d.is_dir() && !seen.contains(&d) {
+            seen.push(d);
+        }
+    }
+    std::env::join_paths(seen).unwrap_or_default()
+}
+
 /// Where the Windows installers put the CLIs: `%LOCALAPPDATA%\Programs\claude`,
 /// `%USERPROFILE%\.local\bin` and the npm global `%APPDATA%\npm`.
 fn windows_dirs(
@@ -533,6 +544,9 @@ pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), Dr
     for key in inherited_to_remove(job, std::env::vars_os().filter_map(|(k, _)| k.into_string().ok())) {
         cmd.env_remove(key);
     }
+    // A Finder launch hands the app a bare PATH (`/usr/bin:/bin:…`), so the run's own tools (node,
+    // ffmpeg, blender under /opt/homebrew/bin) were missing. Give it the same dirs the CLI was found in.
+    cmd.env("PATH", run_path(&search_dirs()));
     let mut child = cmd
         .args(&args)
         .current_dir(&job.cwd)
