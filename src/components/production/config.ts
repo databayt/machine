@@ -1,0 +1,24 @@
+// production — every string the strip shows, ar + en (the chat's inline-copy way).
+import type { Copy } from "../chat/config"
+
+export const copy = {
+  label: { en: "Production line", ar: "خط الإنتاج" },
+  film: { en: "Film", ar: "الفيلم" },
+  stages: { en: "Stages", ar: "المراحل" },
+  scenes: { en: "Scenes", ar: "المشاهد" },
+  brand: { en: "Brand", ar: "الهوية" },
+  open: { en: "Open the production view", ar: "افتح عرض الإنتاج" },
+  close: { en: "Close the production view", ar: "أغلق عرض الإنتاج" },
+  missing: { en: "missing", ar: "ناقص" },
+  noScenes: { en: "No shot list yet.", ar: "لا قائمة لقطات بعد." },
+  noBrand: { en: "No brand kit for this film.", ar: "لا هوية لهذا الفيلم." },
+  loading: { en: "Loading…", ar: "جارٍ التحميل…" },
+  logo: { en: "Logo", ar: "الشعار" },
+  fonts: { en: "Fonts", ar: "الخطوط" },
+  palette: { en: "Colours", ar: "الألوان" },
+  voice: { en: "Voice", ar: "الصوت" },
+  variants: { en: "variants", ar: "نسخ" },
+  gate: { en: "gate", ar: "بوابة" },
+  next: { en: "next", ar: "التالي" },
+  tapHint: { en: "Tap a row to fill the box with its formula.", ar: "اضغط على صف لتعبئة الصندوق بصيغته." },
+} satisfies Record<string, Copy>

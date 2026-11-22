@@ -25,6 +25,9 @@ import { type Answered, DECLINED_MESSAGE, answersMessage, hideBlock, isAnswersMe
 import type { Message } from "./message";
 import { type Family, familyOf } from "./model-pure";
 import { Composer, type Fill } from "./composer";
+import { ProductionStrip } from "../production/content";
+import { fillSlots, stageFormula } from "../production/pure";
+import { startsFolded } from "./clamp-pure";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { type Chip, type SlashEntry, chipFacts, matchSkills, packIds } from "./keywords";
@@ -86,6 +89,17 @@ export default function ChatContent({
   const [formulaEffort, setFormulaEffort] = useState<string | null>(null);
   const runModel = useRef<{ model: Family | null; effort: string | null }>({ model: null, effort: null });
   runModel.current = { model: familyOf(formulaModel), effort: formulaEffort };
+  /** The film selected in the production strip: formulas on an existing film fill `project` with it. */
+  const filmRef = useRef<string | null>(null);
+  const onFilm = useCallback((id: string | null) => {
+    filmRef.current = id;
+  }, []);
+  /** A video attached through + → Videos, until the next send: formulas with a `source` slot take its path. */
+  const sourceRef = useRef<string | null>(null);
+  /** The last fill: what it wrote, so an attached video can refill it while the box is untouched. */
+  const lastFill = useRef<{ id: string; set: Record<string, string>; prompt: string } | null>(null);
+  /** When the person tapped the formula the next send runs (ms), for the run's timing line. */
+  const tapRef = useRef<number | null>(null);
   const speakRef = useRef(false);
   speakRef.current = speakReplies;
 
@@ -252,6 +266,9 @@ export default function ChatContent({
     async (prompt: string, base: Message[] = messages, route?: string | null, extra?: Pick<Message, "answers" | "declined">) => {
       const text = prompt.trim();
       if (!text || busy) return;
+      const timing = { formula: stationRef.current?.id ?? null, tTap: tapRef.current, tSend: Date.now() };
+      tapRef.current = null;
+      sourceRef.current = null;
       setFill(null);
       const { model, effort } = runModel.current;
       setFormulaModel(null);
@@ -275,7 +292,7 @@ export default function ChatContent({
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null, model, effort }, onEvent);
+        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null, model, effort, timing }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -306,6 +323,8 @@ export default function ChatContent({
     setSession(null);
     setResumed(null);
     stationRef.current = null;
+    sourceRef.current = null;
+    lastFill.current = null;
     if (resume) router.replace(`/${lang}/`);
   };
 
@@ -367,12 +386,20 @@ export default function ChatContent({
     setFill({ text, focus: true, n: ++fillN.current });
     if (route) setRouteId(route);
   };
+  /** One fill through the station, with the selected film and the attached video handed over as slots; remembers it. */
+  const fillWith = async (dept: string, id: string, set: Record<string, string> = {}) => {
+    tapRef.current = Date.now();
+    const slots = fillSlots(id, set, { project: filmRef.current, source: sourceRef.current });
+    const f = await fillFormula(dept, id, ctx.repo || null, slots);
+    lastFill.current = { id: f.id, set: slots, prompt: f.prompt };
+    return f;
+  };
   /** A tap: a formula option fills the box with the station's script (no model) and the person presses Send; a quick action writes its brief and refines. */
   const pickOption = async (o: HomeOption) => {
     if (o.logId) void stationLog(ctx.dept, ctx.repo || null, o.logId, "pick");
     if (o.formula) {
       try {
-        const f = await fillFormula(ctx.dept, o.formula, ctx.repo || null, o.set);
+        const f = await fillWith(ctx.dept, o.formula, o.set);
         writeFilled(f.prompt, f.route ?? o.route, { id: f.id, record: f.record }, f);
       } catch {
         // The station's script is unavailable: the option's own English name is the request.
@@ -395,7 +422,7 @@ export default function ChatContent({
     let dept = ctx.dept;
     if (m.dept && m.dept !== ctx.dept && (await ctx.chooseDept(m.dept))) dept = m.dept;
     try {
-      const f = await fillFormula(dept, m.id, ctx.repo || null, m.set ?? {});
+      const f = await fillWith(dept, m.id, m.set ?? {});
       if (dept !== ctx.dept) carry.current = { dept, route: f.route };
       else if (f.route) setRouteId(f.route);
       stationRef.current = { id: f.id, record: f.record };
@@ -443,7 +470,7 @@ export default function ChatContent({
   /** A formula chosen from the "/" menu: filled with no slots, so the open ones are for the person. */
   const pickFormula = async (id: string): Promise<string | null> => {
     try {
-      const f = await fillFormula(ctx.dept, id, ctx.repo || null, {});
+      const f = await fillWith(ctx.dept, id);
       if (f.route) setRouteId(f.route);
       stationRef.current = { id: f.id, record: f.record };
       setFormulaModel(f.model);
@@ -452,6 +479,33 @@ export default function ChatContent({
       return f.prompt;
     } catch {
       return null;
+    }
+  };
+  /**
+   * A row of the production strip: the formula fills the box through the same path as a station match (route, model,
+   * record and the pick log). A formula this checkout does not ship (kun adds some later) falls to the visual stage.
+   */
+  const tapFormula = async (id: string, set: Record<string, string>) => {
+    const known = formulaList.dept === ctx.dept && formulaList.list.some((f) => f.id === id);
+    const use = known || formulaList.dept !== ctx.dept ? id : stageFormula("visual");
+    const prompt = await applyMatch({ id: use, confidence: 1, dept: null, set });
+    if (prompt !== null) setFill({ text: prompt, focus: true, n: ++fillN.current });
+  };
+  /**
+   * A video attached through + → Videos is the film's source: later fills carry it, and a formula already in the box
+   * (untouched) is filled again with it, which only changes the box when the formula has a `source` slot.
+   */
+  const attachVideo = async (path: string) => {
+    sourceRef.current = path;
+    const last = lastFill.current;
+    if (!last || stationRef.current?.id !== last.id || draft.current !== last.prompt) return;
+    try {
+      const f = await fillFormula(ctx.dept, last.id, ctx.repo || null, { ...last.set, source: path });
+      if (f.prompt === last.prompt) return;
+      lastFill.current = { id: f.id, set: { ...last.set, source: path }, prompt: f.prompt };
+      setFill({ text: f.prompt, focus: false, n: ++fillN.current });
+    } catch {
+      // the box keeps what it has; the next fill carries the source
     }
   };
   /**
@@ -504,6 +558,11 @@ export default function ChatContent({
     />
   );
 
+  const strip =
+    ctx.dept === "video" ? (
+      <ProductionStrip isAr={isAr} repo={ctx.repo} busy={busy} onPick={(id, set) => void tapFormula(id, set)} onFilm={onFilm} />
+    ) : null;
+
   return (
     <div className="flex h-full flex-col overflow-x-clip">
       <div className="relative flex min-h-0 flex-1 flex-col">
@@ -527,6 +586,7 @@ export default function ChatContent({
                 )}
               </div>
               <div className="w-full">
+                {strip}
                 <Composer
                   lang={lang}
                   onSend={(text) => void submitText(text)}
@@ -543,6 +603,7 @@ export default function ChatContent({
                   skillMatches={skillMatches}
                   slashEntries={slashEntries}
                   onPickFormula={pickFormula}
+                  onAttachVideo={(p) => void attachVideo(p)}
                   autoFocus
                 />
                 {contextLine}
@@ -566,7 +627,7 @@ export default function ChatContent({
                   return <AnswerBlock key={i} lines={m.answers?.length ? m.answers : parseAnswers(m.text)} />;
                 const note = splitNote(m.streaming ? hideBlock(m.text) : m.text);
                 return m.role === "user" ? (
-                  <UserTurn key={i} text={m.text} />
+                  <UserTurn key={i} text={m.text} first={startsFolded(i)} isAr={isAr} />
                 ) : (
                   <AgentTurn
                     key={i}
@@ -652,6 +713,7 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
+          {strip}
           <Composer
             lang={lang}
             onSend={(text) => void submitText(text)}
@@ -667,6 +729,7 @@ export default function ChatContent({
             skillMatches={skillMatches}
             slashEntries={slashEntries}
             onPickFormula={pickFormula}
+            onAttachVideo={(p) => void attachVideo(p)}
             autoFocus
           />
           {contextLine}

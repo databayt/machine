@@ -80,6 +80,7 @@ export function Composer({
   skillMatches,
   slashEntries,
   onPickFormula,
+  onAttachVideo,
 }: {
   lang: Locale;
   onSend: (text: string) => void;
@@ -108,6 +109,8 @@ export function Composer({
   slashEntries?: SlashEntry[];
   /** A formula picked from the "/" menu: filled with no slots; the prompt, or null. */
   onPickFormula?: (id: string) => Promise<string | null>;
+  /** A video chosen through + → Videos (its absolute path): the film's source for a formula that has the slot. */
+  onAttachVideo?: (path: string) => void;
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
@@ -305,6 +308,7 @@ export function Composer({
     setPlus(false);
     const paths = await pickLocalFiles(t(copy.pickFiles), kind).catch(() => []);
     if (paths.length) add(paths.map(fromPath));
+    if (kind === "video" && paths[0]) onAttachVideo?.(paths[0]);
   };
   const pickers: { kind: PickKind; label: keyof typeof copy; Icon: typeof FileIcon }[] = [
     { kind: "image", label: "attachImages", Icon: ImageIcon },
