@@ -5,9 +5,9 @@ import {
   ArrowUpIcon,
   ClapperboardIcon,
   FileIcon,
+  FileTextIcon,
   FolderIcon,
   ImageIcon,
-  LibraryIcon,
   LinkIcon,
   LoaderIcon,
   MusicIcon,
@@ -25,13 +25,10 @@ import {
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
 import { VoiceButton } from "../voice/content";
-import { pickLocalFiles, pickLocalFolder } from "../media/actions";
+import { pickLocalFiles } from "../media/actions";
 import type { PickKind } from "../media/kinds";
 import {
   type Attachment,
-  fromFolder,
-  fromItem,
-  fromLink,
   fromPath,
   mergeAttachments,
   withReferences,
@@ -47,7 +44,6 @@ import {
   slashContext,
   slashFilter,
 } from "./keywords";
-import { MediaPicker } from "./media-picker";
 import { SlashMenu, slashOptionId } from "./slash";
 
 /** A brief an option writes into the box; a new object (`n`) is a new fill. */
@@ -119,10 +115,6 @@ export function Composer({
   const [text, setText] = useState(initialText ?? "");
   const [plus, setPlus] = useState(false);
   /** `+` is one flat attach menu; "Link" turns its row into an input in place. */
-  const [linking, setLinking] = useState(false);
-  const [link, setLink] = useState("");
-  const [linkError, setLinkError] = useState(false);
-  const [library, setLibrary] = useState(false);
   const [attached, setAttached] = useState<Attachment[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
   const [refining, setRefining] = useState(false);
@@ -315,21 +307,11 @@ export function Composer({
     const paths = await pickLocalFiles(t(copy.pickFiles), kind).catch(() => []);
     if (paths.length) add(paths.map(fromPath));
   };
-  const addFolder = async () => {
-    setPlus(false);
-    const path = await pickLocalFolder(t(copy.pickFolder)).catch(() => null);
-    if (path) add([fromFolder(path)]);
-  };
-  const addLink = () => {
-    const a = fromLink(link);
-    if (!a) return setLinkError(true);
-    add([a]);
-    setLink("");
-    setPlus(false);
-  };
-  // The + menu: the media library, any file, a folder, a link. One row each.
   const pickers: { kind: PickKind; label: keyof typeof copy; Icon: typeof FileIcon }[] = [
-    { kind: "any", label: "attachAny", Icon: FileIcon },
+    { kind: "image", label: "attachImages", Icon: ImageIcon },
+    { kind: "video", label: "attachVideos", Icon: ClapperboardIcon },
+    { kind: "audio", label: "attachAudio", Icon: MusicIcon },
+    { kind: "document", label: "attachDocs", Icon: FileTextIcon },
   ];
   const row =
     "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-start text-[15px] transition-colors hover:bg-muted disabled:opacity-50";
@@ -431,14 +413,7 @@ export function Composer({
         <div className="flex w-full items-end gap-1">
           <Popover
             open={plus}
-            onOpenChange={(o) => {
-              setPlus(o);
-              if (o) {
-                setLinking(false);
-                setLink("");
-                setLinkError(false);
-              }
-            }}
+            onOpenChange={setPlus}
           >
             <PopoverTrigger asChild>
               <button
@@ -464,29 +439,11 @@ export function Composer({
             <PopoverContent
               side="bottom"
               align="start"
+              sideOffset={14}
               collisionPadding={16}
               dir={isAr ? "rtl" : "ltr"}
               className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5"
             >
-              <button
-                type="button"
-                disabled={!repo}
-                onClick={() => {
-                  setPlus(false);
-                  setLibrary(true);
-                }}
-                className={row}
-              >
-                <LibraryIcon className="size-4 text-muted-foreground" aria-hidden />
-                <span className="flex min-w-0 flex-1 flex-col">
-                  <span>{t(copy.library)}</span>
-                  {!repo && (
-                    <span className="text-xs text-muted-foreground">
-                      {t(copy.pickRepo)}
-                    </span>
-                  )}
-                </span>
-              </button>
               {pickers.map(({ kind, label, Icon }) => (
                 <button
                   key={kind}
@@ -498,60 +455,6 @@ export function Composer({
                   {t(copy[label])}
                 </button>
               ))}
-              <button
-                type="button"
-                onClick={() => void addFolder()}
-                className={row}
-              >
-                <FolderIcon className="size-4 text-muted-foreground" aria-hidden />
-                {t(copy.attachFolder)}
-              </button>
-              {linking ? (
-                <div className="flex items-center gap-2 px-2 py-1.5">
-                  <LinkIcon className="ms-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <input
-                    autoFocus
-                    value={link}
-                    onChange={(e) => {
-                      setLink(e.target.value);
-                      setLinkError(false);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addLink();
-                      }
-                    }}
-                    dir="ltr"
-                    inputMode="url"
-                    placeholder={t(copy.linkPlaceholder)}
-                    aria-label={t(copy.linkPlaceholder)}
-                    aria-invalid={linkError}
-                    title={linkError ? t(copy.linkInvalid) : undefined}
-                    className={cn(
-                      "min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted-foreground",
-                      linkError && "text-destructive",
-                    )}
-                  />
-                  <button
-                    type="button"
-                    onClick={addLink}
-                    disabled={!link.trim()}
-                    className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background disabled:opacity-30"
-                  >
-                    {t(copy.add)}
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setLinking(true)}
-                  className={row}
-                >
-                  <LinkIcon className="size-4 text-muted-foreground" aria-hidden />
-                  {t(copy.attachLink)}
-                </button>
-              )}
             </PopoverContent>
           </Popover>
 
@@ -690,22 +593,6 @@ export function Composer({
         </div>
       </form>
       </div>
-      {repo && (
-        <MediaPicker
-          lang={lang}
-          repo={repo}
-          open={library}
-          onOpenChange={setLibrary}
-          onAttach={(items) =>
-            setAttached((have) =>
-              mergeAttachments(
-                have,
-                items.map((i) => fromItem(i, isAr)),
-              ),
-            )
-          }
-        />
-      )}
     </>
   );
 }
