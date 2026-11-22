@@ -18,7 +18,7 @@ import {
 } from "./questions-pure"
 
 /**
- * The question round before Send, in Claude Code's AskUserQuestion look: a muted slot chip, the question
+ * The question round, inline in the intake reply, in Claude Code's AskUserQuestion look: a muted slot chip, the question
  * in semibold, numbered options with ❯ on the highlighted row and ✔ after the current value, and a last
  * "Type something…" row. Several questions get a tab row (☐ Market  ✔ Length  Submit).
  * Keys: ↑/↓ move · Enter or 1-9 picks and advances · Tab and ←/→ (mirrored in RTL) change tab · Esc keeps the defaults.
@@ -111,7 +111,7 @@ export function QuestionCard({
       role="group"
       aria-label={t(copy.qLabel)}
       onKeyDown={onKeyDown}
-      className="mb-3 w-full rounded-2xl border border-border/60 bg-background p-4 text-start shadow-[0_4px_16px_-10px_rgb(0_0_0/0.10)] outline-none focus-visible:border-border"
+      className="w-full rounded-2xl border border-border/60 bg-background p-4 text-start shadow-[0_4px_16px_-10px_rgb(0_0_0/0.10)] outline-none focus-visible:border-border"
     >
       {tabs}
       {onSubmit ? (
@@ -123,6 +123,16 @@ export function QuestionCard({
         {t(copy.qKeys)}
       </p>
     </div>
+  )
+}
+
+/** The card after it closes, as Claude Code shows answered questions: `⎿ Audience: … · Market: …`. */
+export function IntakeOutcome({ text }: { text: string }) {
+  return (
+    <p dir="auto" className="flex items-baseline gap-2 text-sm text-muted-foreground">
+      <span aria-hidden dir="ltr" className="shrink-0">⎿</span>
+      <span className="min-w-0">{text}</span>
+    </p>
   )
 }
 

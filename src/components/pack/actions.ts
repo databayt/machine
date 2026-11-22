@@ -45,7 +45,7 @@ export async function questions(
   repo: string | null,
   set: Record<string, string> = {},
 ): Promise<Questions> {
-  const none: Questions = { id, questions: [] }
+  const none: Questions = { id, questions: [], intro: null }
   if (!isTauri()) return none
   try {
     return await invoke<Questions>("plugin:pack|questions", { department, id, repo, set })

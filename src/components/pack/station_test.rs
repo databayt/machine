@@ -155,6 +155,22 @@ fn questions_parse_with_options_defaults_and_current_values() {
 }
 
 #[test]
+fn questions_carry_the_intro_and_option_sets() {
+    let out = r#"{"id":"video.film.plan","intro":{"en":"Three quick questions.","ar":"ثلاثة أسئلة."},"questions":[
+      {"slot":"cut","kind":"choice","q":{"en":"Cut?","ar":"نسخة؟"},"options":[
+        {"value":"film","label":{"en":"2-minute film","ar":"فيلم"},"sets":{"platform":"Facebook","length":120,"skip":[1]}},
+        {"value":"reel","label":{"en":"Reel","ar":"ريل"}}]}]}"#;
+    let q = parse_questions(out).unwrap();
+    assert_eq!(q.intro.as_ref().map(|w| w.en.as_str()), Some("Three quick questions."));
+    let sets = q.questions[0].options[0].sets.as_ref().unwrap();
+    assert_eq!((sets["platform"].as_str(), sets["length"].as_str(), sets.len()), ("Facebook", "120", 2));
+    assert!(q.questions[0].options[1].sets.is_none());
+    // A null or missing intro is none; a missing one never fails the parse.
+    assert!(parse_questions(r#"{"id":"a.b","intro":null,"questions":[]}"#).unwrap().intro.is_none());
+    assert!(parse_questions(r#"{"id":"a.b","questions":[]}"#).unwrap().intro.is_none());
+}
+
+#[test]
 fn a_failed_fill_is_an_error_value() {
     assert!(matches!(parse_fill("garbage"), Err(PackError::Station(_))));
     assert!(matches!(parse_fill(r#"{"error":"no such formula"}"#), Err(PackError::Station(m)) if m == "no such formula"));

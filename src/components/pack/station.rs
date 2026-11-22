@@ -131,6 +131,10 @@ pub struct QuestionOption {
     #[serde(deserialize_with = "lenient_string")]
     pub value: String,
     pub label: Words,
+    /// Slots this choice sets on the others (a combined "cut"); the UI ignores it, `fill` applies it.
+    #[serde(deserialize_with = "lenient_opt_map", skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub sets: Option<BTreeMap<String, String>>,
 }
 
 /// One slot the formula still wants answered: asked with no model, answered from a list or typed.
@@ -156,6 +160,8 @@ pub struct Question {
 pub struct Questions {
     pub id: String,
     pub questions: Vec<Question>,
+    /// The line said before the questions, placeholders already filled; none when the formula has no intro.
+    pub intro: Option<Words>,
 }
 
 fn scalar(v: Value) -> Option<String> {
@@ -169,6 +175,14 @@ fn scalar(v: Value) -> Option<String> {
 
 fn lenient_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     Ok(Option::<Value>::deserialize(d)?.and_then(scalar).unwrap_or_default())
+}
+
+fn lenient_opt_map<'de, D: Deserializer<'de>>(d: D) -> Result<Option<BTreeMap<String, String>>, D::Error> {
+    let raw = Option::<Value>::deserialize(d)?;
+    Ok(match raw {
+        Some(Value::Object(_)) => Some(lenient_map(raw.unwrap_or(Value::Null)).map_err(serde::de::Error::custom)?),
+        _ => None,
+    })
 }
 
 fn lenient_opt_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
@@ -407,7 +421,11 @@ pub fn parse_questions(stdout: &str) -> Result<Questions, PackError> {
                 .filter(|q| valid_slot_key(&q.slot))
                 .collect()
         });
-    Ok(Questions { id, questions })
+    let intro = v
+        .get("intro")
+        .and_then(|i| serde_json::from_value::<Words>(i.clone()).ok())
+        .filter(|w| !w.en.is_empty() || !w.ar.is_empty());
+    Ok(Questions { id, questions, intro })
 }
 
 /// The switch's answer; anything else is "no match".

@@ -168,12 +168,20 @@ kind: string, q: Words, options: Array<QuestionOption>, default: string | null, 
 /**
  * One choice of a question.
  */
-export type QuestionOption = { value: string, label: Words, };
+export type QuestionOption = { value: string, label: Words, 
+/**
+ * Slots this choice sets on the others (a combined "cut"); the UI ignores it, `fill` applies it.
+ */
+sets?: { [key in string]: string }, };
 
 /**
  * The questions of one formula, in the formula's order; empty when nothing is left to ask.
  */
-export type Questions = { id: string, questions: Array<Question>, };
+export type Questions = { id: string, questions: Array<Question>, 
+/**
+ * The line said before the questions, placeholders already filled; none when the formula has no intro.
+ */
+intro: Words | null, };
 
 /**
  * A one-tap prompt shown under the greeting.

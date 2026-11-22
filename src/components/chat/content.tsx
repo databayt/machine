@@ -7,7 +7,7 @@ import { ArrowDownIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
 import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, questions as loadQuestions, stationLog } from "../pack/actions";
-import type { Board, FormulaMeta, Match, PackInfo, Question } from "../pack/types";
+import type { Board, FormulaMeta, Match, PackInfo } from "../pack/types";
 import type { CatalogItem } from "../catalog/types";
 import { loadCatalog } from "../menu/data";
 import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
@@ -21,7 +21,9 @@ import { acceptMessage, orderMessage, showAccept, workingRoute } from "./accept"
 import { ask, refine, stop } from "./actions";
 import { ActivityRows, ClaudeStatus } from "./activity";
 import { splitNote } from "./activity-pure";
-import { QuestionCard } from "./questions";
+import { IntakeOutcome, QuestionCard } from "./questions";
+import { BriefTurn } from "./brief";
+import { type Message, briefMessage, briefTitle, canStartFromText, dismissOpenIntake, intakeMessage, intakeOutcome, settleIntake, userMessage } from "./intake-pure";
 import { type Family, effectiveModel, familyOf } from "./model-pure";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
@@ -34,23 +36,6 @@ import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
 import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
 import { useStickToBottom } from "./use-stick-to-bottom";
-
-interface Message {
-  role: "user" | "assistant";
-  text: string;
-  /** Finished tool steps, in order. */
-  tools: string[];
-  /** The tool running now. */
-  live: string | null;
-  streaming?: boolean;
-  error?: string;
-  /** The route the turn ran on (null: none was named). */
-  route?: string | null;
-  /** The turn ran in plan mode: it ends with Accept. */
-  plan?: boolean;
-  /** The `record` of the formula that opened the plan (`issue` or `none`). */
-  record?: string | null;
-}
 
 /**
  * The machine's home — the chat in mkan's /find shell, with no bar: the greeting mid-screen with
@@ -97,9 +82,10 @@ export default function ChatContent({
   /** Where the next prompt runs, silently: the option's or refine's route, else the pack default. */
   const [routeId, setRouteId] = useState<string | null>(null);
   const fillN = useRef(0);
-  /** The question round open above the composer: the formula's open slots, and the set its fill used. */
-  const [qcard, setQcard] = useState<{ n: number; dept: string; id: string; set: Record<string, string>; questions: Question[] } | null>(null);
+  /** The token of the intake in flight: a new chat, a normal send or a newer intake drops the older one. */
   const qN = useRef(0);
+  /** The brief is being written (`fill`, no model): the token of its intake. */
+  const [briefing, setBriefing] = useState<number | null>(null);
   /** What the formula asked for (model, effort) and the chip's one-run pick; each is spent by the next send. */
   const [formulaModel, setFormulaModel] = useState<string | null>(null);
   const [formulaEffort, setFormulaEffort] = useState<string | null>(null);
@@ -264,13 +250,13 @@ export default function ChatContent({
   );
 
   const send = useCallback(
-    async (prompt: string, base: Message[] = messages, route?: string | null) => {
+    async (prompt: string, base: Message[] = messages, route?: string | null, run?: { model: Family | null; effort: string | null }) => {
       const text = prompt.trim();
       if (!text || busy) return;
       setFill(null);
       qN.current++;
-      setQcard(null);
-      const { model, effort } = runModel.current;
+      setBriefing(null);
+      const { model, effort } = run ?? runModel.current;
       setOverride(null);
       setFormulaModel(null);
       setFormulaEffort(null);
@@ -278,7 +264,7 @@ export default function ChatContent({
       setJobId(id);
       const ranInPlan = routes.find((r) => r.id === route)?.mode === "plan";
       setMessages([
-        ...base,
+        ...dismissOpenIntake(base),
         { role: "user", text, tools: [], live: null },
         {
           role: "assistant",
@@ -322,7 +308,7 @@ export default function ChatContent({
     setResumed(null);
     stationRef.current = null;
     qN.current++;
-    setQcard(null);
+    setBriefing(null);
     if (resume) router.replace(`/${lang}/`);
   };
 
@@ -384,41 +370,84 @@ export default function ChatContent({
     setFill({ text, focus: true, n: ++fillN.current });
     if (route) setRouteId(route);
   };
-  /** The question round after a fill: the formula's open slots, asked with no model. `set` is the one the fill used. */
-  const openQuestions = (dept: string, id: string, set: Record<string, string>) => {
+  /**
+   * The first prompt starts the chat: the user's line appears (the screen becomes the regular chat), then
+   * after about half a second the assistant's intake reply: an intro line and the questions, inline. A
+   * formula with no questions goes straight to the brief. Local messages: nothing here reaches Claude.
+   */
+  const startIntake = async (label: string, dept: string | null, id: string, set: Record<string, string>, route: string | null = null) => {
+    if (busy) return;
     const n = ++qN.current;
-    setQcard(null);
-    void loadQuestions(dept, id, ctx.repo || null, set).then((r) => {
-      if (n === qN.current && r.questions.length > 0) setQcard({ n, dept, id: r.id || id, set, questions: r.questions });
-    });
+    setFill(null);
+    setBriefing(null);
+    setMessages((all) => [...dismissOpenIntake(all), userMessage(label)]);
+    requestAnimationFrame(() => scrollToBottom());
+    let d = ctx.dept;
+    if (dept && dept !== d && (await ctx.chooseDept(dept))) d = dept;
+    const [r] = await Promise.all([loadQuestions(d, id, ctx.repo || null, set), new Promise((done) => setTimeout(done, 500))]);
+    if (n !== qN.current) return;
+    if (r.questions.length === 0) return writeBrief(n, d, r.id || id, set, label, route);
+    setMessages((all) => [...all, intakeMessage({ n, dept: d, id: r.id || id, set, questions: r.questions, intro: r.intro }, isAr)]);
   };
-  /** The card is over: Submit fills again with the answers merged over the first set (the prompt, never sent); Esc keeps the defaults. */
-  const finishQuestions = async (card: NonNullable<typeof qcard>, answers: Record<string, string>, submitted: boolean) => {
-    qN.current++;
-    setQcard(null);
-    if (submitted && Object.keys(answers).length > 0) {
-      try {
-        const f = await fillFormula(card.dept, card.id, ctx.repo || null, { ...card.set, ...answers });
-        writeFilled(f.prompt, f.route, { id: f.id, record: f.record }, f);
-        return;
-      } catch {
-        // the old prompt stays
-      }
+  /** The card closed: Submit merges the answers over the set, Esc keeps the defaults; both go on to the brief. */
+  const finishIntake = (m: Message, answers: Record<string, string>, submitted: boolean) => {
+    const it = m.intake;
+    if (!it || it.n !== qN.current) return;
+    const given = submitted ? answers : {};
+    setMessages((all) => settleIntake(all, it.n, given));
+    void writeBrief(it.n, it.dept, it.id, { ...it.set, ...given }, m.text, null);
+  };
+  /** `fill` with no model (about a second), then the brief message. The prompt is never sent from here. */
+  const writeBrief = async (n: number, dept: string, id: string, set: Record<string, string>, label: string, route: string | null) => {
+    setBriefing(n);
+    try {
+      const f = await fillFormula(dept, id, ctx.repo || null, set);
+      if (n !== qN.current) return;
+      const meta = formulaList.list.find((x) => x.id === f.id);
+      const name = (meta && (isAr ? meta.label_ar || meta.label_en : meta.label_en || meta.label_ar)) || label;
+      const to = f.route ?? route;
+      setFormulaModel(f.model);
+      setFormulaEffort(f.effort);
+      if (to) setRouteId(to);
+      setBriefing(null);
+      setMessages((all) => [
+        ...all,
+        briefMessage({
+          id: f.id,
+          dept,
+          title: briefTitle(name, effectiveModel(null, f.model, routes.find((r) => r.id === to)?.model ?? chosen?.model ?? null), isAr),
+          prompt: f.prompt,
+          route: to,
+          record: f.record,
+          model: f.model,
+          effort: f.effort,
+          label,
+        }),
+      ]);
+    } catch {
+      if (n !== qN.current) return;
+      setBriefing(null);
+      // The station's script is unavailable: the user's own words are the request.
+      writeFilled(label, route, null);
     }
-    setFill({ text: draft.current, focus: true, n: ++fillN.current });
   };
-  /** A tap: the station fills the formula at once (no model); a quick action writes its brief and refines. */
+  /** Start: the brief runs on its route, model and effort (the chip's one-run pick wins), as Send does. */
+  const startBrief = (b: NonNullable<Message["brief"]>) => {
+    stationRef.current = { id: b.id, record: b.record };
+    const order = b.record === "issue" ? stationRef.current : null;
+    void send(order ? orderMessage(b.prompt, order.id) : b.prompt, undefined, b.route ?? chosen?.id ?? null, {
+      model: override ?? familyOf(b.model),
+      effort: b.effort,
+    });
+    if (order) stationRef.current = null;
+  };
+  /** Edit: the brief goes into the box (caret at the end); Enter sends it on the brief's route. */
+  const editBrief = (b: NonNullable<Message["brief"]>) => writeFilled(b.prompt, b.route, { id: b.id, record: b.record }, b);
+  /** A tap: the intake starts at once (no model); a quick action writes its brief and refines. */
   const pickOption = async (o: HomeOption) => {
     if (o.logId) void stationLog(ctx.dept, ctx.repo || null, o.logId, "pick");
     if (o.formula) {
-      try {
-        const f = await fillFormula(ctx.dept, o.formula, ctx.repo || null, o.set);
-        writeFilled(f.prompt, f.route ?? o.route, { id: f.id, record: f.record }, f);
-        openQuestions(ctx.dept, f.id, o.set);
-      } catch {
-        // The station's script is unavailable: the option's own English name is the request.
-        writeFilled(o.labelEn, o.route, null);
-      }
+      void startIntake(o.label, null, o.formula, o.set, o.route);
       return;
     }
     stationRef.current = null;
@@ -443,7 +472,6 @@ export default function ChatContent({
       setFormulaModel(f.model);
       setFormulaEffort(f.effort);
       void stationLog(dept, ctx.repo || null, f.id, "pick");
-      openQuestions(dept, f.id, m.set ?? {});
       return f.prompt;
     } catch {
       return null;
@@ -477,37 +505,37 @@ export default function ChatContent({
     const top = skillMatches(text)[0];
     return top ? { kind: "skill", forText: text, name: top.name } : null;
   };
-  const acceptChip = (c: Extract<Chip, { kind: "formula" }>) => applyMatch(c.match);
+  /** Tab on the chip: the typed sentence becomes the opening line of the chat; "" clears the box. */
+  const acceptChip = async (c: Extract<Chip, { kind: "formula" }>): Promise<string | null> => {
+    void stationLog(c.match.dept || ctx.dept, ctx.repo || null, c.id, "pick");
+    void startIntake(c.forText, c.match.dept, c.id, c.match.set ?? {});
+    return "";
+  };
   const dismissChip = (c: Chip) => {
     if (c.kind === "formula") void stationLog(ctx.dept, ctx.repo || null, c.id, "dismiss");
   };
-  /** A formula chosen from the "/" menu: filled with no slots, so the open ones are for the person. */
+  /** A formula chosen from the "/" menu: its name is the opening line; "" clears the box. */
   const pickFormula = async (id: string): Promise<string | null> => {
-    try {
-      const f = await fillFormula(ctx.dept, id, ctx.repo || null, {});
-      if (f.route) setRouteId(f.route);
-      stationRef.current = { id: f.id, record: f.record };
-      setFormulaModel(f.model);
-      setFormulaEffort(f.effort);
-      void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
-      openQuestions(ctx.dept, f.id, {});
-      return f.prompt;
-    } catch {
-      return null;
+    const meta = formulaList.list.find((f) => f.id === id);
+    void stationLog(ctx.dept, ctx.repo || null, id, "pick");
+    void startIntake((meta && (isAr ? meta.label_ar || meta.label_en : meta.label_en || meta.label_ar)) || id, null, id, {});
+    return "";
+  };
+  /** Enter: a sentence the switch matches opens the intake; anything else, and any reply in a running chat, sends. */
+  const submitText = async (text: string) => {
+    if (!busy && canStartFromText(messages, text)) {
+      const m = await matchText(ctx.dept, text, ctx.repo || null);
+      if (usableMatch(m)) {
+        void stationLog(m.dept || ctx.dept, ctx.repo || null, m.id, "pick");
+        void startIntake(text.trim(), m.dept, m.id, m.set ?? {});
+        return;
+      }
     }
+    sendRouted(text);
   };
   /** A held work order's Submit: clear the box, or put the caret in it to ask for the summary line. */
   const afterSubmit = () => setFill({ text: "", focus: false, n: ++fillN.current });
   const askSummary = () => setFill({ text: draft.current, focus: true, n: ++fillN.current });
-  const questionCard =
-    qcard && !busy ? (
-      <QuestionCard
-        key={qcard.n}
-        questions={qcard.questions}
-        isAr={isAr}
-        onDone={(answers, submitted) => void finishQuestions(qcard, answers, submitted)}
-      />
-    ) : null;
   const modelChip = (
     <ModelChip
       lang={lang}
@@ -557,10 +585,9 @@ export default function ChatContent({
                 )}
               </div>
               <div className="w-full">
-                {questionCard}
                 <Composer
                   lang={lang}
-                  onSend={sendRouted}
+                  onSend={(text) => void submitText(text)}
                   onStop={() => jobId && void stop(jobId)}
                   busy={busy}
                   initialText={prompt}
@@ -593,6 +620,34 @@ export default function ChatContent({
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
               {messages.map((m, i) => {
+                if (m.kind === "intake" && m.intake) {
+                  const it = m.intake;
+                  return (
+                    <AgentTurn key={i}>
+                      <p dir="auto" className="text-start">{m.text}</p>
+                      {it.status === "open" ? (
+                        <QuestionCard key={it.n} questions={it.questions} isAr={isAr} onDone={(answers, submitted) => finishIntake(m, answers, submitted)} />
+                      ) : (
+                        <IntakeOutcome text={intakeOutcome(it, isAr)} />
+                      )}
+                      {briefing === it.n && i === messages.length - 1 && <ClaudeStatus isAr={isAr} seed={String(i)} verb={t(copy.briefWriting)} />}
+                    </AgentTurn>
+                  );
+                }
+                if (m.kind === "brief" && m.brief) {
+                  return (
+                    <AgentTurn key={i}>
+                      <BriefTurn
+                        title={m.brief.title}
+                        prompt={m.brief.prompt}
+                        isAr={isAr}
+                        canAct={i === messages.length - 1 && !busy}
+                        onStart={() => startBrief(m.brief!)}
+                        onEdit={() => editBrief(m.brief!)}
+                      />
+                    </AgentTurn>
+                  );
+                }
                 const note = splitNote(m.text);
                 return m.role === "user" ? (
                   <UserTurn key={i} text={m.text} />
@@ -652,6 +707,11 @@ export default function ChatContent({
                   </AgentTurn>
                 );
               })}
+              {briefing !== null && !(last?.kind === "intake" && last.intake?.n === briefing) && (
+                <AgentTurn>
+                  <ClaudeStatus isAr={isAr} seed="brief" verb={t(copy.briefWriting)} />
+                </AgentTurn>
+              )}
             </ol>
           )}
         </div>
@@ -669,10 +729,9 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
-          {questionCard}
           <Composer
             lang={lang}
-            onSend={sendRouted}
+            onSend={(text) => void submitText(text)}
             onStop={() => jobId && void stop(jobId)}
             busy={busy}
             fill={fill}
