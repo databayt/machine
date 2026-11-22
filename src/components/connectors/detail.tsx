@@ -1,28 +1,27 @@
 import { ExternalLink } from "lucide-react"
 
 import type { Copy } from "../chat/config"
-import { Badges, kindLabel, Logo } from "./card"
+import { Action, kindLabel, Logo, type Actions } from "./card"
 import { copy } from "./config"
 import { CATEGORIES, type Connector } from "./registry"
 
-export function Detail({ c, installed, t }: { c: Connector; installed: boolean; t: (c: Copy) => string }) {
+export function Detail({ c, actions, t }: { c: Connector; actions: Actions; t: (c: Copy) => string }) {
   const category = t(CATEGORIES.find((x) => x.id === c.category)!.label)
   return (
     <>
       <div className="flex flex-wrap items-center gap-4">
         <Logo c={c} size={64} />
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 dir="ltr" className="text-start text-xl font-semibold break-all">
-            {c.name}
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h2 className="text-xl font-semibold break-all">
+            <bdi>{c.name}</bdi>
           </h2>
           <p className="text-muted-foreground text-sm">
             {kindLabel(c, t)} · {category}
-            {installed ? ` · ${t(copy.installed)}` : ""}
           </p>
         </div>
+        <Action c={c} actions={actions} t={t} />
       </div>
       <div className="bg-background flex flex-col gap-4 rounded-2xl p-4">
-        <Badges c={c} installed={installed} t={t} />
         <p className="text-sm leading-relaxed">{t(c.blurb)}</p>
         {c.keywords.length > 0 && (
           <div className="flex flex-col gap-2">

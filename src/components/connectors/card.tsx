@@ -1,4 +1,11 @@
+"use client"
+
+import { Loader2, MoreHorizontal, Plus } from "lucide-react"
 import Link from "next/link"
+import { useState } from "react"
+
+import { cn } from "@/lib/utils"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import type { Copy } from "../chat/config"
 import { copy } from "./config"
@@ -6,18 +13,30 @@ import { KINDS, type Connector } from "./registry"
 
 type T = (c: Copy) => string
 
-/** A white tile (many logos are black, so it stays white in dark mode) with the logo or the first letter. */
+/** What a card can do: add it, or (once installed) drop it. Supplied by the page, which owns `claude mcp`. */
+export interface Actions {
+  installed: (c: Connector) => boolean
+  /** Adds it in place when kun's catalog has it; otherwise the action opens its page to add it there. */
+  canAdd: (c: Connector) => boolean
+  /** Drops it in place when it is a local server; connectors and plugins are managed on their page. */
+  canRemove: (c: Connector) => boolean
+  add: (c: Connector) => Promise<void>
+  remove: (c: Connector) => Promise<void>
+}
+
+/** The original mark, no frame. A white backing only in dark mode, where black marks would vanish. */
 export function Logo({ c, size = 40 }: { c: Connector; size?: number }) {
+  const inner = Math.round(size * 0.7)
   return (
     <span
-      className="flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-black/10"
+      className="flex shrink-0 items-center justify-center rounded-xl dark:bg-white"
       style={{ width: size, height: size }}
     >
       {c.logo ? (
         // eslint-disable-next-line @next/next/no-img-element -- static export, no image optimizer
-        <img src={c.logo} alt="" width={size * 0.6} height={size * 0.6} className="object-contain" style={{ width: size * 0.6, height: size * 0.6 }} />
+        <img src={c.logo} alt="" className="object-contain" style={{ width: inner, height: inner }} />
       ) : (
-        <span dir="ltr" className="font-semibold text-neutral-800" style={{ fontSize: size * 0.45 }}>
+        <span dir="ltr" className="font-semibold text-neutral-800 dark:text-neutral-800" style={{ fontSize: size * 0.5 }}>
           {c.name.charAt(0).toUpperCase()}
         </span>
       )}
@@ -27,52 +46,94 @@ export function Logo({ c, size = 40 }: { c: Connector; size?: number }) {
 
 export const kindLabel = (c: Connector, t: T) => t(KINDS.find((k) => k.id === c.kind)!.label)
 
-export function Badges({ c, installed, t }: { c: Connector; installed: boolean; t: T }) {
+const iconButton =
+  "text-muted-foreground hover:text-foreground hover:bg-muted flex size-8 shrink-0 items-center justify-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring"
+
+/** `+` for one not installed yet; `…` with Remove / Open for one already installed. */
+export function Action({ c, actions, t, className }: { c: Connector; actions: Actions; t: T; className?: string }) {
+  const [busy, setBusy] = useState(false)
+  const [open, setOpen] = useState(false)
+  const run = async (f: () => Promise<void>) => {
+    setBusy(true)
+    try {
+      await f()
+    } finally {
+      setBusy(false)
+      setOpen(false)
+    }
+  }
+
+  if (busy)
+    return (
+      <span className={cn(iconButton, className, "opacity-100")} aria-busy>
+        <Loader2 className="size-4 animate-spin" aria-hidden />
+      </span>
+    )
+
+  if (!actions.installed(c)) {
+    const label = `${t(copy.add)} ${c.name}`
+    return actions.canAdd(c) ? (
+      <button type="button" aria-label={label} title={t(copy.add)} onClick={() => void run(() => actions.add(c))} className={cn(iconButton, className)}>
+        <Plus className="size-4" aria-hidden />
+      </button>
+    ) : (
+      <a href={c.url} target="_blank" rel="noreferrer" aria-label={label} title={t(copy.add)} className={cn(iconButton, className)}>
+        <Plus className="size-4" aria-hidden />
+      </a>
+    )
+  }
+
+  const item = "hover:bg-muted flex w-full items-center rounded-md px-2 py-1.5 text-start text-sm transition-colors"
   return (
-    <p className="text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs">
-      <span>{kindLabel(c, t)}</span>
-      {c.verified && (
-        <>
-          <span aria-hidden>·</span>
-          <span>{t(copy.verified)}</span>
-        </>
-      )}
-      {installed && (
-        <>
-          <span aria-hidden>·</span>
-          <span className="inline-flex items-center gap-1">
-            <span aria-hidden className="size-1.5 rounded-full bg-green-500" />
-            {t(copy.installed)}
-          </span>
-        </>
-      )}
-    </p>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button type="button" aria-label={`${t(copy.more)} ${c.name}`} className={cn(iconButton, className, open && "opacity-100")}>
+          <MoreHorizontal className="size-4" aria-hidden />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-40 rounded-xl p-1">
+        {actions.canRemove(c) && (
+          <button type="button" onClick={() => void run(() => actions.remove(c))} className={cn(item, "text-destructive")}>
+            {t(copy.remove)}
+          </button>
+        )}
+        <a href={c.url} target="_blank" rel="noreferrer" onClick={() => setOpen(false)} className={item}>
+          {actions.canRemove(c) ? t(copy.open) : t(copy.manage)}
+        </a>
+      </PopoverContent>
+    </Popover>
   )
 }
 
-export function Card({ c, lang, installed, t }: { c: Connector; lang: string; installed: boolean; t: T }) {
+/** The whole card links to the detail; the action sits above that layer and shows on hover. */
+export function Card({ c, lang, actions, t }: { c: Connector; lang: string; actions: Actions; t: T }) {
   return (
-    <Link
-      href={`/${lang}/connectors/?item=${encodeURIComponent(c.id)}`}
-      className="bg-background hover:bg-accent flex min-w-0 items-start gap-3 rounded-2xl p-4 transition-colors"
-    >
+    <div className="group bg-background hover:bg-background/60 relative flex min-w-0 items-center gap-3 rounded-2xl p-4 transition-colors">
       <Logo c={c} />
-      <span className="flex min-w-0 flex-col gap-1">
+      <Link
+        href={`/${lang}/connectors/?item=${encodeURIComponent(c.id)}`}
+        className="flex min-w-0 flex-1 flex-col gap-0.5 outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
+      >
         <span className="truncate font-semibold">
           <bdi>{c.name}</bdi>
         </span>
-        <Badges c={c} installed={installed} t={t} />
-        <span className="text-muted-foreground line-clamp-2 text-sm">{t(c.blurb)}</span>
-      </span>
-    </Link>
+        <span className="text-muted-foreground truncate text-sm">{t(c.blurb)}</span>
+      </Link>
+      <Action
+        c={c}
+        actions={actions}
+        t={t}
+        className="relative z-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+      />
+    </div>
   )
 }
 
-export function Grid({ items, lang, have, t }: { items: Connector[]; lang: string; have: (c: Connector) => boolean; t: T }) {
+export function Grid({ items, lang, actions, t }: { items: Connector[]; lang: string; actions: Actions; t: T }) {
   return (
     <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
       {items.map((c) => (
-        <Card key={c.id} c={c} lang={lang} installed={have(c)} t={t} />
+        <Card key={c.id} c={c} lang={lang} actions={actions} t={t} />
       ))}
     </div>
   )

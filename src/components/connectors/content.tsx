@@ -2,19 +2,19 @@
 
 import { Search } from "lucide-react"
 import { useSearchParams } from "next/navigation"
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 import { tr } from "@/components/chat/config"
 import type { Locale } from "@/components/local/config"
 import { cn } from "@/lib/utils"
 
-import { mcpList } from "../config/actions"
+import { mcpAdd, mcpList, mcpRemove } from "../config/actions"
 import { useInMachine } from "../shell/content"
 import { PageShell } from "../shell/page"
-import { Grid } from "./card"
+import { Grid, type Actions } from "./card"
 import { copy } from "./config"
 import { Detail } from "./detail"
-import { CATEGORIES, CONNECTORS, isInstalled, KINDS, matches, type Category, type Kind } from "./registry"
+import { CATEGORIES, CONNECTORS, isInstalled, KINDS, matches, type Category, type Connector, type Kind } from "./registry"
 
 const chip = "rounded-full px-3 py-1 text-sm transition-colors"
 
@@ -24,18 +24,42 @@ export default function Connectors({ lang }: { lang: Locale }) {
   const inApp = useInMachine()
   const id = useSearchParams().get("item")
   const [names, setNames] = useState<string[]>([])
+  const [catalog, setCatalog] = useState<string[]>([])
   const [query, setQuery] = useState("")
   const [category, setCategory] = useState<Category | "all">("all")
   const [kind, setKind] = useState<Kind | "all">("all")
 
-  useEffect(() => {
-    if (!inApp) return
-    mcpList()
-      .then((v) => setNames(v.installed.map((s) => s.name)))
-      .catch(() => setNames([]))
-  }, [inApp])
+  const load = useCallback(async () => {
+    try {
+      const v = await mcpList()
+      setNames(v.installed.map((s) => s.name))
+      setCatalog(v.available.filter((s) => !s.skipped).map((s) => s.name))
+    } catch {
+      setNames([])
+      setCatalog([])
+    }
+  }, [])
 
-  const have = (c: (typeof CONNECTORS)[number]) => isInstalled(c, names)
+  useEffect(() => {
+    if (inApp) void load()
+  }, [inApp, load])
+
+  /** Local server names only: claude.ai connectors and plugin servers are managed where they were added. */
+  const local = (n: string) => !n.startsWith("claude.ai ") && !n.startsWith("plugin:")
+  const actions: Actions = {
+    installed: (c) => isInstalled(c, names),
+    canAdd: (c) => inApp === true && (c.mcp ?? []).some((n) => catalog.includes(n)),
+    canRemove: (c) => inApp === true && (c.mcp ?? []).some((n) => local(n) && names.includes(n)),
+    add: async (c: Connector) => {
+      const n = (c.mcp ?? []).find((x) => catalog.includes(x))
+      if (n) await mcpAdd(n)
+      await load()
+    },
+    remove: async (c: Connector) => {
+      for (const n of (c.mcp ?? []).filter((x) => local(x) && names.includes(x))) await mcpRemove(n)
+      await load()
+    },
+  }
   const filtering = query.trim() !== "" || category !== "all" || kind !== "all"
   const results = useMemo(
     () => CONNECTORS.filter((c) => matches(c, query) && (category === "all" || c.category === category) && (kind === "all" || c.kind === kind)),
@@ -46,13 +70,13 @@ export default function Connectors({ lang }: { lang: Locale }) {
     const c = CONNECTORS.find((x) => x.id === id)
     return (
       <PageShell title={c?.name ?? t(copy.title)}>
-        {c ? <Detail c={c} installed={have(c)} t={t} /> : <div className="bg-background text-muted-foreground w-fit rounded-2xl p-4 text-sm">{t(copy.notFound)}</div>}
+        {c ? <Detail c={c} actions={actions} t={t} /> : <div className="bg-background text-muted-foreground w-fit rounded-2xl p-4 text-sm">{t(copy.notFound)}</div>}
       </PageShell>
     )
   }
 
   const pill = (on: boolean) => cn(chip, on ? "bg-foreground text-background" : "bg-muted text-foreground hover:bg-accent")
-  const grid = (items: typeof CONNECTORS) => <Grid items={items} lang={lang} have={have} t={t} />
+  const grid = (items: typeof CONNECTORS) => <Grid items={items} lang={lang} actions={actions} t={t} />
 
   return (
     <PageShell title={t(copy.title)} className="max-w-6xl">
