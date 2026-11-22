@@ -336,6 +336,7 @@ fn prepare_run(
     route: Option<&str>,
     mode: Option<&str>,
     brain: Brain,
+    over: &RunOverride,
 ) -> Result<RunSetup, ChatError> {
     let (cwd, mut extras, mut env) = if resolved.explicit {
         let ws = pack::workspace(&resolved.profile)?;
@@ -363,7 +364,8 @@ fn prepare_run(
     let dirs = task_extras(kind, &extras, &pack::pack_dirs(&meta));
     extras.extend(dirs);
     let (permission, flags, suffix) = resolve_turn(&meta, kind, route, mode, brain.is_free())?;
-    extras.extend(flags);
+    // The chip's pick or the formula's own model and effort win over the route's, for this run only.
+    extras.extend(pack::with_override(flags, brain.is_free(), over.model.as_deref(), over.effort.as_deref()));
     if let Some(id) = task_id {
         let seeded = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
         extras.extend(seeded);
@@ -404,6 +406,8 @@ async fn ask(
     repo: Option<String>,
     mode: Option<String>,
     route: Option<String>,
+    model: Option<String>,
+    effort: Option<String>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
     let settings = settings::load()?;
@@ -412,7 +416,7 @@ async fn ask(
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
-    let inputs = SetupInputs { resolved, department, kind, task_id, repo, root, route, mode };
+    let inputs = SetupInputs { resolved, department, kind, task_id, repo, root, route, mode, over: RunOverride { model, effort } };
     let configured = settings.brain;
     // A session that already fell back stays on its free route (when it is still ready).
     let sticky = if kind == DriverKind::Claude && !configured.is_free() {
@@ -466,6 +470,13 @@ async fn ask(
     Ok(())
 }
 
+/// A model and effort for one run, over its route's (`ask`'s `model` / `effort`).
+#[derive(Debug, Clone, Default)]
+struct RunOverride {
+    model: Option<String>,
+    effort: Option<String>,
+}
+
 /// Everything needed to prepare a run, kept so a fallback can prepare the same run on another route.
 struct SetupInputs {
     resolved: Resolved,
@@ -476,11 +487,12 @@ struct SetupInputs {
     root: PathBuf,
     route: Option<String>,
     mode: Option<String>,
+    over: RunOverride,
 }
 
 impl SetupInputs {
     async fn setup(&self, brain: Brain) -> Result<RunSetup, ChatError> {
-        let (resolved, department, kind, task_id, repo, root, route, mode) = (
+        let (resolved, department, kind, task_id, repo, root, route, mode, over) = (
             self.resolved.clone(),
             self.department.clone(),
             self.kind,
@@ -489,9 +501,10 @@ impl SetupInputs {
             self.root.clone(),
             self.route.clone(),
             self.mode.clone(),
+            self.over.clone(),
         );
         tokio::task::spawn_blocking(move || {
-            prepare_run(&resolved, &department, kind, task_id.as_deref(), repo.as_deref(), &root, route.as_deref(), mode.as_deref(), brain)
+            prepare_run(&resolved, &department, kind, task_id.as_deref(), repo.as_deref(), &root, route.as_deref(), mode.as_deref(), brain, &over)
         })
         .await
         .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?
@@ -830,6 +843,7 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
             None,
             None,
             brain,
+            &RunOverride::default(),
         )?;
         let meta = pack::meta_in(&pack::kun_dir()?, &for_dept)?;
         // No route applies (no agent, no pack model): refine is a cheap rewrite. On a free route

@@ -14,7 +14,7 @@
     "lint": "cd machine && cargo clippy --all-targets -- -D warnings",
     "typecheck": "tsc --noEmit",
     "logos": "node scripts/logos.mjs",
-    "test": "node --test src/components/shell/nav.test.ts src/components/menu/spotlight.test.ts src/components/menu/keywords-rank.test.ts src/components/chat/refine.test.ts src/components/chat/options.test.ts src/components/chat/keywords.test.ts src/components/chat/accept.test.ts src/components/chat/repos.test.ts src/components/tasks/submit.test.ts src/components/tasks/doctor.test.ts src/components/readiness/level.test.ts src/components/menu/queue.test.ts src/components/machines/format.test.ts"
+    "test": "node --test src/components/shell/nav.test.ts src/components/menu/spotlight.test.ts src/components/menu/keywords-rank.test.ts src/components/chat/refine.test.ts src/components/chat/options.test.ts src/components/chat/keywords.test.ts src/components/chat/accept.test.ts src/components/chat/questions.test.ts src/components/chat/activity.test.ts src/components/chat/model.test.ts src/components/chat/repos.test.ts src/components/tasks/submit.test.ts src/components/tasks/doctor.test.ts src/components/readiness/level.test.ts src/components/menu/queue.test.ts src/components/machines/format.test.ts"
   },
   "dependencies": {
     "@phosphor-icons/react": "2.1.10",

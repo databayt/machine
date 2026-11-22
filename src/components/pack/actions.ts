@@ -2,7 +2,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { SyncEvent } from "../repos/types"
-import type { Board, Filled, FormulaMeta, Health, LogEvent, Match, PackInfo } from "./types"
+import type { Board, Filled, FormulaMeta, Health, LogEvent, Match, PackInfo, Questions } from "./types"
 
 /** A department's title, fallback quick actions, frame and routes; null outside the machine app. */
 export async function packInfo(department: string): Promise<PackInfo | null> {
@@ -33,6 +33,25 @@ export async function fill(
 ): Promise<Filled> {
   if (!isTauri()) throw new Error("not in the machine app")
   return invoke<Filled>("plugin:pack|fill", { department, id, repo, set })
+}
+
+/**
+ * The slots a formula still asks (no model, about 0.1 s), for the question card. `set` is the one the fill
+ * used, so slots already answered are skipped. Never rejects: any failure is no questions.
+ */
+export async function questions(
+  department: string,
+  id: string,
+  repo: string | null,
+  set: Record<string, string> = {},
+): Promise<Questions> {
+  const none: Questions = { id, questions: [] }
+  if (!isTauri()) return none
+  try {
+    return await invoke<Questions>("plugin:pack|questions", { department, id, repo, set })
+  } catch {
+    return none
+  }
 }
 
 /** Typed text to a formula id; never rejects, no match is `{ id: null }`. */

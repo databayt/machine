@@ -614,6 +614,27 @@ pub fn route_flags_for(route: &Route, free: bool) -> Vec<String> {
     a
 }
 
+/// `flags` with a one-run model and effort laid over them: the composer chip's pick or a formula's own.
+/// A model must be a Claude model the pack would accept (never Fable) and is ignored on a free route, whose
+/// proxy picks the model; an effort must be a known level. Anything invalid is dropped, never an error.
+#[must_use]
+pub fn with_override(mut flags: Vec<String>, free: bool, model: Option<&str>, effort: Option<&str>) -> Vec<String> {
+    let mut set = |flag: &str, val: &str| {
+        if let Some(i) = flags.iter().position(|f| f == flag).filter(|i| i + 1 < flags.len()) {
+            val.clone_into(&mut flags[i + 1]);
+        } else {
+            flags.extend([flag.to_owned(), val.to_owned()]);
+        }
+    };
+    if let Some(m) = model.filter(|m| !free && valid_model(m)) {
+        set("--model", m);
+    }
+    if let Some(e) = effort.filter(|e| VALID_EFFORT.contains(e)) {
+        set("--effort", e);
+    }
+    flags
+}
+
 /// The route a request names: no id gives the pack's default (none when it has no routes); an id the
 /// pack does not declare is an error.
 ///
@@ -951,6 +972,17 @@ async fn fill(
     station::fill(&department, &id, repo.as_deref(), &set.unwrap_or_default()).await
 }
 
+/// `questions` — the slots a formula still asks, read by the script (no model, nothing sent).
+#[tauri::command]
+async fn questions(
+    department: String,
+    id: String,
+    repo: Option<String>,
+    set: Option<BTreeMap<String, String>>,
+) -> Result<station::Questions, PackError> {
+    station::questions(&department, &id, repo.as_deref(), &set.unwrap_or_default()).await
+}
+
 /// `match_text` — the station's switch: typed text to a formula id, or none.
 #[tauri::command]
 async fn match_text(department: String, text: String, repo: Option<String>) -> station::Match {
@@ -1116,6 +1148,7 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             health_fix,
             board,
             fill,
+            questions,
             match_text,
             formulas,
             station_log

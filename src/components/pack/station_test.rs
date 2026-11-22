@@ -111,6 +111,50 @@ fn a_fill_keeps_unfilled_slots_and_lists_uploads() {
 }
 
 #[test]
+fn a_fill_carries_only_a_claude_model_and_a_known_effort() {
+    let f = parse_fill(r#"{"id":"a.b","prompt":"p","model":"sonnet","effort":"medium"}"#).unwrap();
+    assert_eq!((f.model.as_deref(), f.effort.as_deref()), (Some("sonnet"), Some("medium")));
+    let f = parse_fill(r#"{"id":"a.b","prompt":"p","model":"fable","effort":"ludicrous"}"#).unwrap();
+    assert_eq!((f.model, f.effort), (None, None));
+}
+
+#[test]
+fn questions_args_carry_the_set_and_no_login() {
+    let a = questions_args("video", "video.film.plan", Some("hogwarts"), &set(&[("market", "sa")])).unwrap();
+    assert_eq!(
+        a,
+        ["questions", "video.film.plan", "--dept", "video", "--repo", "hogwarts", "--set", "market=sa", "--json"]
+    );
+    assert!(questions_args("video", "../x", None, &set(&[])).is_err());
+    assert!(questions_args("video", "a.b", None, &set(&[("k", "a\nb")])).is_err());
+}
+
+#[test]
+fn questions_parse_with_options_defaults_and_current_values() {
+    let out = r#"{"id":"video.film.plan","questions":[
+      {"slot":"market","kind":"market","q":{"en":"Which market?","ar":"أي سوق؟"},
+       "options":[{"value":"sd","label":{"en":"Sudan · Arabic · 6.4 USD","ar":"السودان"}},{"value":"sa","label":{"en":"Saudi · Arabic · 24 SAR","ar":"السعودية"}}],
+       "default":"sd","current":"sd"},
+      {"slot":"length","kind":"choice","q":{"en":"How long?","ar":"كم المدة؟"},"options":[{"value":60,"label":{"en":"60 s","ar":"٦٠ ث"}}],"default":60,"current":null},
+      {"slot":"note","kind":"ask","q":{"en":"Anything else?","ar":"شيء آخر؟"},"options":[],"default":null,"current":null},
+      {"slot":"bad slot","kind":"ask"},
+      "not an object"
+    ]}"#;
+    let q = parse_questions(out).unwrap();
+    assert_eq!(q.id, "video.film.plan");
+    assert_eq!(q.questions.len(), 3);
+    assert_eq!(q.questions[0].options[1].value, "sa");
+    assert_eq!(q.questions[0].current.as_deref(), Some("sd"));
+    assert_eq!(q.questions[1].options[0].value, "60");
+    assert_eq!(q.questions[1].default.as_deref(), Some("60"));
+    assert_eq!((q.questions[2].kind.as_str(), q.questions[2].options.len()), ("ask", 0));
+    // Nothing left to ask is an empty list, not an error.
+    assert!(parse_questions(r#"{"id":"a.b","questions":[]}"#).unwrap().questions.is_empty());
+    assert!(matches!(parse_questions(r#"{"error":"no such formula"}"#), Err(PackError::Station(m)) if m == "no such formula"));
+    assert!(parse_questions("garbage").is_err());
+}
+
+#[test]
 fn a_failed_fill_is_an_error_value() {
     assert!(matches!(parse_fill("garbage"), Err(PackError::Station(_))));
     assert!(matches!(parse_fill(r#"{"error":"no such formula"}"#), Err(PackError::Station(m)) if m == "no such formula"));

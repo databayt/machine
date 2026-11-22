@@ -1,10 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { ChevronRightIcon, ListIcon, WrenchIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { playfulWord, summarize } from "./activity-pure"
+import { glyphFrame, playfulWord, statusDetail, summarize } from "./activity-pure"
 import { copy, tr, words } from "./config"
 
 /** The agent's thinking mark: three dots that tumble (globals.css `.machine-dots`), in the line's colour. */
@@ -14,6 +14,35 @@ export function Dots({ className }: { className?: string }) {
       <i />
       <i />
       <i />
+    </span>
+  )
+}
+
+/** True while the person asked the system for less motion. */
+function useReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(false)
+  useEffect(() => {
+    const q = window.matchMedia("(prefers-reduced-motion: reduce)")
+    setReduced(q.matches)
+    const on = () => setReduced(q.matches)
+    q.addEventListener("change", on)
+    return () => q.removeEventListener("change", on)
+  }, [])
+  return reduced
+}
+
+/** Claude Code's spinner glyph: · ✢ ✳ ✶ ✻ ✽ and back, one frame per ~120 ms, a still ✻ under reduced motion. */
+export function ClaudeGlyph({ className }: { className?: string }) {
+  const reduced = useReducedMotion()
+  const [frame, setFrame] = useState(4)
+  useEffect(() => {
+    if (reduced) return
+    const id = window.setInterval(() => setFrame((n) => n + 1), 120)
+    return () => window.clearInterval(id)
+  }, [reduced])
+  return (
+    <span aria-hidden dir="ltr" className={cn("inline-block w-[1.1em] shrink-0 text-center text-claude", className)}>
+      {reduced ? "✻" : glyphFrame(frame)}
     </span>
   )
 }
@@ -49,7 +78,7 @@ export function ActivityRows({ done, live, isAr }: { done: string[]; live: strin
       )}
       {live && (
         <div className={cn(row, "hover:text-muted-foreground")}>
-          <WrenchIcon className={icon} aria-hidden />
+          <ClaudeGlyph className="w-[21px] text-[19px] leading-none" />
           <span dir="ltr" className="machine-shimmer min-w-0 truncate">{live}</span>
         </div>
       )}
@@ -67,31 +96,44 @@ export function ActivityRows({ done, live, isAr }: { done: string[]; live: strin
   )
 }
 
-/** The orange line under a running turn: tumbling dots, a word that changes every 2.5 s, and the seconds from 3 s. */
-export function StatusLine({ isAr, seed }: { isAr: boolean; seed: string }) {
+/**
+ * Claude Code's status line under a running turn: `✻ Weighing it up… (12s · ↓ 1.4k tokens · esc to interrupt)`.
+ * The glyph cycles in terracotta, the verb shimmers and changes every 2.5 s, the seconds tick, Esc interrupts.
+ * `tokens` is the run's output so far; without it that part is left out.
+ */
+export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: boolean; seed: string; tokens?: number | null; onStop?: () => void }) {
   const t = tr(isAr)
-  const [tick, setTick] = useState(0)
+  const [seconds, setSeconds] = useState(0)
   useEffect(() => {
-    const id = window.setInterval(() => setTick((n) => n + 1), 500)
+    const start = Date.now()
+    const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - start) / 1000)), 1000)
     return () => window.clearInterval(id)
   }, [])
-  const word = playfulWord(isAr ? words.ar : words.en, seed, Math.floor(tick / 5))
-  const seconds = Math.floor(tick / 2)
+  // Esc interrupts, unless something else (a menu, a chip) already took the key.
+  const stopRef = useRef(onStop)
+  stopRef.current = onStop
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) stopRef.current?.()
+    }
+    window.addEventListener("keydown", on)
+    return () => window.removeEventListener("keydown", on)
+  }, [])
+  const word = playfulWord(isAr ? words.ar : words.en, seed, Math.floor(seconds / 2.5))
 
   return (
-    <div role="status" className="flex min-w-0 items-center gap-2.5 text-[17px] leading-7 text-working md:text-base">
-      <Dots className="text-[1.05em]" />
+    <div role="status" className="flex min-w-0 items-baseline gap-2.5 text-[17px] leading-7 md:text-base">
+      <ClaudeGlyph className="text-[1.15em]" />
       <span className="sr-only">{t(copy.working)}</span>
-      <span className="min-w-0 truncate">
-        <span aria-hidden key={word} className="inline-block animate-in fade-in duration-500 motion-reduce:animate-none">
+      <span aria-hidden className="min-w-0 truncate">
+        <span key={word} className="machine-claude-shimmer inline-block animate-in fade-in duration-500 motion-reduce:animate-none">
           {word}
         </span>
-        {seconds >= 3 && (
-          <span aria-hidden className="tabular-nums text-muted-foreground">
-            {" · "}
-            {isAr ? `${seconds} ث` : `${seconds}s`}
-          </span>
-        )}
+        <span className="tabular-nums text-muted-foreground">
+          {" ("}
+          {statusDetail(seconds, tokens, isAr, t(copy.interrupt))}
+          {")"}
+        </span>
       </span>
     </div>
   )

@@ -47,7 +47,15 @@ export type Filled = { id: string, prompt: string, route: string | null, record:
 /**
  * The formula the request asked for when the script moved it to another.
  */
-redirected_from: string | null, uploads: Array<FillUpload>, };
+redirected_from: string | null, uploads: Array<FillUpload>, 
+/**
+ * The model the formula asks for (`opus`, `sonnet` or `haiku`; never anything else, never Fable).
+ */
+model: string | null, 
+/**
+ * The effort the formula asks for (`low` .. `max`).
+ */
+effort: string | null, };
 
 /**
  * The pack's fixed frame, `formula.en`: the headings every finished prompt uses.
@@ -149,6 +157,25 @@ routes: Array<Route>,
 default_route: string | null, };
 
 /**
+ * One slot the formula still wants answered: asked with no model, answered from a list or typed.
+ */
+export type Question = { slot: string, 
+/**
+ * `choice`, `ask` or `market`.
+ */
+kind: string, q: Words, options: Array<QuestionOption>, default: string | null, current: string | null, };
+
+/**
+ * One choice of a question.
+ */
+export type QuestionOption = { value: string, label: Words, };
+
+/**
+ * The questions of one formula, in the formula's order; empty when nothing is left to ask.
+ */
+export type Questions = { id: string, questions: Array<Question>, };
+
+/**
  * A one-tap prompt shown under the greeting.
  */
 export type QuickAction = { 
@@ -190,3 +217,8 @@ model: string | null, effort: string | null, agent: string | null,
  * Appended to the prompt as `\n\n<suffix>`; empty when none.
  */
 suffix: string, };
+
+/**
+ * A string in both languages.
+ */
+export type Words = { en: string, ar: string, };

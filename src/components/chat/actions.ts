@@ -17,18 +17,25 @@ export interface AskOptions {
   mode?: "plan" | "auto" | null
   /** One of the department pack's route ids (`PackInfo.routes`): permission mode, model, effort, agent and suffix. Wins over `mode`. */
   route?: string | null
+  /**
+   * A model for this run only (`opus` | `sonnet` | `haiku`): the composer chip's pick or the formula's own.
+   * Needs the Rust `ask` to take a `model` argument and hand it to `route_flags_for`; until then it is ignored.
+   */
+  model?: string | null
+  /** An effort for this run only (a formula's), same plumbing as `model`. */
+  effort?: string | null
 }
 
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null }: AskOptions,
+  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, channel })
 }
 
 /**

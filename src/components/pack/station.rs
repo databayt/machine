@@ -108,6 +108,71 @@ pub struct Filled {
     /// The formula the request asked for when the script moved it to another.
     pub redirected_from: Option<String>,
     pub uploads: Vec<FillUpload>,
+    /// The model the formula asks for (`opus`, `sonnet` or `haiku`; never anything else, never Fable).
+    pub model: Option<String>,
+    /// The effort the formula asks for (`low` .. `max`).
+    pub effort: Option<String>,
+}
+
+/// A string in both languages.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Words {
+    pub en: String,
+    pub ar: String,
+}
+
+/// One choice of a question.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct QuestionOption {
+    #[serde(deserialize_with = "lenient_string")]
+    pub value: String,
+    pub label: Words,
+}
+
+/// One slot the formula still wants answered: asked with no model, answered from a list or typed.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Question {
+    pub slot: String,
+    /// `choice`, `ask` or `market`.
+    pub kind: String,
+    pub q: Words,
+    pub options: Vec<QuestionOption>,
+    #[serde(deserialize_with = "lenient_opt_string")]
+    pub default: Option<String>,
+    #[serde(deserialize_with = "lenient_opt_string")]
+    pub current: Option<String>,
+}
+
+/// The questions of one formula, in the formula's order; empty when nothing is left to ask.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Questions {
+    pub id: String,
+    pub questions: Vec<Question>,
+}
+
+fn scalar(v: Value) -> Option<String> {
+    match v {
+        Value::String(s) => Some(s),
+        Value::Number(n) => Some(n.to_string()),
+        Value::Bool(b) => Some(b.to_string()),
+        _ => None,
+    }
+}
+
+fn lenient_string<'de, D: Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    Ok(Option::<Value>::deserialize(d)?.and_then(scalar).unwrap_or_default())
+}
+
+fn lenient_opt_string<'de, D: Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
+    Ok(Option::<Value>::deserialize(d)?.and_then(scalar))
 }
 
 /// The switch's answer for typed text.
@@ -202,12 +267,38 @@ pub fn fill_args(
     }
     let mut a = vec!["fill".to_owned(), id.to_owned()];
     a.extend(common(dept, repo, login)?);
+    a.extend(set_args(set)?);
+    a.push("--json".to_owned());
+    Ok(a)
+}
+
+fn set_args(set: &BTreeMap<String, String>) -> Result<Vec<String>, PackError> {
+    let mut a = Vec::new();
     for (k, v) in set {
         if !valid_slot_key(k) || !valid_slot_value(v) {
             return Err(PackError::Station(format!("slot `{k}` is invalid")));
         }
         a.extend(["--set".to_owned(), format!("{k}={v}")]);
     }
+    Ok(a)
+}
+
+/// The arguments of `questions`, after the script path.
+///
+/// # Errors
+/// On a bad formula id, department, repo or slot.
+pub fn questions_args(
+    dept: &str,
+    id: &str,
+    repo: Option<&str>,
+    set: &BTreeMap<String, String>,
+) -> Result<Vec<String>, PackError> {
+    if !valid_formula_id(id) {
+        return Err(PackError::Station("formula id is invalid".to_owned()));
+    }
+    let mut a = vec!["questions".to_owned(), id.to_owned()];
+    a.extend(common(dept, repo, "")?);
+    a.extend(set_args(set)?);
     a.push("--json".to_owned());
     Ok(a)
 }
@@ -286,12 +377,37 @@ pub fn parse_fill(stdout: &str) -> Result<Filled, PackError> {
     if let Some(e) = v.get("error").and_then(Value::as_str) {
         return Err(PackError::Station(e.to_owned()));
     }
-    let f: Filled = serde_json::from_value(v)
+    let mut f: Filled = serde_json::from_value(v)
         .map_err(|e| PackError::Station(format!("the station's prompt was not understood: {e}")))?;
     if f.id.is_empty() {
         return Err(PackError::Station("the station returned no formula".to_owned()));
     }
+    // A formula may ask for a model; only the three Claude families pass, so Fable can never ride in.
+    f.model = f.model.filter(|m| matches!(m.as_str(), "opus" | "sonnet" | "haiku"));
+    f.effort = f.effort.filter(|e| matches!(e.as_str(), "low" | "medium" | "high" | "xhigh" | "max"));
     Ok(f)
+}
+
+/// The questions in the script's stdout. Questions without a slot, or with a bad slot name, are dropped.
+///
+/// # Errors
+/// When the output is not a list of questions, or the script reported an error.
+pub fn parse_questions(stdout: &str) -> Result<Questions, PackError> {
+    let v = json_of(stdout).ok_or_else(|| PackError::Station("the station printed something that is not a list of questions".to_owned()))?;
+    if let Some(e) = v.get("error").and_then(Value::as_str) {
+        return Err(PackError::Station(e.to_owned()));
+    }
+    let id = v.get("id").and_then(Value::as_str).unwrap_or_default().to_owned();
+    let questions = v
+        .get("questions")
+        .and_then(Value::as_array)
+        .map_or_else(Vec::new, |a| {
+            a.iter()
+                .filter_map(|q| serde_json::from_value::<Question>(q.clone()).ok())
+                .filter(|q| valid_slot_key(&q.slot))
+                .collect()
+        });
+    Ok(Questions { id, questions })
 }
 
 /// The switch's answer; anything else is "no match".
@@ -360,6 +476,21 @@ pub async fn fill(
     let args = fill_args(dept, id, repo, &saved_login(), set)?;
     let out = run_station(args, FILL_TIMEOUT).await.map_err(PackError::Station)?;
     parse_fill(&out)
+}
+
+/// The open questions of a formula, read by the script (no model).
+///
+/// # Errors
+/// A message when the arguments are bad, the script is not available or its answer is not a list.
+pub async fn questions(
+    dept: &str,
+    id: &str,
+    repo: Option<&str>,
+    set: &BTreeMap<String, String>,
+) -> Result<Questions, PackError> {
+    let args = questions_args(dept, id, repo, set)?;
+    let out = run_station(args, FILL_TIMEOUT).await.map_err(PackError::Station)?;
+    parse_questions(&out)
 }
 
 /// Typed text to a formula. Never fails: a failure is "no match".

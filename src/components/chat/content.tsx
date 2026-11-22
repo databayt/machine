@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDownIcon, RotateCcwIcon } from "lucide-react";
+import { ArrowDownIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
-import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, stationLog } from "../pack/actions";
-import type { Board, FormulaMeta, Match, PackInfo } from "../pack/types";
+import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, questions as loadQuestions, stationLog } from "../pack/actions";
+import type { Board, FormulaMeta, Match, PackInfo, Question } from "../pack/types";
 import type { CatalogItem } from "../catalog/types";
 import { loadCatalog } from "../menu/data";
 import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
@@ -19,7 +19,10 @@ import { SubmitWork } from "../tasks/submit-work";
 import { speak } from "../voice/actions";
 import { acceptMessage, orderMessage, showAccept, workingRoute } from "./accept";
 import { ask, refine, stop } from "./actions";
-import { ActivityRows, StatusLine } from "./activity";
+import { ActivityRows, ClaudeStatus } from "./activity";
+import { splitNote } from "./activity-pure";
+import { QuestionCard } from "./questions";
+import { type Family, effectiveModel, familyOf } from "./model-pure";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
@@ -94,6 +97,15 @@ export default function ChatContent({
   /** Where the next prompt runs, silently: the option's or refine's route, else the pack default. */
   const [routeId, setRouteId] = useState<string | null>(null);
   const fillN = useRef(0);
+  /** The question round open above the composer: the formula's open slots, and the set its fill used. */
+  const [qcard, setQcard] = useState<{ n: number; dept: string; id: string; set: Record<string, string>; questions: Question[] } | null>(null);
+  const qN = useRef(0);
+  /** What the formula asked for (model, effort) and the chip's one-run pick; each is spent by the next send. */
+  const [formulaModel, setFormulaModel] = useState<string | null>(null);
+  const [formulaEffort, setFormulaEffort] = useState<string | null>(null);
+  const [override, setOverride] = useState<Family | null>(null);
+  const runModel = useRef<{ model: Family | null; effort: string | null }>({ model: null, effort: null });
+  runModel.current = { model: override ?? familyOf(formulaModel), effort: formulaEffort };
   const speakRef = useRef(false);
   speakRef.current = speakReplies;
 
@@ -256,6 +268,12 @@ export default function ChatContent({
       const text = prompt.trim();
       if (!text || busy) return;
       setFill(null);
+      qN.current++;
+      setQcard(null);
+      const { model, effort } = runModel.current;
+      setOverride(null);
+      setFormulaModel(null);
+      setFormulaEffort(null);
       const id = crypto.randomUUID();
       setJobId(id);
       const ranInPlan = routes.find((r) => r.id === route)?.mode === "plan";
@@ -275,7 +293,7 @@ export default function ChatContent({
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null }, onEvent);
+        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null, model, effort }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -303,6 +321,8 @@ export default function ChatContent({
     setSession(null);
     setResumed(null);
     stationRef.current = null;
+    qN.current++;
+    setQcard(null);
     if (resume) router.replace(`/${lang}/`);
   };
 
@@ -352,10 +372,40 @@ export default function ChatContent({
     void send(acceptMessage(record), undefined, working.id);
   };
   /** Writes a filled prompt into the box, caret at the end, nothing sent; the route is set silently. */
-  const writeFilled = (text: string, route: string | null, formula: { id: string; record: string } | null) => {
+  const writeFilled = (
+    text: string,
+    route: string | null,
+    formula: { id: string; record: string } | null,
+    run: { model?: string | null; effort?: string | null } = {},
+  ) => {
     stationRef.current = formula;
+    setFormulaModel(run.model ?? null);
+    setFormulaEffort(run.effort ?? null);
     setFill({ text, focus: true, n: ++fillN.current });
     if (route) setRouteId(route);
+  };
+  /** The question round after a fill: the formula's open slots, asked with no model. `set` is the one the fill used. */
+  const openQuestions = (dept: string, id: string, set: Record<string, string>) => {
+    const n = ++qN.current;
+    setQcard(null);
+    void loadQuestions(dept, id, ctx.repo || null, set).then((r) => {
+      if (n === qN.current && r.questions.length > 0) setQcard({ n, dept, id: r.id || id, set, questions: r.questions });
+    });
+  };
+  /** The card is over: Submit fills again with the answers merged over the first set (the prompt, never sent); Esc keeps the defaults. */
+  const finishQuestions = async (card: NonNullable<typeof qcard>, answers: Record<string, string>, submitted: boolean) => {
+    qN.current++;
+    setQcard(null);
+    if (submitted && Object.keys(answers).length > 0) {
+      try {
+        const f = await fillFormula(card.dept, card.id, ctx.repo || null, { ...card.set, ...answers });
+        writeFilled(f.prompt, f.route, { id: f.id, record: f.record }, f);
+        return;
+      } catch {
+        // the old prompt stays
+      }
+    }
+    setFill({ text: draft.current, focus: true, n: ++fillN.current });
   };
   /** A tap: the station fills the formula at once (no model); a quick action writes its brief and refines. */
   const pickOption = async (o: HomeOption) => {
@@ -363,7 +413,8 @@ export default function ChatContent({
     if (o.formula) {
       try {
         const f = await fillFormula(ctx.dept, o.formula, ctx.repo || null, o.set);
-        writeFilled(f.prompt, f.route ?? o.route, { id: f.id, record: f.record });
+        writeFilled(f.prompt, f.route ?? o.route, { id: f.id, record: f.record }, f);
+        openQuestions(ctx.dept, f.id, o.set);
       } catch {
         // The station's script is unavailable: the option's own English name is the request.
         writeFilled(o.labelEn, o.route, null);
@@ -389,7 +440,10 @@ export default function ChatContent({
       if (dept !== ctx.dept) carry.current = { dept, route: f.route };
       else if (f.route) setRouteId(f.route);
       stationRef.current = { id: f.id, record: f.record };
+      setFormulaModel(f.model);
+      setFormulaEffort(f.effort);
       void stationLog(dept, ctx.repo || null, f.id, "pick");
+      openQuestions(dept, f.id, m.set ?? {});
       return f.prompt;
     } catch {
       return null;
@@ -433,7 +487,10 @@ export default function ChatContent({
       const f = await fillFormula(ctx.dept, id, ctx.repo || null, {});
       if (f.route) setRouteId(f.route);
       stationRef.current = { id: f.id, record: f.record };
+      setFormulaModel(f.model);
+      setFormulaEffort(f.effort);
       void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
+      openQuestions(ctx.dept, f.id, {});
       return f.prompt;
     } catch {
       return null;
@@ -442,6 +499,25 @@ export default function ChatContent({
   /** A held work order's Submit: clear the box, or put the caret in it to ask for the summary line. */
   const afterSubmit = () => setFill({ text: "", focus: false, n: ++fillN.current });
   const askSummary = () => setFill({ text: draft.current, focus: true, n: ++fillN.current });
+  const questionCard =
+    qcard && !busy ? (
+      <QuestionCard
+        key={qcard.n}
+        questions={qcard.questions}
+        isAr={isAr}
+        onDone={(answers, submitted) => void finishQuestions(qcard, answers, submitted)}
+      />
+    ) : null;
+  const modelChip = (
+    <ModelChip
+      lang={lang}
+      disabled={busy}
+      session={session}
+      model={effectiveModel(null, formulaModel, chosen?.model ?? null)}
+      override={override}
+      onOverride={setOverride}
+    />
+  );
   const contextLine = (
     <ContextLine
       lang={lang}
@@ -481,6 +557,7 @@ export default function ChatContent({
                 )}
               </div>
               <div className="w-full">
+                {questionCard}
                 <Composer
                   lang={lang}
                   onSend={sendRouted}
@@ -499,7 +576,7 @@ export default function ChatContent({
                   onPickFormula={pickFormula}
                   autoFocus
                 />
-                <ModelChip lang={lang} disabled={busy} />
+                {modelChip}
                 {contextLine}
                 {task && (
                   <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />
@@ -515,8 +592,9 @@ export default function ChatContent({
             </div>
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
-              {messages.map((m, i) =>
-                m.role === "user" ? (
+              {messages.map((m, i) => {
+                const note = splitNote(m.text);
+                return m.role === "user" ? (
                   <UserTurn key={i} text={m.text} />
                 ) : (
                   <AgentTurn
@@ -525,7 +603,13 @@ export default function ChatContent({
                       <ActivityRows done={m.tools} live={m.live} isAr={isAr} />
                     }
                   >
-                    {m.text && <Prose text={m.text} />}
+                    {note.note && (
+                      <p dir="auto" className="flex items-start gap-2 text-sm text-muted-foreground">
+                        <InfoIcon className="mt-0.5 size-4 shrink-0" aria-hidden />
+                        <span>{note.note}</span>
+                      </p>
+                    )}
+                    {note.rest && <Prose text={note.rest} />}
                     {m.error && (
                       <p
                         role="alert"
@@ -544,7 +628,7 @@ export default function ChatContent({
                         )}
                       </p>
                     )}
-                    {m.streaming && <StatusLine isAr={isAr} seed={String(i)} />}
+                    {m.streaming && <ClaudeStatus isAr={isAr} seed={String(i)} onStop={() => jobId && void stop(jobId)} />}
                     {!m.streaming && m.text && !m.error && (
                       <TurnActions text={m.text} isAr={isAr} />
                     )}
@@ -566,8 +650,8 @@ export default function ChatContent({
                       </button>
                     )}
                   </AgentTurn>
-                ),
-              )}
+                );
+              })}
             </ol>
           )}
         </div>
@@ -585,6 +669,7 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
+          {questionCard}
           <Composer
             lang={lang}
             onSend={sendRouted}
@@ -602,7 +687,7 @@ export default function ChatContent({
             onPickFormula={pickFormula}
             autoFocus
           />
-          <ModelChip lang={lang} disabled={busy} />
+          {modelChip}
           {contextLine}
           {task && (
             <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />

@@ -846,3 +846,20 @@ fn free_route_flags_skip_only_the_model() {
     assert_eq!(route_flags_for(&r, false), route_flags(&r));
     assert_eq!(route_flags_for(&r, true), v(&["--effort", "high", "--agent", "producer"]));
 }
+
+#[test]
+fn a_one_run_override_replaces_the_route_model_and_never_takes_fable() {
+    let base = v(&["--model", "opus", "--effort", "high", "--agent", "producer"]);
+    // The pick replaces the value in place.
+    assert_eq!(
+        with_override(base.clone(), false, Some("sonnet"), Some("medium")),
+        v(&["--model", "sonnet", "--effort", "medium", "--agent", "producer"])
+    );
+    // No flags yet: they are added.
+    assert_eq!(with_override(Vec::new(), false, Some("haiku"), None), v(&["--model", "haiku"]));
+    // Fable, an unknown model, an unknown effort: dropped. A free route keeps its proxy's model.
+    assert_eq!(with_override(base.clone(), false, Some("fable"), Some("ludicrous")), base);
+    assert_eq!(with_override(base.clone(), false, Some("claude-fable-1"), None), base);
+    assert_eq!(with_override(base.clone(), true, Some("sonnet"), None), base);
+    assert_eq!(with_override(base.clone(), false, None, None), base);
+}

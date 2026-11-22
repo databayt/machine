@@ -4,6 +4,7 @@
 
 @theme inline {
   --color-working: var(--working);
+  --color-claude: var(--claude);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-border: var(--border);
@@ -48,6 +49,7 @@
   --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325);
   --working: oklch(0.646 0.222 41.116); /* machine: the agent is working */
+  --claude: #D77757; /* Claude's terracotta: the status line glyph and verb */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -69,6 +71,7 @@
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
   --working: oklch(0.75 0.183 55.934);
+  --claude: #E58F70;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);
@@ -143,7 +146,22 @@
   color: transparent;
   animation: machine-shimmer 1.8s ease-in-out infinite;
 }
+/* Claude Code's status verb: terracotta with a lighter band sweeping across, left to right (right to left in RTL). */
+@keyframes machine-claude-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
+}
+.machine-claude-shimmer {
+  background-image: linear-gradient(90deg, var(--claude) 35%, color-mix(in oklab, var(--claude) 45%, white) 50%, var(--claude) 65%);
+  background-size: 250% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  color: transparent;
+  animation: machine-claude-sweep 2s linear infinite;
+}
+[dir="rtl"] .machine-claude-shimmer { animation-direction: reverse; }
 @media (prefers-reduced-motion: reduce) {
+  .machine-claude-shimmer { animation: none; color: var(--claude); background-image: none; }
   .machine-dots > i, .machine-shimmer { animation: none; }
   .machine-shimmer { color: var(--muted-foreground); background-image: none; }
 }
