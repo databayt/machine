@@ -18,3 +18,19 @@ export function doctorDetail(message: string): string {
   const m = message.replace(/^Error:\s*/, "").trim().match(/^doctor\s*:\s*([\s\S]*)$/)
   return m ? m[1].trim() : ""
 }
+
+/**
+ * The quiet line on a task card the doctor adds without blocking: orange counts the extras missing,
+ * unknown says it is still checking. Null when green or red (red blocks and says so itself).
+ */
+export function doctorNote(
+  r: { doctorExtras: number; doctorChecking: boolean },
+  isAr: boolean,
+): { text: string; link: boolean } | null {
+  if (r.doctorChecking) return { text: isAr ? "جارٍ الفحص…" : "Checking…", link: false }
+  if (r.doctorExtras > 0) {
+    const n = r.doctorExtras
+    return { text: isAr ? `الطبيب: تنقص ${n} إضافات` : `Doctor: ${n} extra${n === 1 ? "" : "s"} missing`, link: true }
+  }
+  return null
+}

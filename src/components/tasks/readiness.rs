@@ -9,7 +9,11 @@ use std::{
 };
 
 use super::model::{Context, Readiness, ReadyState, Task, TaskStatus, TasksResponse, TasksView};
-use crate::{catalog::ItemStatus, network::model::LocalRepo};
+use crate::{
+    catalog::ItemStatus,
+    network::model::LocalRepo,
+    readiness::{GateLevel, GateView},
+};
 
 /// What this machine looks like, gathered once per question.
 #[derive(Debug, Clone, Default)]
@@ -22,8 +26,9 @@ pub struct Facts {
     pub allowed_items: Option<Vec<String>>,
     /// Repos the profile may use; empty means any.
     pub allowed_repos: Vec<String>,
-    /// The doctor's gate steps that fail on this machine; any entry blocks every task.
-    pub gate_failing: Vec<String>,
+    /// The doctor's level here. Only red blocks (every task, with the core steps as reasons);
+    /// orange and unknown leave tasks startable and are shown as a quiet line.
+    pub gate: GateView,
 }
 
 /// `databayt/hogwarts` and `hogwarts` are the same repo.
@@ -38,7 +43,9 @@ pub fn readiness(task: &Task, facts: &Facts, in_progress: u32, wip_limit: u32) -
     let mut blocked: Vec<String> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
 
-    blocked.extend(facts.gate_failing.iter().map(|s| format!("doctor:{s}")));
+    if facts.gate.level == GateLevel::Red {
+        blocked.extend(facts.gate.core_failing.iter().map(|s| format!("doctor:{s}")));
+    }
     blocked.extend(task.after_open.iter().map(|a| format!("after:{a}")));
     if let Some(holder) = task.holder.as_deref().filter(|_| !mine) {
         blocked.push(format!("held:{holder}"));
@@ -87,6 +94,11 @@ pub fn readiness(task: &Task, facts: &Facts, in_progress: u32, wip_limit: u32) -
     Readiness {
         state,
         missing: blocked,
+        doctor_extras: match facts.gate.level {
+            GateLevel::Orange => u32::try_from(facts.gate.extra_failing.len()).unwrap_or(u32::MAX),
+            _ => 0,
+        },
+        doctor_checking: facts.gate.level == GateLevel::Unknown,
     }
 }
 

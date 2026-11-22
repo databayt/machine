@@ -7,16 +7,17 @@
 //!
 //! Commands: `readiness_state`, `readiness_run`, `readiness_cancel`, `readiness_fix`,
 //! `readiness_uninstall`, `readiness_uninstall_terminal`, `heal_with_agent`, `readiness_agents_tools`,
-//! `readiness_doctor`, `readiness_doctor_fix`.
+//! `readiness_doctor`, `readiness_doctor_fix`. The doctor also runs by itself in the background (`auto_doctor`).
 //!
-//! The doctor is the gate: the steps flagged `gate` that apply to this person's departments. Its
-//! verdict is computed from the latest state (`catalog::gate_view`); `readiness_doctor` re-checks
-//! only those steps, `readiness_doctor_fix` runs the auto fixes for the failing ones.
+//! The doctor is the gate: the steps flagged `gate` (`core` or `extra`) that apply to this person's
+//! departments. Its level (green, orange, red or unknown) is computed from the latest state
+//! (`catalog::gate_view`); only red blocks. `readiness_doctor` re-checks only those steps,
+//! `readiness_doctor_fix` runs the auto fixes for the failing ones.
 
-use std::path::PathBuf;
+use std::{path::PathBuf, time::Duration};
 
 use tauri::{
-    Runtime,
+    AppHandle, Emitter, Runtime,
     ipc::Channel,
     plugin::{Builder, TauriPlugin},
 };
@@ -37,9 +38,9 @@ mod run;
 mod uninstall;
 
 use catalog::Scope;
-pub use model::ReadinessBeat;
+pub use model::{GateLevel, GateView, ReadinessBeat};
 use model::{
-    AgentToolRow, Catalog, FixKind, FixOutcome, GateView, Mode, ReadinessError, ReadinessState,
+    AgentToolRow, Catalog, FixKind, FixOutcome, Mode, ReadinessError, ReadinessState,
     ReadinessView, RunEvent, RunSummary, UninstallOutcome,
 };
 
@@ -76,13 +77,13 @@ pub fn beat() -> Option<ReadinessBeat> {
     ))
 }
 
-/// The gate steps that fail on this machine right now, from the latest state. Empty when kun has no
-/// catalog here (nothing to judge by) or every gate step passes. Blocking: reads files.
+/// The doctor's verdict from the latest state: unknown (never blocking) when no state or no catalog
+/// is here. Blocking: reads files.
 #[must_use]
-pub fn gate_failing() -> Vec<String> {
+pub fn gate() -> GateView {
     let (catalog, state) = load_all();
     catalog
-        .map(|c| catalog::gate_view(state.as_ref(), &c, &Scope::current()).failing)
+        .map(|c| catalog::gate_view(state.as_ref(), &c, &Scope::current()))
         .unwrap_or_default()
 }
 
@@ -422,6 +423,47 @@ async fn readiness_doctor_fix(channel: Channel<RunEvent>) -> Result<GateView, Re
     run_gate(Mode::Complete, &failing, scope, &channel).await
 }
 
+/// The doctor on its own, once per launch, in the background: when no state exists, kun's catalog
+/// changed since the state, or the app version differs from the one that last ran it. Check mode,
+/// gate steps only. Skips quietly while another readiness run holds the lock. Tells the webview
+/// through `readiness:event` (each runner event) and `readiness:gate` (the verdict at the end).
+async fn auto_doctor<R: Runtime>(app: AppHandle<R>) {
+    // Let the window come up first.
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    let version = app.package_info().version.to_string();
+    let marker = crate::pack::machine_dir().ok().map(|d| catalog::doctor_marker_path(&d));
+    let last = marker.as_deref().and_then(catalog::read_doctor_marker);
+    let Ok((scope, Some(catalog), state)) = tokio::task::spawn_blocking(|| {
+        let (catalog, state) = load_all();
+        (Scope::current(), catalog, state)
+    })
+    .await
+    else {
+        return;
+    };
+    if !catalog::needs_doctor(state.as_ref(), &catalog, last.as_deref(), &version) {
+        return;
+    }
+    let ids = catalog::gate_ids(&catalog, &scope);
+    if !ids.is_empty() {
+        let Ok(_guard) = run::acquire() else { return };
+        let sink = app.clone();
+        let result = run::provision(&crate::engine::kun_dir(), Mode::Check, &ids, &scope, &mut |e| {
+            let _ = sink.emit("readiness:event", e);
+        })
+        .await;
+        if let Err(e) = result {
+            tracing::debug!("the automatic doctor did not run: {e}");
+        }
+    }
+    if let Some(m) = &marker {
+        let _ = catalog::write_doctor_marker(m, &version);
+    }
+    if let Ok(g) = gate_now(scope).await {
+        let _ = app.emit("readiness:gate", g);
+    }
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("readiness")
@@ -437,6 +479,10 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             readiness_doctor,
             readiness_doctor_fix
         ])
+        .setup(|app, _api| {
+            tauri::async_runtime::spawn(auto_doctor(app.clone()));
+            Ok(())
+        })
         .build()
 }
 

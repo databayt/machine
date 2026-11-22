@@ -9,6 +9,8 @@ import { tr } from "../chat/config";
 import { storeLang, swapLocale } from "../shell/lang";
 import { copy, NEW_CHAT_EVENT } from "./config";
 import type { HealthReport } from "./data";
+import { levelWords } from "../readiness/level";
+import type { GateView } from "../readiness/types";
 import { Dot } from "./ui";
 
 const button =
@@ -24,11 +26,14 @@ export function Tools({
   inApp,
   showEngine,
   health,
+  gate = null,
 }: {
   lang: Locale;
   inApp: boolean;
   showEngine: boolean;
   health: HealthReport | null;
+  /** The doctor's verdict; its level colours the dot (green, orange, red, or a ring while unknown). */
+  gate?: GateView | null;
 }): React.JSX.Element {
   const isAr = lang === "ar";
   const t = tr(isAr);
@@ -36,8 +41,10 @@ export function Tools({
   const pathname = usePathname();
   const other: Locale = isAr ? "en" : "ar";
   const bad = health?.items.filter((i) => !i.ok && !i.healed) ?? [];
-  const hKind = !health ? "ring" : bad.length ? "bad" : "solid";
-  const hText = t(!health ? copy.healthUnknown : bad.length ? copy.healthBad : copy.healthOk);
+  // The doctor's level decides the dot once it is known; before that the health report speaks.
+  const level = gate?.level ?? "unknown";
+  const hKind = level !== "unknown" ? level : !health ? "ring" : bad.length ? "bad" : "solid";
+  const hText = level !== "unknown" ? levelWords(gate!, isAr) : t(!health ? copy.healthUnknown : bad.length ? copy.healthBad : copy.healthOk);
   const healthTitle = `${t(copy.health)}: ${hText}${bad.length ? ` — ${bad.map((i) => i.key).join(", ")}` : ""}`;
   const icon = "size-5";
 

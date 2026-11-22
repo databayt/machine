@@ -9,7 +9,7 @@ use std::{
 };
 
 use super::model::{
-    Catalog, GateBeat, GateView, ReadinessBeat, ReadinessError, ReadinessState, ReadinessView,
+    Catalog, GateBeat, GateLevel, GateTier, GateView, ReadinessBeat, ReadinessError, ReadinessState, ReadinessView,
     Step, StepStatus, StepView,
 };
 
@@ -192,7 +192,7 @@ pub(super) fn view(
 /// Whether the gate covers this step for this person: the step is flagged `gate`, applies to this
 /// computer, and, when it names `gateFor`, one of those departments is the person's.
 pub(super) fn gate_applies(step: &Step, scope: &Scope) -> bool {
-    step.gate
+    step.gate.is_some()
         && applies(step, scope)
         && step
             .gate_for
@@ -211,26 +211,44 @@ pub(super) fn gate_ids(catalog: &Catalog, scope: &Scope) -> Vec<String> {
 
 /// The doctor's verdict from the latest readiness state alone: no probe runs. A gate step passes
 /// when the runner last saw it `pass`, `fixed`, `updated` or `update-available`; a `skip` passes
-/// unless the person removed the step on purpose. No state yet means nothing passes.
+/// unless the person removed the step on purpose. A failing core step is red, only failing extras
+/// orange, none green. No state yet is unknown: nothing has been looked at, so nothing is blocked.
 pub(super) fn gate_view(
     state: Option<&ReadinessState>,
     catalog: &Catalog,
     scope: &Scope,
 ) -> GateView {
-    let steps = gate_ids(catalog, scope);
-    let failing: Vec<String> = steps
-        .iter()
-        .filter(|id| !gate_step_ok(state, id))
-        .cloned()
+    let gate: Vec<Step> = ordered(catalog, scope)
+        .into_iter()
+        .filter(|s| gate_applies(s, scope))
         .collect();
+    let steps: Vec<String> = gate.iter().map(|s| s.id.clone()).collect();
+    let Some(state) = state else {
+        return GateView { steps, ..GateView::default() };
+    };
+    let failing_of = |tier: GateTier| -> Vec<String> {
+        gate.iter()
+            .filter(|s| s.gate == Some(tier) && !gate_step_ok(Some(state), &s.id))
+            .map(|s| s.id.clone())
+            .collect()
+    };
+    let core_failing = failing_of(GateTier::Core);
+    let extra_failing = failing_of(GateTier::Extra);
+    let level = if !core_failing.is_empty() {
+        GateLevel::Red
+    } else if !extra_failing.is_empty() {
+        GateLevel::Orange
+    } else {
+        GateLevel::Green
+    };
     GateView {
-        pass: failing.is_empty(),
-        failing,
+        level,
+        pass: level != GateLevel::Red,
+        failing: core_failing.iter().chain(&extra_failing).cloned().collect(),
+        core_failing,
+        extra_failing,
         steps,
-        at: state
-            .and_then(|s| s.at.as_str())
-            .unwrap_or_default()
-            .to_owned(),
+        at: state.at.as_str().unwrap_or_default().to_owned(),
     }
 }
 
@@ -243,6 +261,46 @@ fn gate_step_ok(state: Option<&ReadinessState>, id: &str) -> bool {
         Some(StepStatus::Skip) => !state.removed.iter().any(|r| r == id),
         _ => false,
     }
+}
+
+fn version_text(v: &serde_json::Value) -> String {
+    match v {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        _ => String::new(),
+    }
+}
+
+/// Whether the doctor should run by itself now: nothing has been looked at yet (no state), kun's
+/// catalog changed since the state was written, or the app is not the version that last ran the
+/// doctor (an update, or the first launch ever).
+pub(super) fn needs_doctor(
+    state: Option<&ReadinessState>,
+    catalog: &Catalog,
+    last_app: Option<&str>,
+    app: &str,
+) -> bool {
+    let Some(state) = state else { return true };
+    version_text(&state.catalog_version) != version_text(&catalog.version) || last_app != Some(app)
+}
+
+/// `<machine dir>/doctor-run.json`: the app version that last ran the doctor on its own.
+pub(super) fn doctor_marker_path(dir: &Path) -> PathBuf {
+    dir.join("doctor-run.json")
+}
+
+/// The app version in the marker, if there is one.
+pub(super) fn read_doctor_marker(path: &Path) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(&fs::read_to_string(path).ok()?).ok()?;
+    v.get("appVersion")?.as_str().map(str::to_owned)
+}
+
+/// Records that the doctor ran under `app`.
+pub(super) fn write_doctor_marker(path: &Path, app: &str) -> std::io::Result<()> {
+    if let Some(dir) = path.parent() {
+        fs::create_dir_all(dir)?;
+    }
+    fs::write(path, serde_json::json!({ "appVersion": app }).to_string())
 }
 
 /// `secs` since the epoch as `YYYY-MM-DDTHH:MM:SSZ`.
@@ -267,13 +325,15 @@ pub(super) fn iso(secs: u64) -> String {
     )
 }
 
-/// The gate as the heartbeat carries it; `now` stands in for a state with no timestamp.
-pub(super) fn gate_beat(gate: GateView, now: u64) -> GateBeat {
-    GateBeat {
+/// The gate as the heartbeat carries it; `now` stands in for a state with no timestamp. `None`
+/// while the level is unknown: the heartbeat omits it.
+pub(super) fn gate_beat(gate: GateView, now: u64) -> Option<GateBeat> {
+    Some(GateBeat {
+        level: gate.level.word()?,
         pass: gate.pass,
         failing: gate.failing,
         at: if gate.at.is_empty() { iso(now) } else { gate.at },
-    }
+    })
 }
 
 /// The heartbeat's readiness field; `None` before any run left a state file.
@@ -284,7 +344,7 @@ pub(super) fn beat(
     now: u64,
 ) -> ReadinessBeat {
     ReadinessBeat {
-        gate: catalog.map(|c| gate_beat(gate_view(Some(state), c, scope), now)),
+        gate: catalog.and_then(|c| gate_beat(gate_view(Some(state), c, scope), now)),
         // Clamped, then rounded: the heartbeat carries a whole percent.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         percent: state.percent.clamp(0.0, 100.0).round() as u32,

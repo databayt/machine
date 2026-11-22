@@ -211,6 +211,8 @@ export const heartbeatSchema = z.object({
       /** The doctor verdict (kun-ready --gate): a failing or stale (48 h) one refuses claims with `doctor`. */
       gate: z
         .object({
+          /** green · orange · red; red is the only level that refuses. Omitted by older apps. */
+          level: z.enum(["green", "orange", "red"]).optional(),
           pass: z.boolean(),
           failing: z.array(z.string().max(80)).max(200),
           at: z.string().max(40),
@@ -296,7 +298,7 @@ export interface MachineStatus {
   /** The readiness percent from its last heartbeat; null when it never reported one. */
   readinessPercent: number | null;
   /** The contributor gate (`pass` = may share its compute); null when never evaluated. */
-  gate: { pass: boolean; failing: string[]; at: string } | null;
+  gate: { level?: "green" | "orange" | "red"; pass: boolean; failing: string[]; at: string } | null;
 }
 
 /** A machine counts as online when its last heartbeat is newer than this (heartbeats run every 10 min). */

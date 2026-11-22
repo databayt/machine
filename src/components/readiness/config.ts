@@ -82,18 +82,24 @@ export const wizard = {
 
 /** The doctor card on the Setup overview. */
 export const doctorCopy = {
-  ready: { en: "Ready to contribute ✓", ar: "جاهز للمساهمة ✓" },
   readyHint: {
     en: "Your machine holds what your department needs.",
     ar: "جهازك يحمل ما يحتاجه قسمك.",
   },
-  left: { en: "Doctor: {n} steps left", ar: "الطبيب: بقيت {n} خطوات" },
-  leftOne: { en: "Doctor: 1 step left", ar: "الطبيب: بقيت خطوة واحدة" },
-  leftHint: {
-    en: "Tasks stay locked until these pass.",
-    ar: "تبقى المهام مقفلة حتى تنجح هذه الخطوات.",
+  orangeHint: {
+    en: "Tasks can start. These extras make the machine complete.",
+    ar: "يمكن بدء المهام. هذه الإضافات تكمل الجهاز.",
   },
-  notRun: { en: "Doctor: not run yet", ar: "الطبيب: لم يُشغَّل بعد" },
+  leftHint: {
+    en: "Tasks stay locked until the core steps pass.",
+    ar: "تبقى المهام مقفلة حتى تنجح الخطوات الأساسية.",
+  },
+  checkingHint: {
+    en: "The doctor is looking at this machine. Tasks are not blocked meanwhile.",
+    ar: "الطبيب يفحص هذا الجهاز. المهام غير مقفلة في هذه الأثناء.",
+  },
+  core: { en: "core", ar: "أساسي" },
+  extra: { en: "extra", ar: "إضافي" },
   fix: { en: "Fix automatically", ar: "أصلح تلقائياً" },
   run: { en: "Run the doctor", ar: "شغّل الطبيب" },
   fixing: { en: "Fixing…", ar: "جارٍ الإصلاح…" },

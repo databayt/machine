@@ -23,9 +23,17 @@ stage?: string, };
 export type Readiness = { state: ReadyState, 
 /**
  * Why, as `repo:<name>`, `behind:<name>`, `item:<id>`, `after:<id>`, `held:<login>`,
- * `wip`, `profile:<name>`.
+ * `wip`, `profile:<name>`, `doctor:<core step>`.
  */
-missing: Array<string>, };
+missing: Array<string>, 
+/**
+ * The doctor is orange: this many extras are missing. Starting is still allowed.
+ */
+doctorExtras: number, 
+/**
+ * The doctor has not looked yet (unknown). Starting is allowed.
+ */
+doctorChecking: boolean, };
 
 export type ReadyState = "ready" | "missing" | "blocked";
 

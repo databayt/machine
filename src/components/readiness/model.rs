@@ -117,6 +117,32 @@ pub struct Update {
     pub auto: bool,
 }
 
+/// How much a gate step matters: a missing core step blocks contributing, a missing extra does not.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "readiness/types.ts")]
+pub enum GateTier {
+    Core,
+    Extra,
+}
+
+/// `"core"`, `"extra"`, `true` (core), `false` or nothing (not a gate step); a tier a newer kun
+/// invented counts as core, the safe side.
+fn tier_or_bool<'de, D: Deserializer<'de>>(d: D) -> Result<Option<GateTier>, D::Error> {
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Raw {
+        Flag(bool),
+        Name(String),
+    }
+    Ok(match Option::<Raw>::deserialize(d)? {
+        None | Some(Raw::Flag(false)) => None,
+        Some(Raw::Name(n)) if n.eq_ignore_ascii_case("extra") => Some(GateTier::Extra),
+        Some(Raw::Name(n)) if n.is_empty() || n.eq_ignore_ascii_case("none") => None,
+        Some(Raw::Flag(true) | Raw::Name(_)) => Some(GateTier::Core),
+    })
+}
+
 /// One thing that must be true for a computer to be ready.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "readiness/types.ts")]
@@ -147,9 +173,10 @@ pub struct Step {
     pub update: Option<Update>,
     #[serde(default)]
     pub uninstall: Option<Uninstall>,
-    /// The step must pass before this person contributes (the doctor's gate).
-    #[serde(default)]
-    pub gate: bool,
+    /// The doctor's tier for the step: `core` must pass before this person contributes, `extra`
+    /// only turns the level orange. Catalogs written before tiers say `true`, which reads as core.
+    #[serde(default, deserialize_with = "tier_or_bool")]
+    pub gate: Option<GateTier>,
     /// When present, the gate applies only to people in one of these departments.
     #[serde(default, rename = "gateFor")]
     pub gate_for: Option<Vec<String>>,
@@ -358,18 +385,64 @@ pub struct ReadinessView {
     pub gate: Option<GateView>,
 }
 
+/// The doctor's level: green (nothing missing), orange (only extras missing), red (a core step
+/// missing) or unknown (no run has left a state yet). Only red blocks.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "readiness/types.ts")]
+pub enum GateLevel {
+    Green,
+    Orange,
+    Red,
+    #[default]
+    Unknown,
+}
+
+impl GateLevel {
+    /// The heartbeat's word; `None` for unknown (nothing is sent).
+    pub(super) fn word(self) -> Option<&'static str> {
+        match self {
+            Self::Green => Some("green"),
+            Self::Orange => Some("orange"),
+            Self::Red => Some("red"),
+            Self::Unknown => None,
+        }
+    }
+}
+
 /// The doctor's verdict: the gate steps that apply to this machine and which of them fail, from the
 /// latest readiness state.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "readiness/types.ts")]
 pub struct GateView {
+    pub level: GateLevel,
+    /// May contribute: any level but red (unknown never blocks).
     pub pass: bool,
-    /// Gate steps that do not pass, in catalog order.
+    /// Gate steps that do not pass (core then extra), in catalog order.
     pub failing: Vec<String>,
+    /// The failing core steps.
+    pub core_failing: Vec<String>,
+    /// The failing extra steps.
+    pub extra_failing: Vec<String>,
     /// Every gate step that applies here, in catalog order.
     pub steps: Vec<String>,
     /// When the state was written (ISO); empty when there is no state.
     pub at: String,
+}
+
+impl Default for GateView {
+    fn default() -> Self {
+        Self {
+            level: GateLevel::Unknown,
+            pass: true,
+            failing: Vec::new(),
+            core_failing: Vec::new(),
+            extra_failing: Vec::new(),
+            steps: Vec::new(),
+            at: String::new(),
+        }
+    }
 }
 
 /// What `readiness_fix` did.
@@ -443,9 +516,11 @@ pub struct ReadinessBeat {
     pub gate: Option<GateBeat>,
 }
 
-/// kun's `gateSchema`: `{pass, failing, at}`.
+/// kun's `gateSchema`: `{level, pass, failing, at}`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct GateBeat {
+    /// `green`, `orange` or `red`.
+    pub level: &'static str,
     pub pass: bool,
     pub failing: Vec<String>,
     pub at: String,

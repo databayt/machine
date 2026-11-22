@@ -71,6 +71,30 @@ export function useReadiness(isAr: boolean) {
     }
   }, [inApp, load])
 
+  // The automatic doctor (launch, update) streams its steps and ends with the verdict: follow both.
+  useEffect(() => {
+    if (!inApp) return
+    let offs: Array<() => void> = []
+    let live = true
+    import("@tauri-apps/api/event")
+      .then(async (m) => [
+        await m.listen<RunEvent>("readiness:event", (e) => {
+          const ev = e.payload
+          if (ev.type === "step") setLive((l) => ({ ...l, [ev.id]: { status: ev.status, detail: ev.detail } }))
+        }),
+        await m.listen("readiness:gate", () => {
+          setLive({})
+          void load()
+        }),
+      ])
+      .then((fs) => (live ? (offs = fs) : fs.forEach((f) => f())))
+      .catch(() => {})
+    return () => {
+      live = false
+      offs.forEach((f) => f())
+    }
+  }, [inApp, load])
+
   const onEvent = useCallback((e: RunEvent) => {
     if (e.type === "step") {
       setLive((l) => ({ ...l, [e.id]: { status: e.status, detail: e.detail } }))

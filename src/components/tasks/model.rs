@@ -134,12 +134,17 @@ pub enum ReadyState {
 
 /// What the gate says about one task.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "tasks/types.ts")]
 pub struct Readiness {
     pub state: ReadyState,
     /// Why, as `repo:<name>`, `behind:<name>`, `item:<id>`, `after:<id>`, `held:<login>`,
-    /// `wip`, `profile:<name>`.
+    /// `wip`, `profile:<name>`, `doctor:<core step>`.
     pub missing: Vec<String>,
+    /// The doctor is orange: this many extras are missing. Starting is still allowed.
+    pub doctor_extras: u32,
+    /// The doctor has not looked yet (unknown). Starting is allowed.
+    pub doctor_checking: bool,
 }
 
 /// The answer of `tasks(department)`: the server's response plus a verdict per task id.

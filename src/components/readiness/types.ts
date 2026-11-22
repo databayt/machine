@@ -29,14 +29,37 @@ export type FixKind = "auto" | "terminal" | "link" | "request";
 export type FixOutcome = { kind: FixKind, ok: boolean, message: string | null, };
 
 /**
+ * The doctor's level: green (nothing missing), orange (only extras missing), red (a core step
+ * missing) or unknown (no run has left a state yet). Only red blocks.
+ */
+export type GateLevel = "green" | "orange" | "red" | "unknown";
+
+/**
+ * How much a gate step matters: a missing core step blocks contributing, a missing extra does not.
+ */
+export type GateTier = "core" | "extra";
+
+/**
  * The doctor's verdict: the gate steps that apply to this machine and which of them fail, from the
  * latest readiness state.
  */
-export type GateView = { pass: boolean, 
+export type GateView = { level: GateLevel, 
 /**
- * Gate steps that do not pass, in catalog order.
+ * May contribute: any level but red (unknown never blocks).
+ */
+pass: boolean, 
+/**
+ * Gate steps that do not pass (core then extra), in catalog order.
  */
 failing: Array<string>, 
+/**
+ * The failing core steps.
+ */
+coreFailing: Array<string>, 
+/**
+ * The failing extra steps.
+ */
+extraFailing: Array<string>, 
 /**
  * Every gate step that applies here, in catalog order.
  */
@@ -137,9 +160,10 @@ roles: Array<string>, after: Array<string>,
  */
 human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, 
 /**
- * The step must pass before this person contributes (the doctor's gate).
+ * The doctor's tier for the step: `core` must pass before this person contributes, `extra`
+ * only turns the level orange. Catalogs written before tiers say `true`, which reads as core.
  */
-gate: boolean, 
+gate: GateTier | null, 
 /**
  * When present, the gate applies only to people in one of these departments.
  */
@@ -176,9 +200,10 @@ roles: Array<string>, after: Array<string>,
  */
 human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, 
 /**
- * The step must pass before this person contributes (the doctor's gate).
+ * The doctor's tier for the step: `core` must pass before this person contributes, `extra`
+ * only turns the level orange. Catalogs written before tiers say `true`, which reads as core.
  */
-gate: boolean, 
+gate: GateTier | null, 
 /**
  * When present, the gate applies only to people in one of these departments.
  */

@@ -83,6 +83,7 @@ fn snapshot() -> Snapshot {
         has_gpu: None,
         tools: Tools { whisper: paths.whisper.is_some(), ffmpeg: paths.ffmpeg.is_some(), blender: paths.blender.is_some() },
         models,
+        doctor_red: crate::readiness::gate().level == crate::readiness::GateLevel::Red,
     }
 }
 

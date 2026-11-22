@@ -77,6 +77,8 @@ export interface NavLink {
   hint?: string;
   /** A small dot: something here needs attention. */
   alert?: string;
+  /** The dot's background class (default: destructive). */
+  alertClass?: string;
   /** Literal text (a folder name) reads left to right in any language. */
   ltr?: boolean;
   /** The path under this link, at the same size, each line led by a ↳. */
@@ -106,7 +108,7 @@ export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: numbe
                 <span>
                   <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
                   {l.alert && (
-                    <span role="img" aria-label={l.alert} title={l.alert} className="ms-1.5 inline-block size-1.5 rounded-full bg-destructive align-middle" />
+                    <span role="img" aria-label={l.alert} title={l.alert} className={cn("ms-1.5 inline-block size-1.5 rounded-full align-middle", l.alertClass ?? "bg-destructive")} />
                   )}
                   {l.hint && (
                     <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums">

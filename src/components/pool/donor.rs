@@ -77,6 +77,8 @@ pub struct Snapshot {
     pub tools: Tools,
     /// The whisper model files found (`ggml-base.bin`, …).
     pub models: Vec<String>,
+    /// The doctor is red here (a core step missing): not eligible, whatever the server says.
+    pub doctor_red: bool,
 }
 
 /// Why the machine may not claim anything now.
@@ -87,6 +89,8 @@ pub enum Why {
     Battery,
     Active,
     Unknown,
+    /// The doctor is red: "Run the doctor in Setup".
+    Doctor,
 }
 
 impl Why {
@@ -98,6 +102,7 @@ impl Why {
             Self::Battery => "battery",
             Self::Active => "active",
             Self::Unknown => "unknown",
+            Self::Doctor => "doctor",
         }
     }
 }
@@ -112,6 +117,9 @@ pub fn gate(s: &Snapshot) -> Result<(), Why> {
     }
     if s.share.kinds.is_empty() {
         return Err(Why::NoKinds);
+    }
+    if s.doctor_red {
+        return Err(Why::Doctor);
     }
     match s.on_ac {
         None => return Err(Why::Unknown),

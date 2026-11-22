@@ -11,6 +11,7 @@ use crate::{
         host::fake::FakeHost,
         model::{LocalRepo, Receipt, RepoMode},
     },
+    readiness::{GateLevel, GateView},
 };
 
 fn task(id_n: u32) -> Task {
@@ -62,7 +63,7 @@ fn ready_facts() -> Facts {
         items: vec![("skill:proposal".into(), ItemStatus::Installed)],
         allowed_items: None,
         allowed_repos: Vec::new(),
-        gate_failing: Vec::new(),
+        gate: GateView { level: GateLevel::Green, ..GateView::default() },
     }
 }
 
@@ -577,10 +578,21 @@ fn any_4xx_with_a_reason_is_a_refusal_and_a_bare_one_is_not() {
     assert!(matches!(e(500, r#"{"error":"boom"}"#), TaskError::Api(_)));
 }
 
+fn gate_of(level: GateLevel, core: &[&str], extra: &[&str]) -> GateView {
+    let own = |v: &[&str]| v.iter().map(|s| (*s).to_owned()).collect::<Vec<_>>();
+    GateView {
+        level,
+        pass: level != GateLevel::Red,
+        core_failing: own(core),
+        extra_failing: own(extra),
+        ..GateView::default()
+    }
+}
+
 #[test]
-fn a_failing_gate_blocks_every_task_with_doctor_reasons() {
+fn a_red_gate_blocks_every_task_with_the_core_steps_as_doctor_reasons() {
     let mut f = ready_facts();
-    f.gate_failing = vec!["launcher.c".into(), "pack.tech".into()];
+    f.gate = gate_of(GateLevel::Red, &["launcher.c", "pack.tech"], &["env.x"]);
     let r = run(&task(1), &f);
     assert_eq!(r.state, ReadyState::Blocked);
     assert_eq!(r.missing, ["doctor:launcher.c", "doctor:pack.tech"]);
@@ -590,8 +602,28 @@ fn a_failing_gate_blocks_every_task_with_doctor_reasons() {
     assert_eq!(r.state, ReadyState::Blocked);
     assert_eq!(r.missing[..2], ["doctor:launcher.c", "doctor:pack.tech"]);
     assert!(r.missing.iter().any(|m| m.starts_with("repo:")));
-    // a passing gate leaves the verdict alone
+    // a green gate leaves the verdict alone
     assert_eq!(run(&task(1), &ready_facts()).state, ReadyState::Ready);
+}
+
+#[test]
+fn an_orange_gate_lets_tasks_start_and_counts_the_extras() {
+    let mut f = ready_facts();
+    f.gate = gate_of(GateLevel::Orange, &[], &["env.x", "crm.api"]);
+    let r = run(&task(1), &f);
+    assert_eq!(r.state, ReadyState::Ready);
+    assert!(r.missing.is_empty());
+    assert_eq!((r.doctor_extras, r.doctor_checking), (2, false));
+}
+
+#[test]
+fn an_unknown_gate_lets_tasks_start_and_says_checking() {
+    let mut f = ready_facts();
+    f.gate = GateView::default();
+    let r = run(&task(1), &f);
+    assert_eq!(r.state, ReadyState::Ready);
+    assert_eq!((r.doctor_extras, r.doctor_checking), (0, true));
+    assert!(!run(&task(1), &ready_facts()).doctor_checking);
 }
 
 #[tokio::test]

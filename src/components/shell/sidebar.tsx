@@ -7,6 +7,7 @@ import { copy, promptHref } from "../menu/config";
 import { loadHealth, type HealthReport } from "../menu/data";
 import { NavLinks, type NavLink } from "../menu/departments";
 import { Tools } from "../menu/tools";
+import { levelDot, levelWords, needsAttention } from "../readiness/level";
 import { useEffect, useState } from "react";
 import { SHELL_TOP } from "./grid";
 import { itemName, type NavNode } from "./nav";
@@ -93,8 +94,9 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       mark: here,
       current: here,
       ltr: node.id === "library",
-      // The doctor's gate fails: the Setup link carries a dot.
-      alert: node.id === "setup" && view?.gate && !view.gate.pass ? t(copy.doctorDot) : undefined,
+      // The doctor is orange or red: the Setup link carries a dot in that colour (none when green or unknown).
+      alert: node.id === "setup" && view?.gate && needsAttention(view.gate.level) ? levelWords(view.gate, isAr) : undefined,
+      alertClass: node.id === "setup" && view?.gate && needsAttention(view.gate.level) ? levelDot[view.gate.level] : undefined,
       children,
     };
   });
@@ -112,7 +114,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
         <hr className="my-4 border-foreground/10" />
         <NavLinks links={more} />
         <hr className="my-4 border-foreground/10" />
-        <Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} />
+        <Tools lang={lang} inApp={inApp === true} showEngine={showEngine} health={health} gate={view?.gate ?? null} />
       </nav>
     </aside>
   );

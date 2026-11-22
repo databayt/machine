@@ -12,14 +12,14 @@ import { copy } from "./config";
 import type { Readiness, TasksView } from "./data";
 import { runStart } from "./data";
 import { quiet } from "./ui";
-import { doctorDetail, doctorSteps, isDoctorRefusal } from "../tasks/doctor";
+import { doctorDetail, doctorNote, doctorSteps, isDoctorRefusal } from "../tasks/doctor";
 
 export { MAX_CARDS, upcoming } from "./queue";
 
 const taskHref = (lang: string, id: string) => `/${lang}/?task=${encodeURIComponent(id)}`;
 
 function readinessOf(view: TasksView, t: Task): Readiness {
-  return view.readiness?.[t.id] ?? { state: t.afterOpen.length ? "blocked" : "ready", missing: [] };
+  return view.readiness?.[t.id] ?? { state: t.afterOpen.length ? "blocked" : "ready", missing: [], doctorExtras: 0, doctorChecking: false };
 }
 
 /** `repo:kun` → "repo kun" in words; the first missing reason is enough for a card. */
@@ -118,6 +118,7 @@ export function Issues({
             const repoMissing = r.missing.some((m) => m.startsWith("repo:"));
             const doctor = doctorSteps(r.missing);
             const refusal = refused?.id === task.id ? refused : null;
+            const note = doctor.length === 0 ? doctorNote(r, isAr) : null;
             return (
               <li key={task.id} className="relative flex min-h-44 min-w-0 flex-col justify-between gap-4 rounded-3xl bg-background p-5">
                 <div className="min-w-0">
@@ -180,6 +181,17 @@ export function Issues({
                     </>
                   )}
                 </div>
+                {note && !other && (
+                  <p className="text-xs text-muted-foreground">
+                    {note.link ? (
+                      <Link href={`/${lang}/setup/`} className="underline-offset-4 hover:text-foreground hover:underline">
+                        {note.text}
+                      </Link>
+                    ) : (
+                      note.text
+                    )}
+                  </p>
+                )}
                 {refusal && (
                   <p role="alert" className="text-sm text-destructive">
                     {refusal.doctor ? (

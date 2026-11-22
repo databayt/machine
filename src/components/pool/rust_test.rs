@@ -41,10 +41,20 @@ fn snap() -> Snapshot {
         has_gpu: Some(true),
         tools: Tools { whisper: true, ffmpeg: true, blender: true },
         models: vec!["ggml-base.bin".into()],
+        doctor_red: false,
     }
 }
 
 // ---- eligibility ---------------------------------------------------------------------------------
+
+#[test]
+fn a_red_doctor_makes_the_machine_not_eligible_with_the_doctor_reason() {
+    let mut s = snap();
+    assert_eq!(donor::gate(&s), Ok(()));
+    s.doctor_red = true;
+    assert_eq!(donor::gate(&s), Err(Why::Doctor));
+    assert_eq!(Why::Doctor.code(), "doctor");
+}
 
 #[test]
 fn the_gate_wants_opt_in_kinds_mains_and_idle_time() {

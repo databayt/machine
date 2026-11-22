@@ -12,6 +12,7 @@ import type { Session } from "../sessions/types";
 import { storeLang, swapLocale } from "../shell/lang";
 import { useNav } from "../shell/use-nav";
 import { copy, NEW_CHAT_EVENT } from "./config";
+import { levelWords } from "../readiness/level";
 import { Dot } from "./ui";
 
 const item = "shrink-0 whitespace-nowrap transition-colors hover:text-foreground";
@@ -29,7 +30,7 @@ export function Footer({
   health: HealthReport | null;
 }) {
   const t = tr(lang === "ar");
-  const { tree, trail } = useNav(lang);
+  const { tree, trail, view } = useNav(lang);
   const router = useRouter();
   const pathname = usePathname();
   const [chats, setChats] = useState<Session[] | null>(null);
@@ -50,8 +51,10 @@ export function Footer({
 
   const other: Locale = lang === "ar" ? "en" : "ar";
   const bad = health?.items.filter((i) => !i.ok && !i.healed) ?? [];
-  const hKind = !health ? "ring" : bad.length ? "bad" : "solid";
+  const level = view?.gate?.level ?? "unknown";
+  const hKind = level !== "unknown" ? level : !health ? "ring" : bad.length ? "bad" : "solid";
   const hText = !health ? copy.healthUnknown : bad.length ? copy.healthBad : copy.healthOk;
+  const hWords = view?.gate && level !== "unknown" ? levelWords(view.gate, lang === "ar") : t(hText);
 
   return (
     <footer className="shrink-0 px-6 pb-[max(1.75rem,env(safe-area-inset-bottom))] pt-6 lg:hidden">
@@ -112,9 +115,9 @@ export function Footer({
           {other === "ar" ? "العربية" : "English"}
         </button>
         {inApp && (
-          <span title={`${t(copy.health)}: ${t(hText)}${bad.length ? ` — ${bad.map((i) => i.key).join(", ")}` : ""}`} className="inline-flex shrink-0 items-center gap-1.5">
+          <span title={`${t(copy.health)}: ${hWords}${bad.length ? ` — ${bad.map((i) => i.key).join(", ")}` : ""}`} className="inline-flex shrink-0 items-center gap-1.5">
             <Dot kind={hKind} />
-            <span className="sr-only">{`${t(copy.health)}: ${t(hText)}`}</span>
+            <span className="sr-only">{`${t(copy.health)}: ${hWords}`}</span>
           </span>
         )}
       </div>

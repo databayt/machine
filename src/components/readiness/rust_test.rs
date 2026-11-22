@@ -7,7 +7,7 @@ use super::{
     catalog::Scope,
     fix, heal,
     model::{
-        Catalog, FixKind, Mode, ReadinessError, ReadinessState, RunEvent, StepStatus,
+        Catalog, FixKind, GateLevel, Mode, ReadinessError, ReadinessState, RunEvent, StepStatus,
         UninstallKind, UninstallOutcome,
     },
     run, uninstall,
@@ -689,25 +689,126 @@ fn the_gate_follows_the_departments_and_gate_for() {
     assert_eq!(catalog::gate_ids(&c, &win), ["gh.auth", "pack.tech", "tool.x"]);
 }
 
+fn tiered_catalog() -> Catalog {
+    catalog::parse(
+        r#"{"stages":["s"],"steps":[
+        {"id":"core.a","stage":"s","gate":"core","departments":["*"]},
+        {"id":"old.b","stage":"s","gate":true,"departments":["*"]},
+        {"id":"extra.c","stage":"s","gate":"extra","departments":["*"]},
+        {"id":"off.d","stage":"s","gate":false,"departments":["*"]},
+        {"id":"plain.e","stage":"s","departments":["*"]}]}"#,
+    )
+    .unwrap()
+}
+
 #[test]
-fn the_gate_passes_only_when_every_gate_step_passes() {
+fn a_bool_true_gate_reads_as_core_and_false_or_absent_is_no_gate() {
+    let c = tiered_catalog();
+    let tier = |id: &str| c.steps.iter().find(|s| s.id == id).unwrap().gate;
+    assert_eq!(tier("core.a"), Some(super::model::GateTier::Core));
+    assert_eq!(tier("old.b"), Some(super::model::GateTier::Core));
+    assert_eq!(tier("extra.c"), Some(super::model::GateTier::Extra));
+    assert_eq!(tier("off.d"), None);
+    assert_eq!(tier("plain.e"), None);
+    let sc = Scope { os: "mac".into(), ..scope(&[], "member") };
+    assert_eq!(catalog::gate_ids(&c, &sc), ["core.a", "old.b", "extra.c"]);
+}
+
+#[test]
+fn no_state_is_unknown_and_never_blocks() {
+    let c = tiered_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&[], "member") };
+    let g = catalog::gate_view(None, &c, &sc);
+    assert_eq!(g.level, GateLevel::Unknown);
+    assert!(g.pass && g.failing.is_empty());
+    assert_eq!((g.steps.len(), g.at.as_str()), (3, ""));
+}
+
+#[test]
+fn a_failing_core_step_is_red() {
+    let c = tiered_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&[], "member") };
+    let st = state_of(&[("core.a", "fail"), ("old.b", "pass"), ("extra.c", "fail")], &[]);
+    let g = catalog::gate_view(Some(&st), &c, &sc);
+    assert_eq!(g.level, GateLevel::Red);
+    assert!(!g.pass);
+    assert_eq!(g.core_failing, ["core.a"]);
+    assert_eq!(g.extra_failing, ["extra.c"]);
+    assert_eq!(g.failing, ["core.a", "extra.c"]);
+    // a legacy `true` step failing is core too
+    let st = state_of(&[("core.a", "pass"), ("old.b", "human"), ("extra.c", "pass")], &[]);
+    assert_eq!(catalog::gate_view(Some(&st), &c, &sc).core_failing, ["old.b"]);
+}
+
+#[test]
+fn only_failing_extras_is_orange_and_still_may_contribute() {
+    let c = tiered_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&[], "member") };
+    let st = state_of(&[("core.a", "pass"), ("old.b", "fixed"), ("extra.c", "fail")], &[]);
+    let g = catalog::gate_view(Some(&st), &c, &sc);
+    assert_eq!(g.level, GateLevel::Orange);
+    assert!(g.pass);
+    assert!(g.core_failing.is_empty());
+    assert_eq!(g.extra_failing, ["extra.c"]);
+    assert_eq!(g.at, "2026-11-22T06:31:15.207Z");
+}
+
+#[test]
+fn every_gate_step_passing_is_green() {
+    let c = tiered_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&[], "member") };
+    let st = state_of(&[("core.a", "pass"), ("old.b", "pass"), ("extra.c", "updated"), ("off.d", "fail")], &[]);
+    let g = catalog::gate_view(Some(&st), &c, &sc);
+    assert_eq!(g.level, GateLevel::Green);
+    assert!(g.pass && g.failing.is_empty());
+}
+
+#[test]
+fn the_gate_passes_only_when_no_core_step_fails() {
     let c = gate_catalog();
     let sc = Scope { os: "mac".into(), ..scope(&["tech"], "member") };
     let ok = state_of(&[("gh.auth", "pass"), ("pack.tech", "fixed"), ("brew", "fail")], &[]);
     let g = catalog::gate_view(Some(&ok), &c, &sc);
     assert!(g.pass && g.failing.is_empty());
-    assert_eq!(g.at, "2026-11-22T06:31:15.207Z");
 
     let bad = state_of(&[("gh.auth", "fail"), ("pack.tech", "human")], &[]);
     let g = catalog::gate_view(Some(&bad), &c, &sc);
     assert!(!g.pass);
     assert_eq!(g.failing, ["gh.auth", "pack.tech"]);
 
-    // a gate step no run reported on yet is not a pass; no state fails them all
+    // a gate step no run reported on yet is not a pass
     let part = state_of(&[("gh.auth", "pass")], &[]);
     assert_eq!(catalog::gate_view(Some(&part), &c, &sc).failing, ["pack.tech"]);
-    let none = catalog::gate_view(None, &c, &sc);
-    assert_eq!((none.pass, none.failing.len(), none.at.as_str()), (false, 2, ""));
+}
+
+#[test]
+fn the_auto_doctor_runs_without_state_after_a_catalog_change_or_an_app_update() {
+    let c = tiered_catalog();
+    let mut st = state_of(&[("core.a", "pass")], &[]);
+    // same catalog version (both absent), same app: nothing to do
+    assert!(!catalog::needs_doctor(Some(&st), &c, Some("0.1.0"), "0.1.0"));
+    // no state at all
+    assert!(catalog::needs_doctor(None, &c, Some("0.1.0"), "0.1.0"));
+    // the app changed since the last doctor run, or none ever ran
+    assert!(catalog::needs_doctor(Some(&st), &c, Some("0.1.0"), "0.2.0"));
+    assert!(catalog::needs_doctor(Some(&st), &c, None, "0.1.0"));
+    // the catalog moved on since the state was written
+    st.catalog_version = serde_json::json!(7);
+    let mut newer = c.clone();
+    newer.version = serde_json::json!("8");
+    assert!(catalog::needs_doctor(Some(&st), &newer, Some("0.1.0"), "0.1.0"));
+    newer.version = serde_json::json!(7);
+    assert!(!catalog::needs_doctor(Some(&st), &newer, Some("0.1.0"), "0.1.0"));
+}
+
+#[test]
+fn the_doctor_marker_round_trips() {
+    let dir = std::env::temp_dir().join(format!("machine-doctor-marker-{}", std::process::id()));
+    let path = catalog::doctor_marker_path(&dir);
+    assert_eq!(catalog::read_doctor_marker(&path), None);
+    catalog::write_doctor_marker(&path, "0.1.0").unwrap();
+    assert_eq!(catalog::read_doctor_marker(&path).as_deref(), Some("0.1.0"));
+    let _ = std::fs::remove_dir_all(&dir);
 }
 
 #[test]
@@ -721,8 +822,10 @@ fn a_removed_gate_step_does_not_pass_but_a_plain_skip_does() {
 #[test]
 fn a_catalog_without_gate_flags_always_passes() {
     let c = catalog::parse(r#"{"steps":[{"id":"a","stage":"s"}]}"#).unwrap();
-    let g = catalog::gate_view(None, &c, &scope(&[], "member"));
+    let st = state_of(&[], &[]);
+    let g = catalog::gate_view(Some(&st), &c, &scope(&[], "member"));
     assert!(g.pass && g.steps.is_empty());
+    assert_eq!(g.level, GateLevel::Green);
 }
 
 #[test]
@@ -736,6 +839,7 @@ fn the_view_and_the_beat_carry_the_gate() {
     let b = catalog::beat(&st, Some(&c), &sc, 0);
     let json = serde_json::to_value(&b).unwrap();
     assert_eq!(json["gate"]["pass"], false);
+    assert_eq!(json["gate"]["level"], "red");
     assert_eq!(json["gate"]["failing"][0], "pack.tech");
     assert_eq!(json["gate"]["at"], "2026-11-22T06:31:15.207Z");
     // a state without a timestamp takes the heartbeat's clock, as ISO

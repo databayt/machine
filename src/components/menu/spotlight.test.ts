@@ -25,7 +25,7 @@ const task = (n: number, over: Partial<Task> = {}): Task => ({
   ...over,
 })
 
-const view = (tasks: Task[], readiness: Record<string, { state: "ready" | "missing" | "blocked"; missing: string[] }> = {}) =>
+const view = (tasks: Task[], readiness: Record<string, { state: "ready" | "missing" | "blocked"; missing: string[]; doctorExtras?: number; doctorChecking?: boolean }> = {}) =>
   ({
     sprint: { title: "Sprint 14", goal: "Close three pilots", endsAt: null },
     mine: [],

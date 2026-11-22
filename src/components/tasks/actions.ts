@@ -5,7 +5,7 @@ import type { Readiness, SubmitEvent, TasksResponse } from "./types"
 
 /** The server's queue and board, plus the local gate verdict for every task id. */
 export type TasksView = TasksResponse & {
-  readiness: Record<string, { state: Readiness["state"]; missing: string[] }>
+  readiness: Record<string, Readiness>
 }
 
 export async function getTasks(department: string): Promise<TasksView | null> {

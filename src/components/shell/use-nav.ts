@@ -41,7 +41,18 @@ export function useNav(lang: Locale): NavState {
     reload()
     // A run, fix, heal or uninstall finished: the sidebar's counts follow without a reload.
     window.addEventListener("kun:readiness", reload)
-    return () => window.removeEventListener("kun:readiness", reload)
+    // The doctor that runs by itself at launch or after an update: its verdict arrives as a Tauri event.
+    let off: (() => void) | undefined
+    let live = true
+    import("@tauri-apps/api/event")
+      .then((m) => m.listen("readiness:gate", reload))
+      .then((f) => (live ? (off = f) : f()))
+      .catch(() => {})
+    return () => {
+      live = false
+      off?.()
+      window.removeEventListener("kun:readiness", reload)
+    }
   }, [inApp])
 
   const tree = useMemo(
