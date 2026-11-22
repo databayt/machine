@@ -106,6 +106,27 @@ fn lists_departments_with_a_prompt() {
 }
 
 #[test]
+fn formulas_list_header_words_and_skip_bad_files() {
+    let kun = tempfile::tempdir().unwrap();
+    let dir = kun.path().join("departments/video/formulas");
+    fs::create_dir_all(&dir).unwrap();
+    fs::write(
+        dir.join("b.md"),
+        "---\n{\"id\":\"video.b\",\"label\":{\"en\":\"B film\",\"ar\":\"ب\"},\"icon\":\"Film\",\"when\":{\"intent\":\"a b film\"}}\n---\nbody {{x}}\n",
+    )
+    .unwrap();
+    fs::write(dir.join("a.md"), "---\n{\"id\":\"video.a\"}\n---\nbody").unwrap();
+    fs::write(dir.join("bad.md"), "no header").unwrap();
+    fs::write(dir.join("evil.md"), "---\n{\"id\":\"../x\"}\n---\n").unwrap();
+    let all = formulas_in(kun.path(), "video").unwrap();
+    assert_eq!(all.iter().map(|f| f.id.as_str()).collect::<Vec<_>>(), ["video.a", "video.b"]);
+    assert_eq!(all[0].label_en, "video.a");
+    assert_eq!((all[1].label_ar.as_str(), all[1].intent.as_str(), all[1].icon.as_deref()), ("ب", "a b film", Some("Film")));
+    assert!(formulas_in(kun.path(), "nope").unwrap().is_empty());
+    assert!(matches!(formulas_in(kun.path(), "../x"), Err(PackError::BadName)));
+}
+
+#[test]
 fn item_names_are_filtered() {
     let v: Vec<Value> =
         serde_json::from_str(r#"["skills/edit","..",{"name":"funnel"},3]"#).unwrap();

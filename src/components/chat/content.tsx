@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowDownIcon, RotateCcwIcon } from "lucide-react";
 
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
-import { board as loadBoard, fill as fillFormula, matchText, packInfo, stationLog } from "../pack/actions";
-import type { Board, PackInfo } from "../pack/types";
+import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, stationLog } from "../pack/actions";
+import type { Board, FormulaMeta, Match, PackInfo } from "../pack/types";
+import type { CatalogItem } from "../catalog/types";
+import { loadCatalog } from "../menu/data";
 import { CHAT_DELETED_EVENT, NEW_CHAT_EVENT } from "../menu/config";
 import { useReadAloud } from "../menu/use-read-aloud";
 import { getSession } from "../sessions/actions";
@@ -21,6 +23,7 @@ import { ActivityRows, StatusLine } from "./activity";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
+import { type Chip, type SlashEntry, chipFacts, matchSkills, packIds } from "./keywords";
 import { type HomeOption, homeOptions, usableMatch } from "./options";
 import { ModelChip } from "../brain/chip";
 import { parseRefined } from "./refine";
@@ -108,6 +111,52 @@ export default function ChatContent({
     if (!inApp || !ctx.dept) return;
     void packInfo(ctx.dept).then(setPack).catch(() => setPack(null));
   }, [inApp, ctx.dept]);
+
+  // The catalog (skills and their keywords) and the department's formulas feed the "/" menu and the keyword chip.
+  const [catalog, setCatalog] = useState<CatalogItem[]>([]);
+  const [formulaList, setFormulaList] = useState<{ dept: string; list: FormulaMeta[] }>({ dept: "", list: [] });
+  const probeN = useRef(0);
+  useEffect(() => {
+    if (inApp === true) void loadCatalog().then(setCatalog);
+  }, [inApp]);
+  useEffect(() => {
+    if (!inApp || !ctx.dept) return;
+    let live = true;
+    void loadFormulas(ctx.dept).then((list) => live && setFormulaList({ dept: ctx.dept, list }));
+    return () => {
+      live = false;
+    };
+  }, [inApp, ctx.dept]);
+  const hidden = ctx.profile?.hidden;
+  const skillMatches = useCallback(
+    (text: string) => matchSkills(text, catalog, ctx.dept, hidden ?? []),
+    [catalog, ctx.dept, hidden],
+  );
+  const slashEntries = useMemo<SlashEntry[]>(() => {
+    const formulas: SlashEntry[] = (formulaList.dept === ctx.dept ? formulaList.list : []).map((f) => ({
+      kind: "formula",
+      id: f.id,
+      name: f.id,
+      title: (isAr ? f.label_ar || f.label_en : f.label_en || f.label_ar) || f.id,
+      hint: f.intent,
+      keywords: [f.label_en, f.label_ar],
+      group: 0,
+      icon: f.icon,
+    }));
+    const kit = packIds(catalog, ctx.dept);
+    const skills: SlashEntry[] = catalog
+      .filter((i) => i.id.startsWith("skill:") && !(hidden ?? []).some((h) => h === i.id || h === i.name))
+      .map((i) => ({
+        kind: "skill",
+        id: i.id,
+        name: i.name,
+        title: (isAr ? i.title_ar || i.title : i.title) || i.name,
+        hint: (isAr ? i.description_ar || i.description : i.description) ?? "",
+        keywords: i.keywords,
+        group: kit.has(i.id) ? 1 : 2,
+      }));
+    return [...formulas, ...skills.sort((a, b) => a.group - b.group || a.name.localeCompare(b.name))];
+  }, [formulaList, catalog, ctx.dept, hidden, isAr]);
 
   const routes = pack?.routes ?? [];
   const boardKey = `${ctx.dept}|${ctx.repo}`;
@@ -328,21 +377,31 @@ export default function ChatContent({
   const dismissOption = (o: HomeOption) => {
     if (o.logId) void stationLog(ctx.dept, ctx.repo || null, o.logId, "dismiss");
   };
+  /**
+   * A station match applied: the department switches silently when the text names another, the formula
+   * is filled (no model), its route and record are kept, and the pick is logged. The prompt, or null.
+   */
+  const applyMatch = async (m: Match & { id: string }): Promise<string | null> => {
+    let dept = ctx.dept;
+    if (m.dept && m.dept !== ctx.dept && (await ctx.chooseDept(m.dept))) dept = m.dept;
+    try {
+      const f = await fillFormula(dept, m.id, ctx.repo || null, m.set ?? {});
+      if (dept !== ctx.dept) carry.current = { dept, route: f.route };
+      else if (f.route) setRouteId(f.route);
+      stationRef.current = { id: f.id, record: f.record };
+      void stationLog(dept, ctx.repo || null, f.id, "pick");
+      return f.prompt;
+    } catch {
+      return null;
+    }
+  };
   /** ✨: the station's switch first; with an id and enough confidence the formula is filled with no model run. */
   const refineText = async (text: string) => {
     const m = await matchText(ctx.dept, text, ctx.repo || null);
     if (usableMatch(m)) {
-      let dept = ctx.dept;
-      if (m.dept && m.dept !== ctx.dept && (await ctx.chooseDept(m.dept))) dept = m.dept;
-      try {
-        const f = await fillFormula(dept, m.id, ctx.repo || null, m.set ?? {});
-        if (dept !== ctx.dept) carry.current = { dept, route: f.route };
-        else if (f.route) setRouteId(f.route);
-        stationRef.current = { id: f.id, record: f.record };
-        return f.prompt;
-      } catch {
-        // fall through to the model
-      }
+      const prompt = await applyMatch({ ...m, id: m.id });
+      if (prompt !== null) return prompt;
+      // fall through to the model
     }
     const raw = await refine(text, ctx.repo || null);
     const out = parseRefined(raw, routes.map((r) => r.id));
@@ -350,6 +409,35 @@ export default function ChatContent({
     stationRef.current = null;
     if (out.route) setRouteId(out.route);
     return out.text;
+  };
+  /** The composer's live match: the station's formula when it is sure, else a skill the text names. */
+  const probe = async (text: string): Promise<Chip | null> => {
+    const n = ++probeN.current;
+    const m = await matchText(ctx.dept, text, ctx.repo || null);
+    if (n !== probeN.current) return null;
+    if (usableMatch(m)) {
+      const meta = formulaList.list.find((f) => f.id === m.id);
+      const label = (meta && (isAr ? meta.label_ar || meta.label_en : meta.label_en || meta.label_ar)) || m.id;
+      return { kind: "formula", forText: text, id: m.id, label, facts: chipFacts(m.set), match: { ...m, id: m.id } };
+    }
+    const top = skillMatches(text)[0];
+    return top ? { kind: "skill", forText: text, name: top.name } : null;
+  };
+  const acceptChip = (c: Extract<Chip, { kind: "formula" }>) => applyMatch(c.match);
+  const dismissChip = (c: Chip) => {
+    if (c.kind === "formula") void stationLog(ctx.dept, ctx.repo || null, c.id, "dismiss");
+  };
+  /** A formula chosen from the "/" menu: filled with no slots, so the open ones are for the person. */
+  const pickFormula = async (id: string): Promise<string | null> => {
+    try {
+      const f = await fillFormula(ctx.dept, id, ctx.repo || null, {});
+      if (f.route) setRouteId(f.route);
+      stationRef.current = { id: f.id, record: f.record };
+      void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
+      return f.prompt;
+    } catch {
+      return null;
+    }
   };
   /** A held work order's Submit: clear the box, or put the caret in it to ask for the summary line. */
   const afterSubmit = () => setFill({ text: "", focus: false, n: ++fillN.current });
@@ -403,6 +491,12 @@ export default function ChatContent({
                   repo={ctx.repo}
                   onRefine={routes.length ? refineText : undefined}
                   onDraft={onDraft}
+                  onProbe={probe}
+                  onAcceptChip={acceptChip}
+                  onDismissChip={dismissChip}
+                  skillMatches={skillMatches}
+                  slashEntries={slashEntries}
+                  onPickFormula={pickFormula}
                   autoFocus
                 />
                 <ModelChip lang={lang} disabled={busy} />
@@ -500,6 +594,12 @@ export default function ChatContent({
             repo={ctx.repo}
             onRefine={routes.length ? refineText : undefined}
             onDraft={onDraft}
+            onProbe={probe}
+            onAcceptChip={acceptChip}
+            onDismissChip={dismissChip}
+            skillMatches={skillMatches}
+            slashEntries={slashEntries}
+            onPickFormula={pickFormula}
             autoFocus
           />
           <ModelChip lang={lang} disabled={busy} />

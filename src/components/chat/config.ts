@@ -57,6 +57,13 @@ export const copy = {
   remove: { en: "Remove", ar: "إزالة" },
   references: { en: "References", ar: "مراجع" },
   acceptPlan: { en: "Accept", ar: "اعتمد الخطة" },
+  chipTab: { en: "Tab", ar: "Tab" },
+  chipLabel: { en: "Suggestion: press Tab to accept, Esc to dismiss", ar: "اقتراح: Tab للقبول وEsc للتجاهل" },
+  slashLabel: { en: "Formulas and skills", ar: "الصيغ والمهارات" },
+  slashFormulas: { en: "Formulas", ar: "صيغ" },
+  slashPack: { en: "This department's skills", ar: "مهارات القسم" },
+  slashSkills: { en: "Skills", ar: "مهارات" },
+  slashNone: { en: "Nothing matches.", ar: "لا نتائج." },
   openTitle: { en: "Open this page in the Kun app", ar: "افتح هذه الصفحة في تطبيق كن" },
   openText: {
     en: "Chat, sessions and settings run on your computer, inside the app only.",

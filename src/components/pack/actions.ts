@@ -2,7 +2,7 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { SyncEvent } from "../repos/types"
-import type { Board, Filled, Health, LogEvent, Match, PackInfo } from "./types"
+import type { Board, Filled, FormulaMeta, Health, LogEvent, Match, PackInfo } from "./types"
 
 /** A department's title, fallback quick actions, frame and routes; null outside the machine app. */
 export async function packInfo(department: string): Promise<PackInfo | null> {
@@ -43,6 +43,16 @@ export async function matchText(department: string, text: string, repo: string |
     return await invoke<Match>("plugin:pack|match_text", { department, text, repo })
   } catch {
     return none
+  }
+}
+
+/** The department's formulas (id, labels, intent, icon) for the slash menu; read-only, never rejects. */
+export async function formulas(department: string): Promise<FormulaMeta[]> {
+  if (!isTauri()) return []
+  try {
+    return await invoke<FormulaMeta[]>("plugin:pack|formulas", { department })
+  } catch {
+    return []
   }
 }
 

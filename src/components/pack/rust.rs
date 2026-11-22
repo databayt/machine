@@ -957,6 +957,67 @@ async fn match_text(department: String, text: String, repo: Option<String>) -> s
     station::match_text(&department, &text, repo.as_deref()).await
 }
 
+/// One formula for the slash menu: its words and icon, no body.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+pub struct FormulaMeta {
+    /// The formula id, e.g. `video.film.plan`.
+    pub id: String,
+    pub label_en: String,
+    pub label_ar: String,
+    /// `when.intent`: one line on when the formula is the right one.
+    pub intent: String,
+    /// A lucide icon name, when the header names one.
+    pub icon: Option<String>,
+}
+
+/// The header of a formula file: the JSON between the leading `---` fences.
+fn formula_header(raw: &str) -> Option<Value> {
+    let rest = raw.strip_prefix("---")?.trim_start_matches(['\r', '\n']);
+    let end = rest.find("\n---")?;
+    serde_json::from_str(&rest[..end]).ok()
+}
+
+/// A department's formulas, read from `departments/<dept>/formulas/*.md`, ordered by id. Files that
+/// do not parse, or whose id is not a valid name, are skipped; a missing folder is an empty list.
+///
+/// # Errors
+/// [`PackError::BadName`] when the department name is invalid.
+pub fn formulas_in(kun: &Path, dept: &str) -> Result<Vec<FormulaMeta>, PackError> {
+    if !valid_name(dept) {
+        return Err(PackError::BadName);
+    }
+    let Ok(rd) = fs::read_dir(kun.join("departments").join(dept).join("formulas")) else {
+        return Ok(Vec::new());
+    };
+    let text = |v: &Value| v.as_str().unwrap_or_default().trim().to_owned();
+    let mut out: Vec<FormulaMeta> = rd
+        .filter_map(Result::ok)
+        .filter(|e| e.path().extension().is_some_and(|x| x == "md"))
+        .filter_map(|e| fs::read_to_string(e.path()).ok())
+        .filter_map(|raw| formula_header(&raw))
+        .filter_map(|h| {
+            let id = text(&h["id"]);
+            valid_name(&id).then(|| FormulaMeta {
+                label_en: Some(text(&h["label"]["en"])).filter(|s| !s.is_empty()).unwrap_or_else(|| id.clone()),
+                label_ar: text(&h["label"]["ar"]),
+                intent: text(&h["when"]["intent"]),
+                icon: Some(text(&h["icon"])).filter(|s| !s.is_empty()),
+                id,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(out)
+}
+
+/// `formulas` — the department's formulas for the slash menu; read-only.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn formulas(department: String) -> Result<Vec<FormulaMeta>, PackError> {
+    formulas_in(&kun_dir()?, &department)
+}
+
 /// `station_log` — appends a tap or a dismissal to `~/.kun/machine/station-log.jsonl`.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
@@ -1056,6 +1117,7 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             board,
             fill,
             match_text,
+            formulas,
             station_log
         ])
         .build()
