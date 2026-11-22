@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { GLYPHS, formatElapsed, formatTokens, glyphFrame, playfulWord, splitNote, statusDetail, summarize } from "./activity-pure.ts"
+import { GLYPHS, GLYPH_FRAME_MS, SHIMMER_CYCLE_MS, SHIMMER_STEP_MS, formatElapsed, formatTokens, glyphFrame, playfulWord, splitNote, statusDetail, summarize, turnWord } from "./activity-pure.ts"
 
 test("the glyph climbs the six frames and comes back down", () => {
   const seq = Array.from({ length: 12 }, (_, i) => glyphFrame(i))
@@ -43,4 +43,22 @@ test("a leading Note paragraph splits off the answer", () => {
   assert.deepEqual(splitNote("Note: it moved.\n\nHere you go."), { note: "it moved.", rest: "Here you go." })
   assert.deepEqual(splitNote("Note: only this"), { note: "only this", rest: "" })
   assert.deepEqual(splitNote("Hello\n\nNote: later"), { note: null, rest: "Hello\n\nNote: later" })
+})
+
+test("the verb is fixed for the whole turn: one pick from the seed, never a tick", () => {
+  const list = ["a", "b", "c", "d", "e", "f"]
+  const w = turnWord(list, "3")
+  assert.equal(w, playfulWord(list, "3", 0))
+  assert.equal(turnWord(list, "3"), w)
+  assert.ok(list.includes(w))
+  assert.equal(turnWord([], "3"), "")
+  // another turn may pick another word
+  assert.ok(new Set(["0", "1", "2", "3", "4", "5"].map((s) => turnWord(list, s))).size > 1)
+})
+
+test("motion is tuned: 200 ms glyph frames, a 3 s shimmer cycle that a whole verb sweeps inside", () => {
+  assert.equal(GLYPH_FRAME_MS, 200)
+  assert.equal(SHIMMER_CYCLE_MS, 3000)
+  // the longest verb (about 22 characters) is fully swept well before the cycle restarts
+  assert.ok(22 * SHIMMER_STEP_MS < SHIMMER_CYCLE_MS / 1.5)
 })

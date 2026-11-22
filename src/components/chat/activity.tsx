@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react"
 import { ChevronRightIcon, ListIcon, WrenchIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import { glyphFrame, playfulWord, statusDetail, summarize } from "./activity-pure"
+import { GLYPH_FRAME_MS, SHIMMER_CYCLE_MS, SHIMMER_STEP_MS, glyphFrame, statusDetail, summarize, turnWord } from "./activity-pure"
 import { copy, tr, words } from "./config"
 
 /** The agent's thinking mark: three dots that tumble (globals.css `.machine-dots`), in the line's colour. */
@@ -31,13 +31,13 @@ function useReducedMotion(): boolean {
   return reduced
 }
 
-/** Claude Code's spinner glyph: · ✢ ✳ ✶ ✻ ✽ and back, one frame per ~120 ms, a still ✻ under reduced motion. */
+/** Claude Code's spinner glyph: · ✢ ✳ ✶ ✻ ✽ and back, one frame per `GLYPH_FRAME_MS`, a still ✻ under reduced motion. */
 export function ClaudeGlyph({ className }: { className?: string }) {
   const reduced = useReducedMotion()
   const [frame, setFrame] = useState(4)
   useEffect(() => {
     if (reduced) return
-    const id = window.setInterval(() => setFrame((n) => n + 1), 120)
+    const id = window.setInterval(() => setFrame((n) => n + 1), GLYPH_FRAME_MS)
     return () => window.clearInterval(id)
   }, [reduced])
   return (
@@ -97,8 +97,28 @@ export function ActivityRows({ done, live, isAr }: { done: string[]; live: strin
 }
 
 /**
+ * The verb with Claude Code's per-character sweep: each letter brightens a beat after the one before it, once every
+ * `SHIMMER_CYCLE_MS`. Arabic letters join, so splitting them would break the script: Arabic keeps one slow gradient band.
+ * Reduced motion shows the plain colour (globals.css).
+ */
+function ShimmerWord({ text, isAr }: { text: string; isAr: boolean }) {
+  if (isAr) return <span className="machine-claude-shimmer inline-block">{text}</span>
+  const chars = Array.from(text)
+  return (
+    <span className="inline-block" style={{ ["--cycle" as string]: `${SHIMMER_CYCLE_MS}ms` }}>
+      {chars.map((c, i) => (
+        <span key={i} className="machine-claude-char whitespace-pre" style={{ animationDelay: `${i * SHIMMER_STEP_MS}ms` }}>
+          {c}
+        </span>
+      ))}
+    </span>
+  )
+}
+
+/**
  * Claude Code's status line under a running turn: `✻ Weighing it up… (12s · ↓ 1.4k tokens · esc to interrupt)`.
- * The glyph cycles in terracotta, the verb shimmers and changes every 2.5 s, the seconds tick, Esc interrupts.
+ * The glyph cycles in terracotta, the verb is fixed for the turn and shimmers (a sweep that lights one character after
+ * another), the seconds tick, Esc interrupts.
  * `tokens` is the run's output so far; without it that part is left out.
  */
 export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: boolean; seed: string; tokens?: number | null; onStop?: () => void }) {
@@ -119,16 +139,14 @@ export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: bool
     window.addEventListener("keydown", on)
     return () => window.removeEventListener("keydown", on)
   }, [])
-  const word = playfulWord(isAr ? words.ar : words.en, seed, Math.floor(seconds / 2.5))
+  const word = turnWord(isAr ? words.ar : words.en, seed)
 
   return (
     <div role="status" className="flex min-w-0 items-baseline gap-2.5 text-[17px] leading-7 md:text-base">
       <ClaudeGlyph className="text-[1.15em]" />
       <span className="sr-only">{t(copy.working)}</span>
       <span aria-hidden className="min-w-0 truncate">
-        <span key={word} className="machine-claude-shimmer inline-block animate-in fade-in duration-500 motion-reduce:animate-none">
-          {word}
-        </span>
+        <ShimmerWord text={word} isAr={isAr} />
         <span className="tabular-nums text-muted-foreground">
           {" ("}
           {statusDetail(seconds, tokens, isAr, t(copy.interrupt))}

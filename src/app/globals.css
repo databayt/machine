@@ -161,11 +161,23 @@
   background-clip: text;
   -webkit-background-clip: text;
   color: transparent;
-  animation: machine-claude-sweep 2s linear infinite;
+  animation: machine-claude-sweep 3s linear infinite;
+}
+/* The per-character sweep: each letter lights a beat after the one before it (delay set inline), the rest of the
+   3 s cycle is the base colour — activity-pure.ts SHIMMER_STEP_MS / SHIMMER_CYCLE_MS. */
+@keyframes machine-claude-char {
+  0% { color: var(--claude); }
+  8% { color: color-mix(in oklab, var(--claude) 45%, white); }
+  18%, 100% { color: var(--claude); }
+}
+.machine-claude-char {
+  color: var(--claude);
+  animation: machine-claude-char var(--cycle, 3000ms) ease-in-out infinite;
 }
 [dir="rtl"] .machine-claude-shimmer { animation-direction: reverse; }
 @media (prefers-reduced-motion: reduce) {
   .machine-claude-shimmer { animation: none; color: var(--claude); background-image: none; }
+  .machine-claude-char { animation: none; color: var(--claude); }
   .machine-dots > i, .machine-shimmer { animation: none; }
   .machine-shimmer { color: var(--muted-foreground); background-image: none; }
 }

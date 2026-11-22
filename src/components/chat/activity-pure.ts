@@ -8,6 +8,14 @@ export function playfulWord(list: readonly string[], seed: string, tick: number)
   return list[(hash + Math.max(0, tick)) % list.length] ?? ""
 }
 
+/**
+ * The turn's verb, as the CLI keeps it: picked once from the seed and held for the whole turn (the CLI does not
+ * rotate it while it works).
+ */
+export function turnWord(list: readonly string[], seed: string): string {
+  return playfulWord(list, seed, 0)
+}
+
 /** The finished steps' tool names, each once in first-seen order. */
 export function uniqueTools(names: readonly string[]): string[] {
   return [...new Set(names)]
@@ -21,6 +29,13 @@ export function summarize(names: readonly string[], max = 3): { head: string[]; 
 
 /** Claude Code's spinner glyphs, in the order they grow. */
 export const GLYPHS = ["·", "✢", "✳", "✶", "✻", "✽"] as const
+
+/** One glyph frame lasts this long: the CLI steps its spinner about five times a second. */
+export const GLYPH_FRAME_MS = 200
+
+/** One character of the shimmer lights this much after the one before it, and the whole sweep repeats every `SHIMMER_CYCLE_MS`. */
+export const SHIMMER_STEP_MS = 70
+export const SHIMMER_CYCLE_MS = 3000
 
 /** The glyph of frame `n`: up the list, then back down, forever (`· ✢ ✳ ✶ ✻ ✽ ✻ ✶ ✳ ✢ ·`). */
 export function glyphFrame(n: number): string {
