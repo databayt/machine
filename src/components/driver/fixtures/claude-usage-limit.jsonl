@@ -1,0 +1,3 @@
+{"type":"system","subtype":"init","cwd":"/tmp/kun","session_id":"11111111-2222-3333-4444-555555555555","tools":[],"mcp_servers":[],"model":"claude-sonnet-5-5","permissionMode":"auto"}
+{"type":"assistant","message":{"model":"<synthetic>","content":[{"type":"text","text":"You've hit your limit · resets 9pm (Asia/Riyadh)"}]},"parent_tool_use_id":null,"session_id":"11111111-2222-3333-4444-555555555555","error":"rate_limit"}
+{"type":"result","subtype":"success","is_error":true,"result":"You've hit your limit · resets 9pm (Asia/Riyadh)","session_id":"11111111-2222-3333-4444-555555555555","terminal_reason":"completed"}

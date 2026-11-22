@@ -549,3 +549,86 @@ fn a_free_route_job_carries_the_proxy_env_and_no_other_anthropic_var() {
         assert!(job.env.iter().any(|(k, _)| k == "TWENTY_API_KEY"));
     }
 }
+
+fn text(t: &str) -> Event {
+    Event::Text { text: t.into() }
+}
+
+fn fixture_events(f: &str) -> Vec<Event> {
+    f.lines().flat_map(|l| driver::parse_line(DriverKind::Claude, l)).collect()
+}
+
+#[test]
+fn gate_hides_an_unavailable_run_entirely() {
+    let mut gate = Gate::default();
+    let mut shown = Vec::new();
+    for e in fixture_events(include_str!("../driver/fixtures/claude-usage-limit.jsonl")) {
+        shown.extend(gate.push(e));
+    }
+    assert!(shown.is_empty());
+    assert_eq!(gate.finish(), Err(Unavailable::UsageLimit { resets_at: Some("9pm (Asia/Riyadh)".into()) }));
+}
+
+#[test]
+fn gate_lets_a_real_run_through_in_order() {
+    let mut gate = Gate::default();
+    let mut shown = Vec::new();
+    let all = fixture_events(include_str!("../driver/fixtures/claude.jsonl"));
+    for e in all.clone() {
+        shown.extend(gate.push(e));
+    }
+    assert_eq!(shown, all);
+    assert_eq!(gate.finish(), Ok(Vec::new()));
+    // A limit line quoted inside an answer that then succeeds is shown, not swallowed.
+    let mut gate = Gate::default();
+    let mut shown = gate.push(text("You've hit your limit"));
+    shown.extend(gate.push(Event::Done { session: None, ok: true, result: Some("done".into()) }));
+    assert_eq!(shown.len(), 2);
+    assert_eq!(gate.finish(), Ok(Vec::new()));
+    // An ordinary failure is shown, not a fallback.
+    let mut gate = Gate::default();
+    let mut shown = Vec::new();
+    for e in fixture_events(include_str!("../driver/fixtures/claude-error-other.jsonl")) {
+        shown.extend(gate.push(e));
+    }
+    assert_eq!(shown.len(), 3);
+    assert_eq!(gate.finish(), Ok(Vec::new()));
+}
+
+#[test]
+fn gate_flushes_a_run_that_ends_before_deciding() {
+    let mut gate = Gate::default();
+    assert!(gate.push(Event::Started { session: "s".into() }).is_empty());
+    assert_eq!(gate.finish(), Ok(vec![Event::Started { session: "s".into() }]));
+}
+
+#[test]
+fn fall_back_only_once_and_only_for_claude_on_claude() {
+    let why = Unavailable::NotSignedIn;
+    assert!(should_fall_back(DriverKind::Claude, Brain::Claude, 0, Some(&why)));
+    // The fallback run itself failing as unavailable never loops.
+    assert!(!should_fall_back(DriverKind::Claude, Brain::Claude, 1, Some(&why)));
+    // Another driver, a chosen free route, or an ordinary failure.
+    assert!(!should_fall_back(DriverKind::Codex, Brain::Claude, 0, Some(&why)));
+    assert!(!should_fall_back(DriverKind::Claude, Brain::Nvidia, 0, Some(&why)));
+    assert!(!should_fall_back(DriverKind::Claude, Brain::Claude, 0, None));
+}
+
+#[test]
+fn notices_name_the_reason_the_route_and_the_caveat() {
+    let limit = Unavailable::UsageLimit { resets_at: Some("9pm".into()) };
+    let en = fallback_notice(&limit, Brain::Nvidia, false);
+    assert!(en.contains("usage limit, resets 9pm") && en.contains("NVIDIA") && en.contains("free"));
+    assert!(en.contains("can read what it sends"));
+    let ar = fallback_notice(&Unavailable::NotSignedIn, Brain::OmniRoute, true);
+    assert!(ar.contains("OmniRoute") && ar.contains("لم يتم تسجيل الدخول"));
+    assert!(is_arabic("اكتب عرضا") && !is_arabic("write an offer"));
+}
+
+#[test]
+fn no_route_ready_ends_with_the_reason_and_where_to_fix_it() {
+    let msg = no_route_message(&Unavailable::NoSubscription, None, false);
+    assert!(msg.contains("no subscription") && msg.contains("Settings → Model"));
+    let msg = no_route_message(&Unavailable::NotSignedIn, Some((Brain::Nvidia, "proxy down.".into())), false);
+    assert!(msg.contains("NVIDIA") && msg.contains("proxy down.") && msg.contains("Settings → Model"));
+}

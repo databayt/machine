@@ -130,3 +130,35 @@ fn builtin_secrets_are_allowed_for_every_profile_and_nothing_else_is() {
         Err(ProfileError::NotAllowed(_))
     ));
 }
+
+fn status(route: Brain, installed: bool, key_set: bool) -> RouteStatus {
+    RouteStatus { route, installed, key_set, proxy_up: false, model: route.model().to_owned() }
+}
+
+#[test]
+fn fallbacks_are_ready_free_routes_in_omniroute_nvidia_openrouter_order() {
+    let all = [
+        status(Brain::Claude, true, true),
+        status(Brain::OpenRouter, true, true),
+        status(Brain::Nvidia, true, true),
+        status(Brain::OmniRoute, true, true),
+    ];
+    assert_eq!(ready_fallbacks(&all), vec![Brain::OmniRoute, Brain::Nvidia, Brain::OpenRouter]);
+    // Not installed, or no key, is not ready; Claude is never a fallback.
+    let some = [
+        status(Brain::Claude, true, true),
+        status(Brain::OmniRoute, false, true),
+        status(Brain::Nvidia, true, false),
+        status(Brain::OpenRouter, true, true),
+    ];
+    assert_eq!(ready_fallbacks(&some), vec![Brain::OpenRouter]);
+    assert!(ready_fallbacks(&[status(Brain::Claude, true, true)]).is_empty());
+}
+
+#[test]
+fn fallback_state_is_per_session() {
+    assert_eq!(fallback_get("sess-a"), None);
+    fallback_set("sess-a", Brain::Nvidia);
+    assert_eq!(fallback_get("sess-a"), Some(Brain::Nvidia));
+    assert_eq!(fallback_get("sess-b"), None);
+}

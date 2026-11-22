@@ -18,6 +18,15 @@ export async function brainApply(route: Brain): Promise<BrainView> {
   return invoke<BrainView>("plugin:brain|brain_apply", { route })
 }
 
+/**
+ * The free route a session fell back to because Claude was unavailable (usage limit, not signed in,
+ * no subscription), or null when it runs on its chosen route. The chip shows "(fallback)" from it.
+ */
+export async function brainFallbackState(session: string): Promise<Brain | null> {
+  if (!isTauri()) return null
+  return invoke<Brain | null>("plugin:brain|brain_fallback_state", { session })
+}
+
 /** The route routes' keychain names. */
 export const KEY_NAME: Record<Exclude<Brain, "claude">, string> = {
   nvidia: "NVIDIA_NIM_API_KEY",

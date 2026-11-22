@@ -12,9 +12,11 @@
 pub mod supervise;
 
 use std::{
+    collections::HashMap,
     fs,
     io::{self, Write},
     path::{Path, PathBuf},
+    sync::{LazyLock, Mutex, PoisonError},
     time::Duration,
 };
 
@@ -103,7 +105,9 @@ impl Brain {
         }
     }
 
-    fn label(self) -> &'static str {
+    /// The name shown in the UI and in notices.
+    #[must_use]
+    pub fn label(self) -> &'static str {
         match self {
             Brain::Claude => "Claude",
             Brain::Nvidia => "NVIDIA",
@@ -458,6 +462,44 @@ pub fn apply(route: Brain, store: &impl SecretStore) -> Result<BrainView, BrainE
     view(store)
 }
 
+// ---------------------------------------------------------------- fallback when Claude is unavailable
+
+/// The order free routes are tried when Claude is unavailable: `OmniRoute` stacks every free tier,
+/// then NVIDIA, then `OpenRouter`.
+pub const FALLBACK_ORDER: [Brain; 3] = [Brain::OmniRoute, Brain::Nvidia, Brain::OpenRouter];
+
+/// The free routes that are ready (program installed and key saved), in [`FALLBACK_ORDER`]. Pure.
+#[must_use]
+pub fn ready_fallbacks(routes: &[RouteStatus]) -> Vec<Brain> {
+    FALLBACK_ORDER
+        .into_iter()
+        .filter(|b| routes.iter().any(|r| r.route == *b && r.installed && r.key_set))
+        .collect()
+}
+
+/// Sessions that fell back this app run: session id to the free route it is on. Memory only; a new
+/// session always tries Claude first.
+static FALLBACKS: LazyLock<Mutex<HashMap<String, Brain>>> = LazyLock::new(Mutex::default);
+
+/// Remembers that `session` runs on `route` for the rest of the session.
+pub fn fallback_set(session: &str, route: Brain) {
+    FALLBACKS.lock().unwrap_or_else(PoisonError::into_inner).insert(session.to_owned(), route);
+}
+
+/// The route `session` fell back to, if it did.
+#[must_use]
+pub fn fallback_get(session: &str) -> Option<Brain> {
+    FALLBACKS.lock().unwrap_or_else(PoisonError::into_inner).get(session).copied()
+}
+
+/// `brain_fallback_state` — the free route `session` fell back to because Claude was unavailable,
+/// or null when it is on its chosen route. The model chip shows "(fallback)" from this.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)] // a Tauri command takes owned arguments
+fn brain_fallback_state(session: String) -> Option<Brain> {
+    fallback_get(&session)
+}
+
 /// `brain_status` — the saved route and where each one stands (installed, key, proxy, model).
 #[tauri::command]
 async fn brain_status() -> Result<BrainView, BrainError> {
@@ -477,7 +519,7 @@ async fn brain_apply(route: Brain) -> Result<BrainView, BrainError> {
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("brain")
-        .invoke_handler(tauri::generate_handler![brain_status, brain_apply])
+        .invoke_handler(tauri::generate_handler![brain_status, brain_apply, brain_fallback_state])
         .on_event(|_app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 SUPERVISOR.stop_all();

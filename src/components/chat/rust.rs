@@ -26,7 +26,7 @@ use tokio::sync::oneshot;
 
 use crate::{
     brain::{self, Brain, BrainError},
-    driver::{self, DriverError, DriverKind, Event, Job, PermissionMode},
+    driver::{self, DriverError, DriverKind, Event, Job, PermissionMode, Unavailable},
     network::{host::Host, valid_task_id},
     pack::{self, PackError, Workspace},
     profile::{self, OsStore, ProfileError, Resolved},
@@ -412,79 +412,320 @@ async fn ask(
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
-    let brain = settings.brain;
-    let for_run = task_id.clone();
-    let (for_dept, for_repo) = (department.clone(), repo.clone());
-    let setup = tokio::task::spawn_blocking(move || {
-        prepare_run(
-            &resolved,
-            &for_dept,
-            kind,
-            for_run.as_deref(),
-            for_repo.as_deref(),
-            &root,
-            route.as_deref(),
-            mode.as_deref(),
-            brain,
-        )
-    })
-    .await
-    .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
-    let RunSetup { cwd, extras, env, timeout, permission, suffix } = setup;
-    let title = title_from(&prompt);
-    // The seed is only the opening move: a resumed session already has it.
-    let prompt = match (&task_id, &session) {
-        (Some(id), None) => task_prompt(id, &prompt),
-        _ => prompt,
-    };
-    let prompt = with_preface(prompt, repo.as_deref(), &department, session.is_none());
-    let prompt = with_suffix(prompt, &suffix);
-    let mut job = build_job(&job_id, kind, prompt, cwd, session, extras, env)?;
-    job.timeout_secs = timeout;
-    job.permission_mode = permission;
-    let (tx, rx) = oneshot::channel();
-    let _registration = register(&job.job_id, tx)?;
-
-    let mut seen = job.session.clone();
-    let outcome = {
-        let emit = |event: Event| {
-            let id = match &event {
-                Event::Started { session } => Some(session.clone()),
-                Event::Done {
-                    session: Some(s), ..
-                } => Some(s.clone()),
-                _ => None,
-            };
-            if let Some(id) = id {
-                if let Err(e) = sessions::touch(&id, &title, &department, repo.as_deref(), kind) {
-                    tracing::warn!("could not record session: {e}");
-                }
-                seen = Some(id);
-            }
-            if channel.send(event).is_err() {
-                tracing::debug!("chat channel closed");
-            }
-        };
-        tokio::select! {
-            r = driver::run(&job, emit) => Some(r),
-            _ = rx => None,
+    let inputs = SetupInputs { resolved, department, kind, task_id, repo, root, route, mode };
+    let configured = settings.brain;
+    // A session that already fell back stays on its free route (when it is still ready).
+    let sticky = if kind == DriverKind::Claude && !configured.is_free() {
+        match session.as_deref().and_then(brain::fallback_get) {
+            Some(b) if ready_routes().await.contains(&b) => Some(b),
+            _ => None,
         }
+    } else {
+        None
     };
-    let last = match outcome {
-        Some(Ok(())) => None,
-        Some(Err(e)) => Some(Event::Error {
-            message: e.to_string(),
-        }),
-        None => Some(Event::Done {
-            session: seen,
-            ok: false,
-            result: Some("stopped".into()),
-        }),
+    let first = sticky.unwrap_or(configured);
+    let setup = inputs.setup(first).await?;
+    let title = title_from(&prompt);
+    let ctx = RunCtx { title, department: inputs.department.clone(), repo: inputs.repo.clone(), kind };
+    let arabic = is_arabic(&prompt);
+    let (tx, mut rx) = oneshot::channel();
+    let _registration = register(&job_id, tx)?;
+    let mut seen = session.clone();
+    let mut notice = sticky.map(|b| still_notice(b, arabic));
+    let make_job = |setup: RunSetup| -> Result<Job, ChatError> {
+        let text = assemble_prompt(&prompt, &inputs, session.is_some(), &setup.suffix);
+        let mut job = build_job(&job_id, kind, text, setup.cwd, session.clone(), setup.extras, setup.env)?;
+        job.timeout_secs = setup.timeout;
+        job.permission_mode = setup.permission;
+        Ok(job)
+    };
+    let job = make_job(setup)?;
+    if let Some(n) = notice.take() {
+        let _ = channel.send(Event::Text { text: n });
+    }
+    // Attempt 0 on the chosen route (held back while it might turn out to be "Claude unavailable").
+    let gated = kind == DriverKind::Claude && !first.is_free();
+    let mut end = run_job(&job, &mut rx, gated, &ctx, &channel, &mut seen).await;
+    // Attempt 1, once: Claude was unavailable. Never a loop: the fallback run is not gated or retried.
+    end = match end {
+        RunEnd::Unavailable(why) if should_fall_back(kind, configured, 0, Some(&why)) => {
+            fall_back(&inputs, &make_job, &why, arabic, &mut rx, &ctx, &channel, &mut seen).await
+        }
+        other => other,
+    };
+    let last = match end {
+        RunEnd::Finished(Ok(())) => None,
+        RunEnd::Finished(Err(e)) => Some(Event::Error { message: e.to_string() }),
+        RunEnd::Failed(message) => Some(Event::Error { message }),
+        RunEnd::Stopped => Some(Event::Done { session: seen, ok: false, result: Some("stopped".into()) }),
+        RunEnd::Unavailable(why) => Some(Event::Error { message: no_route_message(&why, None, arabic) }),
     };
     if let Some(event) = last {
         let _ = channel.send(event);
     }
     Ok(())
+}
+
+/// Everything needed to prepare a run, kept so a fallback can prepare the same run on another route.
+struct SetupInputs {
+    resolved: Resolved,
+    department: String,
+    kind: DriverKind,
+    task_id: Option<String>,
+    repo: Option<String>,
+    root: PathBuf,
+    route: Option<String>,
+    mode: Option<String>,
+}
+
+impl SetupInputs {
+    async fn setup(&self, brain: Brain) -> Result<RunSetup, ChatError> {
+        let (resolved, department, kind, task_id, repo, root, route, mode) = (
+            self.resolved.clone(),
+            self.department.clone(),
+            self.kind,
+            self.task_id.clone(),
+            self.repo.clone(),
+            self.root.clone(),
+            self.route.clone(),
+            self.mode.clone(),
+        );
+        tokio::task::spawn_blocking(move || {
+            prepare_run(&resolved, &department, kind, task_id.as_deref(), repo.as_deref(), &root, route.as_deref(), mode.as_deref(), brain)
+        })
+        .await
+        .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?
+    }
+}
+
+/// The prompt as sent: a task's seed, the repo/department preface (new sessions), the route's suffix.
+fn assemble_prompt(prompt: &str, inputs: &SetupInputs, resumed: bool, suffix: &str) -> String {
+    // The seed is only the opening move: a resumed session already has it.
+    let text = match (&inputs.task_id, resumed) {
+        (Some(id), false) => task_prompt(id, prompt),
+        _ => prompt.to_owned(),
+    };
+    let text = with_preface(text, inputs.repo.as_deref(), &inputs.department, !resumed);
+    with_suffix(text, suffix)
+}
+
+/// What the session record and the sink need to know about a run.
+struct RunCtx {
+    title: String,
+    department: String,
+    repo: Option<String>,
+    kind: DriverKind,
+}
+
+/// How one driver run ended.
+enum RunEnd {
+    /// The driver returned (its own `Done` / `Error` events already went out).
+    Finished(Result<(), DriverError>),
+    /// The person stopped it.
+    Stopped,
+    /// Claude was unavailable; nothing of the run reached the UI.
+    Unavailable(Unavailable),
+    /// The fallback could not run: one line for the UI.
+    Failed(String),
+}
+
+/// Holds a Claude run's opening events until it is clear the run is not just "Claude unavailable":
+/// the CLI prints its sign-in / limit line as an assistant message and a failed result, which must
+/// not reach the chat as an answer when a fallback is about to take over. Pure.
+#[derive(Debug, Default)]
+struct Gate {
+    held: Vec<Event>,
+    committed: bool,
+    hit: Option<Unavailable>,
+}
+
+impl Gate {
+    /// Takes one event; returns what may be shown now.
+    fn push(&mut self, event: Event) -> Vec<Event> {
+        if self.committed {
+            return vec![event];
+        }
+        match &event {
+            Event::Started { .. } => self.held.push(event),
+            Event::Text { text } if driver::classify_unavailable(text).is_some() => self.held.push(event),
+            Event::Done { ok: false, result: Some(r), .. } if driver::classify_unavailable(r).is_some() => {
+                self.hit = driver::classify_unavailable(r);
+                self.held.push(event);
+            }
+            Event::Error { message } if driver::classify_unavailable(message).is_some() => {
+                self.hit = driver::classify_unavailable(message);
+                self.held.push(event);
+            }
+            _ => {
+                self.committed = true;
+                let mut out = std::mem::take(&mut self.held);
+                out.push(event);
+                return out;
+            }
+        }
+        Vec::new()
+    }
+
+    /// The run is over. `Err(why)` when it failed as unavailable (the held events are dropped);
+    /// `Ok(events)` is whatever was still held back.
+    fn finish(&mut self) -> Result<Vec<Event>, Unavailable> {
+        match self.hit.take() {
+            Some(why) if !self.committed => Err(why),
+            _ => Ok(std::mem::take(&mut self.held)),
+        }
+    }
+}
+
+/// Records the session and sends the event to the UI.
+fn deliver(event: Event, ctx: &RunCtx, seen: &mut Option<String>, channel: &Channel<Event>) {
+    let id = match &event {
+        Event::Started { session } => Some(session.clone()),
+        Event::Done { session: Some(s), .. } => Some(s.clone()),
+        _ => None,
+    };
+    if let Some(id) = id {
+        if let Err(e) = sessions::touch(&id, &ctx.title, &ctx.department, ctx.repo.as_deref(), ctx.kind) {
+            tracing::warn!("could not record session: {e}");
+        }
+        *seen = Some(id);
+    }
+    if channel.send(event).is_err() {
+        tracing::debug!("chat channel closed");
+    }
+}
+
+/// Runs `job` once, streaming to the UI. With `gated` the opening events are held (see [`Gate`]) and a
+/// run that fails as "Claude unavailable" ends as [`RunEnd::Unavailable`] with nothing shown.
+async fn run_job(
+    job: &Job,
+    rx: &mut oneshot::Receiver<()>,
+    gated: bool,
+    ctx: &RunCtx,
+    channel: &Channel<Event>,
+    seen: &mut Option<String>,
+) -> RunEnd {
+    let mut gate = Gate { committed: !gated, ..Gate::default() };
+    let outcome = {
+        let emit = |event: Event| {
+            for e in gate.push(event) {
+                deliver(e, ctx, seen, channel);
+            }
+        };
+        tokio::select! {
+            r = driver::run(job, emit) => Some(r),
+            _ = &mut *rx => None,
+        }
+    };
+    match gate.finish() {
+        Err(why) if outcome.is_some() => return RunEnd::Unavailable(why),
+        Err(_) => {}
+        Ok(held) => {
+            for e in held {
+                deliver(e, ctx, seen, channel);
+            }
+        }
+    }
+    outcome.map_or(RunEnd::Stopped, RunEnd::Finished)
+}
+
+/// Routes that are installed with a key, in fallback order. Blocking work off the async thread.
+async fn ready_routes() -> Vec<Brain> {
+    tokio::task::spawn_blocking(|| brain::view(&OsStore).map(|v| brain::ready_fallbacks(&v.routes)).unwrap_or_default())
+        .await
+        .unwrap_or_default()
+}
+
+/// Whether a failed run should be re-run on a free route: only a Claude-driver run on the Claude
+/// route, on its first attempt, that failed as "Claude unavailable".
+fn should_fall_back(kind: DriverKind, configured: Brain, attempt: u8, why: Option<&Unavailable>) -> bool {
+    kind == DriverKind::Claude && !configured.is_free() && attempt == 0 && why.is_some()
+}
+
+/// Re-runs the job once on the first ready free route, telling the UI first. Never silent, never an
+/// API key, never a second fallback.
+#[allow(clippy::too_many_arguments)] // the pieces of one run
+async fn fall_back(
+    inputs: &SetupInputs,
+    make_job: &impl Fn(RunSetup) -> Result<Job, ChatError>,
+    why: &Unavailable,
+    arabic: bool,
+    rx: &mut oneshot::Receiver<()>,
+    ctx: &RunCtx,
+    channel: &Channel<Event>,
+    seen: &mut Option<String>,
+) -> RunEnd {
+    let ready = ready_routes().await;
+    if ready.is_empty() {
+        return RunEnd::Failed(no_route_message(why, None, arabic));
+    }
+    let mut last_error = None;
+    for route in ready {
+        match inputs.setup(route).await {
+            Ok(setup) => {
+                let job = match make_job(setup) {
+                    Ok(j) => j,
+                    Err(e) => return RunEnd::Failed(e.to_string()),
+                };
+                let _ = channel.send(Event::Text { text: fallback_notice(why, route, arabic) });
+                let end = run_job(&job, rx, false, ctx, channel, seen).await;
+                if let Some(id) = seen.as_deref() {
+                    brain::fallback_set(id, route);
+                }
+                return end;
+            }
+            Err(e) => last_error = Some((route, e.to_string())),
+        }
+    }
+    RunEnd::Failed(no_route_message(why, last_error, arabic))
+}
+
+fn is_arabic(text: &str) -> bool {
+    text.chars().any(|c| ('\u{0600}'..='\u{06FF}').contains(&c))
+}
+
+/// Why Claude is unavailable, in a few words.
+fn reason_text(why: &Unavailable, arabic: bool) -> String {
+    match (why, arabic) {
+        (Unavailable::NotSignedIn, false) => "not signed in".into(),
+        (Unavailable::NoSubscription, false) => "no subscription".into(),
+        (Unavailable::UsageLimit { resets_at: Some(t) }, false) => format!("usage limit, resets {t}"),
+        (Unavailable::UsageLimit { resets_at: None }, false) => "usage limit".into(),
+        (Unavailable::NotSignedIn, true) => "لم يتم تسجيل الدخول".into(),
+        (Unavailable::NoSubscription, true) => "لا يوجد اشتراك".into(),
+        (Unavailable::UsageLimit { resets_at: Some(t) }, true) => format!("بلغت حد الاستخدام، يتجدد {t}"),
+        (Unavailable::UsageLimit { resets_at: None }, true) => "بلغت حد الاستخدام".into(),
+    }
+}
+
+/// The line shown (as agent text) before a fallback run. Names the route and the privacy caveat.
+fn fallback_notice(why: &Unavailable, route: Brain, arabic: bool) -> String {
+    let (reason, label) = (reason_text(why, arabic), route.label());
+    if arabic {
+        format!("ملاحظة: Claude غير متاح ({reason}). هذا التشغيل يستخدم {label} مجانًا، والمزوّد المجاني يستطيع قراءة ما يُرسل إليه.")
+    } else {
+        format!("Note: Claude isn't available ({reason}). This run uses {label}, free. A free provider can read what it sends.")
+    }
+}
+
+/// The line shown when a session stays on its earlier fallback.
+fn still_notice(route: Brain, arabic: bool) -> String {
+    let label = route.label();
+    if arabic {
+        format!("ملاحظة: هذه الجلسة تبقى على {label} مجانًا لأن Claude لم يكن متاحًا سابقًا، والمزوّد المجاني يستطيع قراءة ما يُرسل إليه.")
+    } else {
+        format!("Note: this session stays on {label}, free, because Claude wasn't available earlier. A free provider can read what it sends.")
+    }
+}
+
+/// The end-of-run error when no free route could take over.
+fn no_route_message(why: &Unavailable, tried: Option<(Brain, String)>, arabic: bool) -> String {
+    let reason = reason_text(why, arabic);
+    match (tried, arabic) {
+        (None, false) => format!("Claude isn't available ({reason}) and no free route is ready. Open Settings → Model to set one up."),
+        (Some((b, e)), false) => format!("Claude isn't available ({reason}), and {} could not start: {e} Check Settings → Model.", b.label()),
+        (None, true) => format!("Claude غير متاح ({reason}) ولا يوجد مسار مجاني جاهز. افتح الإعدادات ← النموذج لإعداده."),
+        (Some((b, e)), true) => format!("Claude غير متاح ({reason})، وتعذّر تشغيل {}: {e} راجع الإعدادات ← النموذج.", b.label()),
+    }
 }
 
 /// How long `refine` may take before it gives up: it reads the project's folder first.

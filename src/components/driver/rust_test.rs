@@ -313,3 +313,50 @@ fn run_path_keeps_existing_dirs_once_in_order() {
     let parts: Vec<_> = std::env::split_paths(&joined).collect();
     assert_eq!(parts, vec![tmp, std::path::PathBuf::from("/")]);
 }
+
+fn claude_events(fixture: &str) -> Vec<Event> {
+    events(DriverKind::Claude, fixture)
+}
+
+#[test]
+fn unavailable_reasons_classify_from_real_cli_runs() {
+    assert_eq!(
+        classify_failure(&claude_events(include_str!("fixtures/claude-not-signed-in.jsonl"))),
+        Some(Unavailable::NotSignedIn)
+    );
+    assert_eq!(
+        classify_failure(&claude_events(include_str!("fixtures/claude-usage-limit.jsonl"))),
+        Some(Unavailable::UsageLimit { resets_at: Some("9pm (Asia/Riyadh)".into()) })
+    );
+    assert_eq!(
+        classify_failure(&claude_events(include_str!("fixtures/claude-usage-limit-session.jsonl"))),
+        Some(Unavailable::UsageLimit { resets_at: Some("9pm (Asia/Riyadh)".into()) })
+    );
+    assert_eq!(
+        classify_failure(&claude_events(include_str!("fixtures/claude-no-subscription.jsonl"))),
+        Some(Unavailable::NoSubscription)
+    );
+}
+
+#[test]
+fn ordinary_failures_and_successes_are_not_unavailable() {
+    assert_eq!(classify_failure(&claude_events(include_str!("fixtures/claude-error-other.jsonl"))), None);
+    assert_eq!(classify_failure(&claude_events(include_str!("fixtures/claude.jsonl"))), None);
+    // A successful answer that merely quotes a limit message is not a failure.
+    let ok = [Event::Done { session: None, ok: true, result: Some("You've hit your limit".into()) }];
+    assert_eq!(classify_failure(&ok), None);
+    // Other drivers' errors, a bare non-zero exit, a long body.
+    let other = events(DriverKind::Opencode, include_str!("fixtures/opencode-error.jsonl"));
+    assert_eq!(classify_failure(&other), None);
+    assert_eq!(classify_failure(&[Event::Done { session: None, ok: false, result: None }]), None);
+    assert_eq!(classify_unavailable("rate limited, retry later"), None);
+    assert_eq!(classify_unavailable(&format!("You've hit your {}", "x".repeat(500))), None);
+}
+
+#[test]
+fn usage_limit_without_a_reset_time_has_none() {
+    assert_eq!(
+        classify_unavailable("Claude AI usage limit reached"),
+        Some(Unavailable::UsageLimit { resets_at: None })
+    );
+}

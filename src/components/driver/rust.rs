@@ -601,6 +601,74 @@ pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), Dr
         .map_err(|_| DriverError::Timeout(secs))
 }
 
+/// Why a Claude run could not start at all: the person's own Claude is unavailable. Only these
+/// cases let the chat fall back to a free route; every other failure stays an ordinary error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Unavailable {
+    /// No sign-in, an expired or revoked one, or an invalid key.
+    NotSignedIn,
+    /// The plan's usage (or spend) limit is reached; `resets_at` is the CLI's own wording, e.g. `9pm (Asia/Riyadh)`.
+    UsageLimit { resets_at: Option<String> },
+    /// The account has no usable subscription or billing (organization disabled, credit balance too low).
+    NoSubscription,
+}
+
+/// Longest message that can be one of the CLI's own availability lines (a long body is a real answer).
+const UNAVAILABLE_MAX_CHARS: usize = 400;
+
+/// Classifies the text of a failed Claude run. The wordings are the Claude Code CLI's own
+/// (2.1.330 bundle): `You've hit your limit · resets 9pm (Asia/Riyadh)`, `usage limit reached`,
+/// `Invalid API key · Please run /login`, `Not logged in`, `Session expired. Please run /login`,
+/// `Credit balance is too low`, `organization has been disabled`. Anything else is `None`.
+#[must_use]
+pub fn classify_unavailable(text: &str) -> Option<Unavailable> {
+    if text.chars().count() > UNAVAILABLE_MAX_CHARS {
+        return None;
+    }
+    let low = text.to_ascii_lowercase();
+    let has = |needles: &[&str]| needles.iter().any(|n| low.contains(n));
+    if has(&[
+        "you've hit your",
+        "you've reached your",
+        "usage limit reached",
+        "out of usage credits",
+        "out of extra usage",
+        "spend limit reached",
+    ]) {
+        let resets_at = low.find("resets ").map(|i| {
+            let rest = &text[i + "resets ".len()..];
+            let end = rest.find(['·', '\n', '|']).unwrap_or(rest.len());
+            rest[..end].trim().to_owned()
+        });
+        return Some(Unavailable::UsageLimit { resets_at: resets_at.filter(|r| !r.is_empty()) });
+    }
+    if has(&["credit balance is too low", "credit balance too low", "organization has been disabled", "requires a claude.ai subscription"]) {
+        return Some(Unavailable::NoSubscription);
+    }
+    if has(&[
+        "please run /login",
+        "not logged in",
+        "invalid api key",
+        "oauth token revoked",
+        "login expired",
+        "run claude auth login",
+    ]) {
+        return Some(Unavailable::NotSignedIn);
+    }
+    None
+}
+
+/// Whether a finished Claude run failed because Claude is unavailable: its closing `Done { ok: false }`
+/// result or its `Error` message classifies. A successful run, or any other failure, is `None`.
+#[must_use]
+pub fn classify_failure(events: &[Event]) -> Option<Unavailable> {
+    match events.iter().rev().find(|e| matches!(e, Event::Done { .. } | Event::Error { .. }))? {
+        Event::Done { ok: false, result: Some(r), .. } => classify_unavailable(r),
+        Event::Error { message } => classify_unavailable(message),
+        _ => None,
+    }
+}
+
 /// `drivers` — which agent CLIs this machine has.
 #[tauri::command]
 fn drivers() -> Vec<DriverStatus> {
