@@ -5,7 +5,6 @@ import {
   ArrowUpIcon,
   ClapperboardIcon,
   FileIcon,
-  FileTextIcon,
   FolderIcon,
   ImageIcon,
   LibraryIcon,
@@ -328,11 +327,8 @@ export function Composer({
     setLink("");
     setPlus(false);
   };
+  // The + menu: the media library, any file, a folder, a link. One row each.
   const pickers: { kind: PickKind; label: keyof typeof copy; Icon: typeof FileIcon }[] = [
-    { kind: "image", label: "attachImages", Icon: ImageIcon },
-    { kind: "video", label: "attachVideos", Icon: ClapperboardIcon },
-    { kind: "audio", label: "attachAudio", Icon: MusicIcon },
-    { kind: "document", label: "attachDocs", Icon: FileTextIcon },
     { kind: "any", label: "attachAny", Icon: FileIcon },
   ];
   const row =
@@ -491,7 +487,6 @@ export function Composer({
                   )}
                 </span>
               </button>
-              <div className="mx-2 my-1 h-px bg-border/60" aria-hidden />
               {pickers.map(({ kind, label, Icon }) => (
                 <button
                   key={kind}
@@ -511,7 +506,6 @@ export function Composer({
                 <FolderIcon className="size-4 text-muted-foreground" aria-hidden />
                 {t(copy.attachFolder)}
               </button>
-              <div className="mx-2 my-1 h-px bg-border/60" aria-hidden />
               {linking ? (
                 <div className="flex items-center gap-2 px-2 py-1.5">
                   <LinkIcon className="ms-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
