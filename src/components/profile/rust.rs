@@ -479,12 +479,16 @@ impl SecretStore for OsStore {
     }
 }
 
-fn account(resolved: &Resolved, name: &str) -> String {
+/// Secrets every profile may store, whatever its `secrets` list says: the keys of the free model
+/// routes (Settings → Model). Nothing else is loosened.
+pub const BUILTIN_SECRETS: [&str; 3] = ["NVIDIA_NIM_API_KEY", "OPENROUTER_API_KEY", "OMNIROUTE_API_KEY"];
+
+pub(crate) fn account(resolved: &Resolved, name: &str) -> String {
     format!("{}/{name}", resolved.profile.login)
 }
 
 fn allowed(resolved: &Resolved, name: &str) -> Result<(), ProfileError> {
-    if resolved.secrets.iter().any(|s| s == name) {
+    if BUILTIN_SECRETS.contains(&name) || resolved.secrets.iter().any(|s| s == name) {
         Ok(())
     } else {
         Err(ProfileError::NotAllowed(name.to_owned()))
@@ -525,6 +529,19 @@ pub fn secret_present(
         .get(&account(resolved, name))
         .map_err(ProfileError::Store)?
         .is_some())
+}
+
+/// One stored secret the profile may use. The value stays in Rust: only run setup reads it.
+///
+/// # Errors
+/// When the name is not allowed or the store cannot be read.
+pub fn read_secret(
+    store: &impl SecretStore,
+    resolved: &Resolved,
+    name: &str,
+) -> Result<Option<String>, ProfileError> {
+    allowed(resolved, name)?;
+    store.get(&account(resolved, name)).map_err(ProfileError::Store)
 }
 
 /// Every stored secret of the profile as `(NAME, value)`, for the environment of one run.

@@ -43,11 +43,11 @@ test("apps: the item is a readiness step id", () => {
   assert.deepEqual(trail("/ar/apps/", "item=claude.cli"), { parent: "apps", child: "claude.cli", leaf: null })
 })
 
-test("settings: the view and the three routes are its children", () => {
+test("settings: the view and the four routes are its children", () => {
   assert.deepEqual(trail("/en/settings/"), { parent: "settings", child: null, leaf: null })
   assert.equal(trail("/en/settings/", "view=general").child, "general")
   assert.equal(trail("/en/settings/", "view=other").child, null)
-  for (const r of ["config", "health", "engine"]) assert.deepEqual(trail(`/en/${r}/`), { parent: "settings", child: r, leaf: null })
+  for (const r of ["model", "config", "health", "engine"]) assert.deepEqual(trail(`/en/${r}/`), { parent: "settings", child: r, leaf: null })
 })
 
 test("stage counts skip `skip` steps and count pass, fixed, updated as done", () => {
@@ -67,8 +67,8 @@ test("tree: gating, and setup's children without the app stages", () => {
   const input = { isAr: false, inApp: false, engine: false, stages, steps: [] }
   const ids = (n: ReturnType<typeof buildTree>, p: string) => n.find((x) => x.id === p)?.children?.map((c) => c.id)
   assert.deepEqual(ids(buildTree(input), "settings"), ["general"])
-  assert.deepEqual(ids(buildTree({ ...input, inApp: true }), "settings"), ["general", "config", "health"])
-  assert.deepEqual(ids(buildTree({ ...input, inApp: true, engine: true }), "settings"), ["general", "config", "health", "engine"])
+  assert.deepEqual(ids(buildTree({ ...input, inApp: true }), "settings"), ["general", "model", "config", "health"])
+  assert.deepEqual(ids(buildTree({ ...input, inApp: true, engine: true }), "settings"), ["general", "model", "config", "health", "engine"])
   assert.deepEqual(ids(buildTree(input), "setup"), ["identity", "repos"])
   assert.deepEqual(ids(buildTree(input), "library"), ["skills", "agents", "rules", "hooks", "departments"])
 })

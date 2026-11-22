@@ -1,0 +1,243 @@
+"use client"
+
+import { Check, ExternalLink, Loader2 } from "lucide-react"
+import { useCallback, useEffect, useState } from "react"
+
+import { cn } from "@/lib/utils"
+import type { Locale } from "@/components/local/config"
+
+import { tr, type Copy } from "../chat/config"
+import { Logo } from "../plugins/card"
+import { setSecret } from "../profile/actions"
+import { readinessFix } from "../readiness/actions"
+import { OpenInMachine, useInMachine } from "../shell/content"
+import { PageShell } from "../shell/page"
+import { INSTALL_STEP, KEY_NAME, brainApply, brainStatus } from "./actions"
+import { copy } from "./config"
+import type { Brain, BrainView, RouteStatus } from "./types"
+
+const CARDS: { id: Brain; name: Copy; blurb: Copy; logo?: string; links: { href: string; label: Copy }[] }[] = [
+  { id: "claude", name: copy.claudeName, blurb: copy.claudeBlurb, logo: "/logos/claude.svg", links: [] },
+  {
+    id: "nvidia",
+    name: copy.nvidiaName,
+    blurb: copy.nvidiaBlurb,
+    links: [{ href: "https://build.nvidia.com/settings/api-keys", label: copy.getNvidiaKey }],
+  },
+  {
+    id: "openrouter",
+    name: copy.openrouterName,
+    blurb: copy.openrouterBlurb,
+    links: [
+      { href: "https://openrouter.ai/settings/keys", label: copy.getOpenrouterKey },
+      { href: "https://openrouter.ai/settings/credits", label: copy.openrouterCredits },
+    ],
+  },
+  {
+    id: "omniroute",
+    name: copy.omnirouteName,
+    blurb: copy.omnirouteBlurb,
+    links: [{ href: "http://localhost:20128", label: copy.omnirouteDashboard }],
+  },
+]
+
+const pill = "text-sm font-medium rounded-full px-3 py-1.5 transition-colors disabled:opacity-50"
+
+/** Settings → Model: Claude (default) and three free routes, each with its status and "Use this". */
+export default function BrainContent({ lang }: { lang: Locale }) {
+  const t = tr(lang === "ar")
+  const inApp = useInMachine()
+  const [view, setView] = useState<BrainView | null>(null)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const reload = useCallback(async () => {
+    const v = await brainStatus()
+    if (v) setView(v)
+  }, [])
+
+  useEffect(() => {
+    if (!inApp) return
+    reload().catch((e) => setMessage(String(e)))
+  }, [inApp, reload])
+
+  if (inApp === null) return null
+  return (
+    <PageShell title={t(copy.title)}>
+      {!inApp ? (
+        <OpenInMachine lang={lang} />
+      ) : (
+        <>
+          <p className="text-muted-foreground max-w-xl text-sm">{t(copy.intro)}</p>
+          {message && <p className="text-destructive text-sm">{message}</p>}
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {CARDS.map((c) => {
+              const status = view?.routes.find((r) => r.route === c.id)
+              return (
+                <RouteCard
+                  key={c.id}
+                  card={c}
+                  status={status}
+                  current={view?.current === c.id}
+                  t={t}
+                  onChanged={reload}
+                  onApply={async () => {
+                    setMessage(null)
+                    try {
+                      setView(await brainApply(c.id))
+                    } catch (e) {
+                      setMessage(String(e))
+                    }
+                  }}
+                />
+              )
+            })}
+          </div>
+        </>
+      )}
+    </PageShell>
+  )
+}
+
+function Status({ ok, children }: { ok: boolean; children: React.ReactNode }) {
+  return (
+    <li className="flex items-center gap-1.5">
+      <span className={cn("size-1.5 shrink-0 rounded-full", ok ? "bg-emerald-500" : "bg-muted-foreground/40")} aria-hidden />
+      {children}
+    </li>
+  )
+}
+
+function RouteCard({
+  card,
+  status,
+  current,
+  t,
+  onApply,
+  onChanged,
+}: {
+  card: (typeof CARDS)[number]
+  status: RouteStatus | undefined
+  current: boolean
+  t: (c: Copy) => string
+  onApply: () => Promise<void>
+  onChanged: () => Promise<void>
+}) {
+  const free = card.id !== "claude"
+  const [key, setKey] = useState("")
+  const [busy, setBusy] = useState<"key" | "install" | "use" | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const name = t(card.name)
+
+  async function run(kind: "key" | "install" | "use", job: () => Promise<void>) {
+    setBusy(kind)
+    setError(null)
+    try {
+      await job()
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const saveKey = () =>
+    run("key", async () => {
+      if (card.id === "claude" || !key.trim()) return
+      await setSecret(KEY_NAME[card.id], key)
+      setKey("")
+      await onChanged()
+    })
+
+  const install = () =>
+    run("install", async () => {
+      if (card.id === "claude") return
+      const out = await readinessFix(INSTALL_STEP[card.id])
+      if (!out.ok) throw new Error(out.message ?? "install failed")
+      await onChanged()
+    })
+
+  const ready = !free || (!!status?.installed && !!status?.key_set)
+
+  return (
+    <div className={cn("bg-background flex min-w-0 flex-col gap-3 rounded-2xl p-4", current && "ring-foreground ring-2")}>
+      <div className="flex items-start gap-3">
+        <Logo c={{ id: card.id, name, logo: card.logo, blurb: card.blurb }} />
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <span className="truncate font-semibold">
+            <bdi>{name}</bdi>
+          </span>
+          <span className="text-muted-foreground text-sm">{t(card.blurb)}</span>
+        </div>
+        {current && (
+          <span className="bg-foreground text-background flex shrink-0 items-center gap-1 rounded-full px-2.5 py-1 text-xs font-medium">
+            <Check className="size-3.5" aria-hidden />
+            {t(copy.using)}
+          </span>
+        )}
+      </div>
+
+      {free && status && (
+        <ul className="text-muted-foreground flex flex-col gap-1 text-sm">
+          <Status ok={status.installed}>
+            {status.installed ? t(copy.installed) : t(copy.notInstalled)}
+            {!status.installed && (
+              <button type="button" onClick={() => void install()} disabled={busy !== null} className="text-primary ms-2 font-medium disabled:opacity-50">
+                {busy === "install" ? t(copy.installing) : t(copy.install)}
+              </button>
+            )}
+          </Status>
+          <Status ok={status.key_set}>{status.key_set ? t(copy.keySet) : t(copy.keyMissing)}</Status>
+          <Status ok={status.proxy_up}>{status.proxy_up ? t(copy.proxyUp) : t(copy.proxyDown)}</Status>
+        </ul>
+      )}
+
+      {free && (
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void saveKey()
+          }}
+        >
+          <input
+            type="password"
+            autoComplete="off"
+            spellCheck={false}
+            dir="ltr"
+            value={key}
+            onChange={(e) => setKey(e.target.value)}
+            placeholder={status?.key_set ? t(copy.keyReplace) : t(copy.keyPlaceholder)}
+            aria-label={t(copy.keyPlaceholder)}
+            className="bg-muted h-10 min-w-0 flex-1 rounded-full px-4 text-sm outline-none"
+          />
+          <button type="submit" disabled={!key.trim() || busy !== null} className={cn(pill, "bg-muted hover:bg-muted/70")}>
+            {busy === "key" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : t(copy.save)}
+          </button>
+        </form>
+      )}
+
+      {card.links.length > 0 && (
+        <div className="flex flex-col gap-1">
+          {card.links.map((l) => (
+            <a key={l.href} href={l.href} target="_blank" rel="noreferrer" className="text-primary inline-flex items-center gap-1.5 text-sm font-medium">
+              <ExternalLink className="size-3.5 shrink-0" aria-hidden />
+              {t(l.label)}
+            </a>
+          ))}
+        </div>
+      )}
+
+      {free && <p className="text-muted-foreground text-xs">{t(copy.privacy)}</p>}
+      {error && <p className="text-destructive text-sm">{error}</p>}
+
+      <button
+        type="button"
+        disabled={current || !ready || busy !== null}
+        onClick={() => void run("use", onApply)}
+        className={cn(pill, "mt-auto self-start", current ? "bg-muted text-muted-foreground" : "bg-foreground text-background hover:bg-foreground/90")}
+      >
+        {busy === "use" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : current ? t(copy.using) : t(copy.use)}
+      </button>
+    </div>
+  )
+}

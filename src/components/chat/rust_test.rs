@@ -411,7 +411,7 @@ const ROUTED: &str = r#"{"routes":[
 #[test]
 fn a_route_sets_the_mode_flags_and_suffix() {
     let meta = route_meta(ROUTED);
-    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("plan"), None).unwrap();
+    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("plan"), None, false).unwrap();
     assert_eq!((mode, suffix.as_str()), (PermissionMode::Plan, "Plan only."));
     let prompt = with_suffix("make a film".into(), &suffix);
     assert_eq!(prompt, "make a film\n\nPlan only.");
@@ -423,7 +423,7 @@ fn a_route_sets_the_mode_flags_and_suffix() {
         || (args.windows(2).any(|w| w == ["--agent", "producer"])
             && args.windows(2).any(|w| w == ["--model", "opus"])
             && args.windows(2).any(|w| w == ["--effort", "high"])));
-    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("do"), None).unwrap();
+    let (mode, flags, suffix) = resolve_turn(&meta, DriverKind::Claude, Some("do"), None, false).unwrap();
     assert_eq!((mode, flags.is_empty(), suffix.is_empty()), (PermissionMode::Auto, true, true));
     assert_eq!(with_suffix("x".into(), ""), "x");
 }
@@ -432,11 +432,11 @@ fn a_route_sets_the_mode_flags_and_suffix() {
 fn an_unknown_route_is_refused() {
     let meta = route_meta(ROUTED);
     assert!(matches!(
-        resolve_turn(&meta, DriverKind::Claude, Some("ghost"), None),
+        resolve_turn(&meta, DriverKind::Claude, Some("ghost"), None, false),
         Err(ChatError::BadRoute(id)) if id == "ghost"
     ));
     assert!(matches!(
-        resolve_turn(&meta, DriverKind::Codex, Some("ghost"), None),
+        resolve_turn(&meta, DriverKind::Codex, Some("ghost"), None, false),
         Err(ChatError::BadRoute(_))
     ));
 }
@@ -444,21 +444,21 @@ fn an_unknown_route_is_refused() {
 #[test]
 fn the_old_mode_picks_plan_or_do_and_other_drivers_ignore_routes() {
     let meta = route_meta(ROUTED);
-    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan")).unwrap();
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan"), false).unwrap();
     assert_eq!((m, f.is_empty(), s.as_str()), (PermissionMode::Plan, false, "Plan only."));
-    let (m, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto")).unwrap();
+    let (m, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto"), false).unwrap();
     assert_eq!((m, f.is_empty()), (PermissionMode::Auto, true));
     // No route, no mode: a plain auto run.
-    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, None).unwrap();
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Claude, None, None, false).unwrap();
     assert_eq!((m, f.is_empty(), s.is_empty()), (PermissionMode::Auto, true, true));
     // Another driver takes the route's mode but none of its flags or suffix.
-    let (m, f, s) = resolve_turn(&meta, DriverKind::Codex, Some("plan"), None).unwrap();
+    let (m, f, s) = resolve_turn(&meta, DriverKind::Codex, Some("plan"), None, false).unwrap();
     assert_eq!((m, f.is_empty(), s.is_empty()), (PermissionMode::Plan, true, true));
     // A bare `run` block still answers the old mode through the derived routes.
     let meta = route_meta(r#"{"run":{"plan":{"effort":"high"},"work":{"effort":"low"}}}"#);
-    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan")).unwrap();
+    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("plan"), false).unwrap();
     assert_eq!(f, ["--effort", "high"]);
-    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto")).unwrap();
+    let (_, f, _) = resolve_turn(&meta, DriverKind::Claude, None, Some("auto"), false).unwrap();
     assert_eq!(f, ["--effort", "low"]);
 }
 
@@ -525,4 +525,27 @@ fn the_refined_text_prefers_the_result() {
     assert_eq!(refined_text(" streamed ", None).unwrap(), "streamed");
     assert_eq!(refined_text("s", Some("  ")).unwrap(), "s");
     assert!(refined_text(" ", None).is_err());
+}
+
+#[test]
+fn a_free_route_drops_the_packs_model_flag_but_keeps_effort_and_agent() {
+    let meta = route_meta(ROUTED);
+    let (_, flags, _) = resolve_turn(&meta, DriverKind::Claude, Some("plan"), None, true).unwrap();
+    assert!(!flags.iter().any(|f| f == "--model" || f == "opus"));
+    assert!(flags.windows(2).any(|w| w == ["--effort", "high"]));
+    assert!(flags.windows(2).any(|w| w == ["--agent", "producer"]));
+}
+
+#[test]
+fn a_free_route_job_carries_the_proxy_env_and_no_other_anthropic_var() {
+    for brain in [Brain::Nvidia, Brain::OpenRouter, Brain::OmniRoute] {
+        let env = brain::merge_env(
+            vec![("ANTHROPIC_API_KEY".into(), "sk-ant".into()), ("TWENTY_API_KEY".into(), "t".into())],
+            brain::route_env(brain, Some("sk-omni")),
+        );
+        let job = build_job("j-1", DriverKind::Claude, "hi".into(), "/".into(), None, Vec::new(), env).unwrap();
+        assert!(job.env.iter().any(|(k, _)| k == "ANTHROPIC_BASE_URL"), "{brain:?}");
+        assert!(!job.env.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"), "{brain:?}");
+        assert!(job.env.iter().any(|(k, _)| k == "TWENTY_API_KEY"));
+    }
 }

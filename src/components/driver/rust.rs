@@ -223,7 +223,7 @@ fn windows_dirs(
     dirs
 }
 
-fn find_binary(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+pub(crate) fn find_binary(name: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
     let candidates: &[&str] = if cfg!(windows) {
         &["", ".exe", ".cmd"]
     } else {
@@ -504,6 +504,20 @@ pub fn hermes_events(stdout: &str) -> Vec<Event> {
     out
 }
 
+/// A run that points claude at a proxy (`ANTHROPIC_BASE_URL` in its env) must not inherit another
+/// `ANTHROPIC_*` variable or the telemetry switch from the app's own environment: a stray
+/// `ANTHROPIC_API_KEY` would be sent to the proxy, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
+/// breaks it. Returns the inherited names to drop; a normal run drops nothing.
+fn inherited_to_remove(job: &Job, inherited: impl Iterator<Item = String>) -> Vec<String> {
+    if job.driver != DriverKind::Claude || !job.env.iter().any(|(k, _)| k == "ANTHROPIC_BASE_URL") {
+        return Vec::new();
+    }
+    inherited
+        .filter(|k| k.starts_with("ANTHROPIC_") || k == "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+        .filter(|k| !job.env.iter().any(|(n, _)| n == k))
+        .collect()
+}
+
 /// Runs a job to completion, calling `emit` for every event. Never panics on bad output.
 ///
 /// # Errors
@@ -515,7 +529,11 @@ pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), Dr
     if !Path::new(&job.cwd).is_dir() {
         return Err(DriverError::Invalid("cwd is not a folder"));
     }
-    let mut child = Command::new(bin)
+    let mut cmd = Command::new(bin);
+    for key in inherited_to_remove(job, std::env::vars_os().filter_map(|(k, _)| k.into_string().ok())) {
+        cmd.env_remove(key);
+    }
+    let mut child = cmd
         .args(&args)
         .current_dir(&job.cwd)
         .envs(job.env.iter().map(|(k, v)| (k, v)))

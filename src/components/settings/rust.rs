@@ -15,6 +15,7 @@ use tauri::{
 use ts_rs::TS;
 
 use crate::{
+    brain::Brain,
     driver::{self, DriverKind, DriverStatus},
     profile::MachineProfile,
 };
@@ -35,6 +36,9 @@ pub struct Settings {
     /// Opt-in: pick up `run:auto` tasks without being asked. Off by default; nothing spawns yet.
     #[serde(rename = "autoRun")]
     pub auto_run: bool,
+    /// Which model runs the Claude Code CLI: `claude` (the person's own sign-in, the default) or a
+    /// free route (Settings → Model). Missing in older files, which read as `claude`.
+    pub brain: Brain,
 }
 
 impl Default for Settings {
@@ -46,6 +50,7 @@ impl Default for Settings {
             driver: DriverKind::Claude,
             login: String::new(),
             auto_run: false,
+            brain: Brain::Claude,
         }
     }
 }
@@ -138,7 +143,7 @@ impl Settings {
     }
 }
 
-fn machine_dir() -> Result<PathBuf, SettingsError> {
+pub(crate) fn machine_dir() -> Result<PathBuf, SettingsError> {
     match std::env::var_os("KUN_HOME") {
         Some(p) if !p.is_empty() => Ok(PathBuf::from(p).join("machine")),
         _ => dirs::home_dir()

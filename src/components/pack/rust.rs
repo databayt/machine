@@ -591,12 +591,22 @@ fn parse_routes(
 /// The Claude flags a route gets: `--model`, `--effort`, `--agent` (those present).
 #[must_use]
 pub fn route_flags(route: &Route) -> Vec<String> {
+    route_flags_for(route, false)
+}
+
+/// [`route_flags`] for a run on a free model route: the pack's `--model` names a Claude model, which a
+/// proxy cannot serve, so it is left out (`free`); effort and agent still apply.
+#[must_use]
+pub fn route_flags_for(route: &Route, free: bool) -> Vec<String> {
     let mut a = Vec::new();
     for (flag, val) in [
         ("--model", &route.model),
         ("--effort", &route.effort),
         ("--agent", &route.agent),
     ] {
+        if flag == "--model" && free {
+            continue;
+        }
         if let Some(v) = val {
             a.extend([flag.to_owned(), v.clone()]);
         }

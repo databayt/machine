@@ -25,6 +25,7 @@ use tauri::{
 use tokio::sync::oneshot;
 
 use crate::{
+    brain::{self, Brain, BrainError},
     driver::{self, DriverError, DriverKind, Event, Job, PermissionMode},
     network::{host::Host, valid_task_id},
     pack::{self, PackError, Workspace},
@@ -58,6 +59,8 @@ pub enum ChatError {
     Profile(#[from] ProfileError),
     #[error(transparent)]
     Driver(#[from] DriverError),
+    #[error(transparent)]
+    Brain(#[from] BrainError),
 }
 
 impl Serialize for ChatError {
@@ -287,6 +290,7 @@ fn resolve_turn(
     kind: DriverKind,
     route: Option<&str>,
     mode: Option<&str>,
+    free: bool,
 ) -> Result<(PermissionMode, Vec<String>, String), ChatError> {
     let legacy = PermissionMode::parse(mode);
     if kind != DriverKind::Claude {
@@ -308,7 +312,7 @@ fn resolve_turn(
         (None, None) => None,
     };
     Ok(found.map_or((legacy, Vec::new(), String::new()), |r| {
-        (r.permission(), pack::route_flags(r), r.suffix.clone())
+        (r.permission(), pack::route_flags_for(r, free), r.suffix.clone())
     }))
 }
 
@@ -331,8 +335,9 @@ fn prepare_run(
     root: &Path,
     route: Option<&str>,
     mode: Option<&str>,
+    brain: Brain,
 ) -> Result<RunSetup, ChatError> {
-    let (cwd, mut extras, env) = if resolved.explicit {
+    let (cwd, mut extras, mut env) = if resolved.explicit {
         let ws = pack::workspace(&resolved.profile)?;
         let names = repo.map_or_else(|| resolved.profile.repos.clone(), |r| vec![r.to_owned()]);
         (
@@ -357,11 +362,17 @@ fn prepare_run(
     let meta = pack::meta_in(&pack::kun_dir()?, department)?;
     let dirs = task_extras(kind, &extras, &pack::pack_dirs(&meta));
     extras.extend(dirs);
-    let (permission, flags, suffix) = resolve_turn(&meta, kind, route, mode)?;
+    let (permission, flags, suffix) = resolve_turn(&meta, kind, route, mode, brain.is_free())?;
     extras.extend(flags);
     if let Some(id) = task_id {
         let seeded = task_setup(&cwd, id, kind, &extras, &crate::network::host::RealHost)?;
         extras.extend(seeded);
+    }
+    // A free route: start (or adopt) its proxy and point claude at it. Only claude takes it, and a
+    // route that is not ready stops the run here, never falling back to Claude.
+    if kind == DriverKind::Claude && brain.is_free() {
+        let add = brain::prepare(brain, resolved, &OsStore)?;
+        env = brain::merge_env(env, add);
     }
     Ok(RunSetup {
         cwd,
@@ -401,6 +412,7 @@ async fn ask(
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
+    let brain = settings.brain;
     let for_run = task_id.clone();
     let (for_dept, for_repo) = (department.clone(), repo.clone());
     let setup = tokio::task::spawn_blocking(move || {
@@ -413,6 +425,7 @@ async fn ask(
             &root,
             route.as_deref(),
             mode.as_deref(),
+            brain,
         )
     })
     .await
@@ -564,7 +577,8 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
     let for_dept = department.clone();
     let repo_name = repo.clone();
-    let (cwd, extras, routes, gather, template) = tokio::task::spawn_blocking(move || {
+    let brain = settings.brain;
+    let (cwd, extras, env, routes, gather, template) = tokio::task::spawn_blocking(move || {
         let setup = prepare_run(
             &resolved,
             &for_dept,
@@ -574,13 +588,18 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
             &root,
             None,
             None,
+            brain,
         )?;
         let meta = pack::meta_in(&pack::kun_dir()?, &for_dept)?;
-        // No route applies (no agent, no pack model): refine is a cheap rewrite.
+        // No route applies (no agent, no pack model): refine is a cheap rewrite. On a free route
+        // the proxy picks the model, so only the effort stays.
         let mut extras = setup.extras;
-        extras.extend(["--model", "sonnet", "--effort", "medium"].map(str::to_owned));
+        if !brain.is_free() {
+            extras.extend(["--model", "sonnet"].map(str::to_owned));
+        }
+        extras.extend(["--effort", "medium"].map(str::to_owned));
         let template = pack::info_in(&pack::kun_dir()?, &for_dept)?.formula.map(|f| f.en);
-        Ok::<_, ChatError>((setup.cwd, extras, meta.routes, meta.gather, template))
+        Ok::<_, ChatError>((setup.cwd, extras, setup.env, meta.routes, meta.gather, template))
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
@@ -591,7 +610,9 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
         cwd,
         None,
         extras,
-        Vec::new(),
+        // Refine has never carried the profile's secrets; on a free route it carries only the
+        // route's own variables.
+        env.into_iter().filter(|(k, _)| k.starts_with("ANTHROPIC_")).collect(),
     )?;
     job.timeout_secs = Some(REFINE_SECS);
     job.permission_mode = PermissionMode::Plan;

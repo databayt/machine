@@ -16,6 +16,8 @@ export const settingsSchema = z.object({
   driver: z.enum(["claude", "codex", "opencode"]),
   // Opt-in pickup of `run:auto` tasks (settings/rust.rs `auto_run`, serialized as autoRun).
   autoRun: z.boolean(),
+  // The model route (brain/rust.rs); chosen on the Model page, carried through untouched here.
+  brain: z.enum(["claude", "nvidia", "openrouter", "omniroute"]),
 })
 
 export type SettingsInput = z.infer<typeof settingsSchema>

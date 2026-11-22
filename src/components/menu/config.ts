@@ -47,6 +47,8 @@ export const copy = {
   repositories: { en: "Repos", ar: "المستودعات" },
   readiness: { en: "Readiness", ar: "الجاهزية" },
   agents: { en: "Agents", ar: "الوكلاء" },
+  model: { en: "Model", ar: "النموذج" },
+  modelHint: { en: "Claude, or a free model for the same agent", ar: "كلود، أو نموذج مجاني لنفس الوكيل" },
   configuration: { en: "Config", ar: "التهيئة" },
   healthUpdates: { en: "Health", ar: "الصحة" },
   recent: { en: "Recent chats", ar: "آخر المحادثات" },

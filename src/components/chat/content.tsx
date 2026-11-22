@@ -22,6 +22,7 @@ import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { type HomeOption, homeOptions, usableMatch } from "./options";
+import { ModelChip } from "../brain/chip";
 import { parseRefined } from "./refine";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
@@ -404,6 +405,7 @@ export default function ChatContent({
                   onDraft={onDraft}
                   autoFocus
                 />
+                <ModelChip lang={lang} disabled={busy} />
                 {contextLine}
                 {task && (
                   <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />
@@ -500,6 +502,7 @@ export default function ChatContent({
             onDraft={onDraft}
             autoFocus
           />
+          <ModelChip lang={lang} disabled={busy} />
           {contextLine}
           {task && (
             <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />

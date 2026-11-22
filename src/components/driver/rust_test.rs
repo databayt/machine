@@ -287,3 +287,19 @@ fn fable_models_are_refused_for_every_driver() {
         assert!(matches!(args_for(&j), Err(DriverError::Invalid("model"))), "{kind:?}");
     }
 }
+
+#[test]
+fn a_proxy_run_drops_inherited_anthropic_vars_and_the_telemetry_switch() {
+    let inherited = || ["ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL", "PATH", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"].map(str::to_owned).into_iter();
+    // A normal run inherits everything.
+    assert!(inherited_to_remove(&with_extras(&[], &[]), inherited()).is_empty());
+    // A proxy run keeps what it sets itself and drops the rest.
+    let j = with_extras(&[], &[("ANTHROPIC_BASE_URL", "http://127.0.0.1:8082")]);
+    assert_eq!(
+        inherited_to_remove(&j, inherited()),
+        ["ANTHROPIC_API_KEY", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"]
+    );
+    // Only claude is a proxy client.
+    let other = Job { driver: DriverKind::Codex, ..j };
+    assert!(inherited_to_remove(&other, inherited()).is_empty());
+}

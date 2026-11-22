@@ -814,3 +814,14 @@ fn a_quick_action_keeps_a_valid_id() {
     let ids: Vec<_> = meta_in(kun.path(), "video").unwrap().quick_actions.into_iter().map(|q| q.id).collect();
     assert_eq!(ids, [Some("video.reel.footage".to_owned()), None, None]);
 }
+
+#[test]
+fn free_route_flags_skip_only_the_model() {
+    let r = parse_route(
+        &serde_json::json!({"id":"p","mode":"plan","model":"opus","effort":"high","agent":"producer"}),
+        &Lanes::new(),
+    )
+    .unwrap();
+    assert_eq!(route_flags_for(&r, false), route_flags(&r));
+    assert_eq!(route_flags_for(&r, true), v(&["--effort", "high", "--agent", "producer"]));
+}
