@@ -98,7 +98,7 @@ export function Composer({
   onDraft?: (text: string) => void;
   /** After a pause on a draft of three words or more: the formula or skill the text names, or null. */
   onProbe?: (text: string) => Promise<Chip | null>;
-  /** Tab on a formula chip: starts the intake and returns "" (the box clears); a prompt is written into the box; null does nothing. */
+  /** Tab on a formula chip: fills it (the station's script) and returns the prompt, or null. */
   onAcceptChip?: (chip: Extract<Chip, { kind: "formula" }>) => Promise<string | null>;
   /** Esc on a formula chip: the station logs the dismissal. */
   onDismissChip?: (chip: Chip) => void;
@@ -106,7 +106,7 @@ export function Composer({
   skillMatches?: (text: string) => SkillMatch[];
   /** The "/" menu's rows: formulas, the pack's skills, the other skills. */
   slashEntries?: SlashEntry[];
-  /** A formula picked from the "/" menu: starts the intake and returns "" (the box clears); a prompt is written; null does nothing. */
+  /** A formula picked from the "/" menu: filled with no slots; the prompt, or null. */
   onPickFormula?: (id: string) => Promise<string | null>;
 }) {
   const isAr = lang === "ar";
@@ -207,12 +207,6 @@ export function Composer({
     setWritten(out);
     placeCaret(out);
   };
-  /** The text became the opening line of a chat (an intake started): the box is empty again. */
-  const clearBox = () => {
-    dismissed.current = null;
-    beforeRefine.current = null;
-    setWritten("");
-  };
   const acceptChip = async (c: Chip) => {
     if (c.kind === "skill") {
       const out = `/${c.name} ${text}`;
@@ -222,8 +216,7 @@ export function Composer({
       return;
     }
     const out = await onAcceptChip?.(c).catch(() => null);
-    if (out === "") clearBox();
-    else if (out) writeFilled(out);
+    if (out) writeFilled(out);
   };
   const dismissChip = (c: Chip) => {
     if (c.kind === "formula") dismissed.current = c.id;
@@ -234,8 +227,7 @@ export function Composer({
     if (!slash) return;
     if (e.kind === "formula") {
       const out = await onPickFormula?.(e.id).catch(() => null);
-      if (out === "") clearBox();
-      else if (out) writeFilled(out);
+      if (out) writeFilled(out);
       else setSlashOff(slashKey);
       return;
     }

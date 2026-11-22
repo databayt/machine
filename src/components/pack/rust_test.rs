@@ -863,3 +863,23 @@ fn a_one_run_override_replaces_the_route_model_and_never_takes_fable() {
     assert_eq!(with_override(base.clone(), true, Some("sonnet"), None), base);
     assert_eq!(with_override(base.clone(), false, None, None), base);
 }
+
+#[test]
+fn workspace_claude_md_carries_kuns_question_protocol_else_the_built_in_copy() {
+    let kun = kun_fixture();
+    let home = tempfile::tempdir().unwrap();
+    // No `_shared/ask.md` in kun: the built-in copy is appended.
+    let dir = ensure_in(kun.path(), home.path(), "sales").unwrap();
+    let claude = fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+    assert!(claude.contains("kun-questions"));
+    assert!(claude.contains(ASK_FALLBACK));
+    // With kun's file, its text is what the run reads.
+    let shared = kun.path().join("departments/_shared");
+    fs::create_dir_all(&shared).unwrap();
+    fs::write(shared.join("ask.md"), "## Ask like this\n\nUse ```kun-questions```.\n").unwrap();
+    let dir = ensure_in(kun.path(), home.path(), "sales").unwrap();
+    let claude = fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+    assert!(claude.ends_with("## Ask like this\n\nUse ```kun-questions```.\n"));
+    assert!(!claude.contains(ASK_FALLBACK));
+    assert!(fs::read_to_string(dir.join("AGENTS.md")).unwrap().contains("## Ask like this"));
+}

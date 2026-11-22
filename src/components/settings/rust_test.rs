@@ -171,3 +171,19 @@ fn old_files_load_with_sharing_off_and_share_is_validated() {
         assert!(matches!(save_in(d.path(), Settings { share: bad, ..Settings::default() }), Err(SettingsError::BadShare)));
     }
 }
+
+#[test]
+fn old_files_read_model_policy_and_fallback_as_automatic_and_both_round_trip() {
+    let old = r#"{"person":"x","department":"","repo_by_department":{},"driver":"claude","login":"","autoRun":false,"brain":"claude"}"#;
+    let s: Settings = serde_json::from_str(old).unwrap();
+    assert_eq!((s.model_policy, s.fallback), (ModelPolicy::Auto, FallbackPolicy::Auto));
+    assert_eq!(ModelPolicy::Auto.pinned(), None);
+    assert_eq!(ModelPolicy::Opus.pinned(), Some("opus"));
+    assert_eq!(ModelPolicy::Sonnet.pinned(), Some("sonnet"));
+    let d = tempfile::tempdir().unwrap();
+    let on = Settings { model_policy: ModelPolicy::Sonnet, fallback: FallbackPolicy::Ask, ..Settings::default() };
+    let saved = save_in(d.path(), on).unwrap();
+    let text = std::fs::read_to_string(d.path().join("settings.json")).unwrap();
+    assert!(text.contains("\"model_policy\": \"sonnet\"") && text.contains("\"fallback\": \"ask\""));
+    assert_eq!(load_in(d.path()).unwrap(), saved);
+}

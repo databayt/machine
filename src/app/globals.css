@@ -50,6 +50,8 @@
   --destructive: oklch(0.577 0.245 27.325);
   --working: oklch(0.646 0.222 41.116); /* machine: the agent is working */
   --claude: #D77757; /* Claude's terracotta: the status line glyph and verb */
+  --cli-accent: #4F5BD5; /* the Claude Code CLI wizard's blue: the header chip and the selected row */
+  --cli-dim: #8A8F98; /* its dim footer and rules */
   --border: oklch(0.922 0 0);
   --input: oklch(0.922 0 0);
   --ring: oklch(0.708 0 0);
@@ -72,6 +74,8 @@
   --destructive: oklch(0.704 0.191 22.216);
   --working: oklch(0.75 0.183 55.934);
   --claude: #E58F70;
+  --cli-accent: #7D87F0;
+  --cli-dim: #8B909A;
   --border: oklch(1 0 0 / 10%);
   --input: oklch(1 0 0 / 15%);
   --ring: oklch(0.556 0 0);

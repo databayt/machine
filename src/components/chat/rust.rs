@@ -31,7 +31,7 @@ use crate::{
     pack::{self, PackError, Workspace},
     profile::{self, OsStore, ProfileError, Resolved},
     sessions,
-    settings::{self, SettingsError},
+    settings::{self, FallbackPolicy, ModelPolicy, SettingsError},
     tasks::{self, SEED_FILE},
 };
 
@@ -416,10 +416,11 @@ async fn ask(
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
+    let model = policy_model(settings.model_policy, model);
     let inputs = SetupInputs { resolved, department, kind, task_id, repo, root, route, mode, over: RunOverride { model, effort } };
     let configured = settings.brain;
-    // A session that already fell back stays on its free route (when it is still ready).
-    let sticky = if kind == DriverKind::Claude && !configured.is_free() {
+    // A session that already fell back stays on its free route (when it is still ready), only when fallback is automatic.
+    let sticky = if kind == DriverKind::Claude && !configured.is_free() && settings.fallback == FallbackPolicy::Auto {
         match session.as_deref().and_then(brain::fallback_get) {
             Some(b) if ready_routes().await.contains(&b) => Some(b),
             _ => None,
@@ -453,7 +454,10 @@ async fn ask(
     // Attempt 1, once: Claude was unavailable. Never a loop: the fallback run is not gated or retried.
     end = match end {
         RunEnd::Unavailable(why) if should_fall_back(kind, configured, 0, Some(&why)) => {
-            fall_back(&inputs, &make_job, &why, arabic, &mut rx, &ctx, &channel, &mut seen).await
+            match fallback_stop(settings.fallback, &why, &ready_routes().await, arabic) {
+                Some(message) => RunEnd::Failed(message),
+                None => fall_back(&inputs, &make_job, &why, arabic, &mut rx, &ctx, &channel, &mut seen).await,
+            }
         }
         other => other,
     };
@@ -652,6 +656,33 @@ async fn ready_routes() -> Vec<Brain> {
 /// route, on its first attempt, that failed as "Claude unavailable".
 fn should_fall_back(kind: DriverKind, configured: Brain, attempt: u8, why: Option<&Unavailable>) -> bool {
     kind == DriverKind::Claude && !configured.is_free() && attempt == 0 && why.is_some()
+}
+
+/// The model a run uses once Settings → Model has its say: a fixed policy (Opus or Sonnet 5.5) overrides the
+/// formula's and the route's model; `auto` leaves the formula's pick (the route's flags stand otherwise).
+/// Never Fable: the policy only ever names `opus` or `sonnet`, and a formula's Fable pick is dropped later.
+fn policy_model(policy: ModelPolicy, formula: Option<String>) -> Option<String> {
+    policy.pinned().map(str::to_owned).or(formula)
+}
+
+/// What stops a run that could have fallen back: `None` when the policy is automatic (go ahead and
+/// fall back), else the error the person reads. `Off` is the normal error; `Ask` names the free route
+/// that is ready and where to switch, since the chat has no one-tap action for it.
+fn fallback_stop(policy: FallbackPolicy, why: &Unavailable, ready: &[Brain], arabic: bool) -> Option<String> {
+    let reason = reason_text(why, arabic);
+    match (policy, arabic) {
+        (FallbackPolicy::Auto, _) => None,
+        (FallbackPolicy::Off, false) => Some(format!("Claude isn't available ({reason}).")),
+        (FallbackPolicy::Off, true) => Some(format!("Claude غير متاح ({reason}).")),
+        (FallbackPolicy::Ask, false) => Some(match ready.first() {
+            Some(b) => format!("Claude isn't available ({reason}). {} is ready: choose it in Settings → Model (Use this), or set Fallback to Automatic, then send again.", b.label()),
+            None => format!("Claude isn't available ({reason}) and no free route is ready. Open Settings → Model to set one up."),
+        }),
+        (FallbackPolicy::Ask, true) => Some(match ready.first() {
+            Some(b) => format!("Claude غير متاح ({reason}). {} جاهز: اخترْه من الإعدادات ← النموذج (استخدم هذا)، أو اجعل البديل تلقائياً، ثم أرسل من جديد.", b.label()),
+            None => format!("Claude غير متاح ({reason}) ولا يوجد مسار مجاني جاهز. افتح الإعدادات ← النموذج لإعداده."),
+        }),
+    }
 }
 
 /// Re-runs the job once on the first ready free route, telling the UI first. Never silent, never an

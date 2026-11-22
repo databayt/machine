@@ -267,6 +267,7 @@ fn claude_md(kun: &Path, repos: &Path, work: &Path, profile: &MachineProfile) ->
             let _ = write!(out, "---\n\n{}\n\n", prompt.trim_end());
         }
     }
+    let _ = write!(out, "---\n\n{}\n", super::ask_protocol(kun));
     out
 }
 

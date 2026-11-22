@@ -14,10 +14,11 @@ test("a film plan creates the production, its film issue and a work order per pi
 test("a work order becomes one issue", () => {
   assert.equal(acceptMessage("issue"), ACCEPT_ISSUE)
   assert.ok(ACCEPT_ISSUE.includes("Create the work order as an issue"))
+  assert.ok(ACCEPT_ISSUE.includes("plan above"))
 })
 
 test("any other plan carries out the first step and stops at the next gate", () => {
-  const want = "The plan is accepted. Carry out the first step, then stop at the next gate."
+  const want = "The plan above is accepted: it is the prompt for the next phase. Execute it now, starting with its first step, and stop at the next gate."
   for (const record of ["none", "", null, undefined, "other"]) assert.equal(acceptMessage(record), want)
   assert.equal(ACCEPT_STEP, want)
 })
@@ -50,6 +51,7 @@ test("Accept shows only under the last finished plan turn, and only when there i
     { hasText: false },
     { failed: true },
     { hasWorkingRoute: false },
+    { asking: true },
   ])
     assert.equal(showAccept({ ...ok, ...off }), false, JSON.stringify(off))
 })

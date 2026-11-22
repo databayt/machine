@@ -316,6 +316,20 @@ pub fn machine_dir() -> Result<PathBuf, PackError> {
     }
 }
 
+/// The built-in copy of the question protocol, used when kun has no `departments/_shared/ask.md`.
+pub const ASK_FALLBACK: &str = "## Asking the person questions\n\nIn a plan-mode run, if an answer would change the result, ask before planning. End the turn with one fenced block, ```kun-questions, holding JSON: `{ \"questions\": [ { \"question\": \"...\", \"header\": \"<= 12 chars\", \"multiSelect\": false, \"options\": [ { \"label\": \"...\", \"description\": \"...\" } ] } ] }` with 1 to 4 questions and 2 to 4 options each. Write one short line of prose before it. Do not write the plan in the same turn; when the answers come back, either ask again or write the plan. Ask in the person's language and never ask what the prompt already states.";
+
+/// The question protocol every department's workspace `CLAUDE.md` carries: kun's own text
+/// (`departments/_shared/ask.md`), else [`ASK_FALLBACK`]. Kun owns the wording; machine only includes it.
+#[must_use]
+pub fn ask_protocol(kun: &Path) -> String {
+    fs::read_to_string(kun.join("departments/_shared/ask.md"))
+        .ok()
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
+        .unwrap_or_else(|| ASK_FALLBACK.to_owned())
+}
+
 fn write_if_changed(path: &Path, content: &str) -> Result<(), PackError> {
     if fs::read_to_string(path).is_ok_and(|old| old == content) {
         return Ok(());
@@ -678,17 +692,18 @@ pub fn ensure_in(kun: &Path, machine: &Path, dept: &str) -> Result<PathBuf, Pack
 
     let rules = kun.join("CLAUDE.md");
     let body = prompt.trim_end();
+    let ask = ask_protocol(kun);
     write_if_changed(
         &dir.join("CLAUDE.md"),
         &format!(
-            "{body}\n\n---\n\n@{}\n",
+            "{body}\n\n---\n\n@{}\n\n---\n\n{ask}\n",
             rules.display().to_string().replace('\\', "/")
         ),
     )?;
     write_if_changed(
         &dir.join("AGENTS.md"),
         &format!(
-            "{body}\n\n---\n\nCompany rules: read {} before you start.\n",
+            "{body}\n\n---\n\nCompany rules: read {} before you start.\n\n---\n\n{ask}\n",
             rules.display()
         ),
     )?;

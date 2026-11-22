@@ -101,7 +101,7 @@ export function ActivityRows({ done, live, isAr }: { done: string[]; live: strin
  * The glyph cycles in terracotta, the verb shimmers and changes every 2.5 s, the seconds tick, Esc interrupts.
  * `tokens` is the run's output so far; without it that part is left out.
  */
-export function ClaudeStatus({ isAr, seed, tokens = null, onStop, verb }: { isAr: boolean; seed: string; tokens?: number | null; onStop?: () => void; verb?: string }) {
+export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: boolean; seed: string; tokens?: number | null; onStop?: () => void }) {
   const t = tr(isAr)
   const [seconds, setSeconds] = useState(0)
   useEffect(() => {
@@ -119,7 +119,7 @@ export function ClaudeStatus({ isAr, seed, tokens = null, onStop, verb }: { isAr
     window.addEventListener("keydown", on)
     return () => window.removeEventListener("keydown", on)
   }, [])
-  const word = verb ?? playfulWord(isAr ? words.ar : words.en, seed, Math.floor(seconds / 2.5))
+  const word = playfulWord(isAr ? words.ar : words.en, seed, Math.floor(seconds / 2.5))
 
   return (
     <div role="status" className="flex min-w-0 items-baseline gap-2.5 text-[17px] leading-7 md:text-base">

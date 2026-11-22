@@ -6,7 +6,7 @@ import { ArrowDownIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
-import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, questions as loadQuestions, stationLog } from "../pack/actions";
+import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, stationLog } from "../pack/actions";
 import type { Board, FormulaMeta, Match, PackInfo } from "../pack/types";
 import type { CatalogItem } from "../catalog/types";
 import { loadCatalog } from "../menu/data";
@@ -21,20 +21,19 @@ import { acceptMessage, orderMessage, showAccept, workingRoute } from "./accept"
 import { ask, refine, stop } from "./actions";
 import { ActivityRows, ClaudeStatus } from "./activity";
 import { splitNote } from "./activity-pure";
-import { IntakeOutcome, QuestionCard } from "./questions";
-import { BriefTurn } from "./brief";
-import { type Message, briefMessage, briefTitle, canStartFromText, dismissOpenIntake, intakeMessage, intakeOutcome, settleIntake, userMessage } from "./intake-pure";
-import { type Family, effectiveModel, familyOf } from "./model-pure";
+import { type Answered, DECLINED_MESSAGE, answersMessage, hideBlock, isAnswersMessage, parseAnswers, parseAsk } from "./ask-pure";
+import type { Message } from "./message";
+import { type Family, familyOf } from "./model-pure";
 import { Composer, type Fill } from "./composer";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
 import { type Chip, type SlashEntry, chipFacts, matchSkills, packIds } from "./keywords";
 import { type HomeOption, homeOptions, usableMatch } from "./options";
-import { ModelChip } from "../brain/chip";
 import { parseRefined } from "./refine";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
-import { AgentTurn, Prose, TurnActions, UserTurn } from "./turn";
+import { AgentTurn, AnswerBlock, DeclinedLine, Prose, TurnActions, UserTurn } from "./turn";
+import { Wizard } from "./wizard";
 import { useStickToBottom } from "./use-stick-to-bottom";
 
 /**
@@ -82,16 +81,11 @@ export default function ChatContent({
   /** Where the next prompt runs, silently: the option's or refine's route, else the pack default. */
   const [routeId, setRouteId] = useState<string | null>(null);
   const fillN = useRef(0);
-  /** The token of the intake in flight: a new chat, a normal send or a newer intake drops the older one. */
-  const qN = useRef(0);
-  /** The brief is being written (`fill`, no model): the token of its intake. */
-  const [briefing, setBriefing] = useState<number | null>(null);
-  /** What the formula asked for (model, effort) and the chip's one-run pick; each is spent by the next send. */
+  /** What the formula asked for (model, effort), spent by the next send. Settings → Model may pin the model over it. */
   const [formulaModel, setFormulaModel] = useState<string | null>(null);
   const [formulaEffort, setFormulaEffort] = useState<string | null>(null);
-  const [override, setOverride] = useState<Family | null>(null);
   const runModel = useRef<{ model: Family | null; effort: string | null }>({ model: null, effort: null });
-  runModel.current = { model: override ?? familyOf(formulaModel), effort: formulaEffort };
+  runModel.current = { model: familyOf(formulaModel), effort: formulaEffort };
   const speakRef = useRef(false);
   speakRef.current = speakReplies;
 
@@ -228,14 +222,19 @@ export default function ChatContent({
         case "done":
           if (e.session) setSession(e.session);
           if (speakRef.current && e.ok && e.result)
-            void speak(e.result, isAr ? "ar" : "en").catch(() => {});
-          patchLast((m) => ({
-            ...settle(m),
-            streaming: false,
-            text: m.text || e.result || "",
-            error:
-              e.ok || e.result === "stopped" ? undefined : t(copy.runError),
-          }));
+            void speak(parseAsk(e.result).prose, isAr ? "ar" : "en").catch(() => {});
+          patchLast((m) => {
+            const failed = !e.ok && e.result !== "stopped";
+            // A finished turn that ends with a `kun-questions` block shows the wizard under its prose.
+            const { prose, questions } = failed ? { prose: m.text || e.result || "", questions: null } : parseAsk(m.text || e.result || "");
+            return {
+              ...settle(m),
+              streaming: false,
+              text: prose,
+              asked: questions,
+              error: failed ? t(copy.runError) : undefined,
+            };
+          });
           break;
         case "error":
           patchLast((m) => ({
@@ -250,22 +249,19 @@ export default function ChatContent({
   );
 
   const send = useCallback(
-    async (prompt: string, base: Message[] = messages, route?: string | null, run?: { model: Family | null; effort: string | null }) => {
+    async (prompt: string, base: Message[] = messages, route?: string | null, extra?: Pick<Message, "answers" | "declined">) => {
       const text = prompt.trim();
       if (!text || busy) return;
       setFill(null);
-      qN.current++;
-      setBriefing(null);
-      const { model, effort } = run ?? runModel.current;
-      setOverride(null);
+      const { model, effort } = runModel.current;
       setFormulaModel(null);
       setFormulaEffort(null);
       const id = crypto.randomUUID();
       setJobId(id);
       const ranInPlan = routes.find((r) => r.id === route)?.mode === "plan";
       setMessages([
-        ...dismissOpenIntake(base),
-        { role: "user", text, tools: [], live: null },
+        ...base,
+        { role: "user", text, tools: [], live: null, ...extra },
         {
           role: "assistant",
           text: "",
@@ -298,7 +294,10 @@ export default function ChatContent({
   /** Runs the last prompt again, in place of the failed answer. */
   const retry = () => {
     const i = messages.findLastIndex((m) => m.role === "user");
-    if (i >= 0) void send(messages[i]!.text, messages.slice(0, i), messages[i + 1]?.route ?? null);
+    if (i >= 0) {
+      const u = messages[i]!;
+      void send(u.text, messages.slice(0, i), messages[i + 1]?.route ?? null, { answers: u.answers, declined: u.declined });
+    }
   };
 
   const newChat = () => {
@@ -307,8 +306,6 @@ export default function ChatContent({
     setSession(null);
     setResumed(null);
     stationRef.current = null;
-    qN.current++;
-    setBriefing(null);
     if (resume) router.replace(`/${lang}/`);
   };
 
@@ -370,84 +367,17 @@ export default function ChatContent({
     setFill({ text, focus: true, n: ++fillN.current });
     if (route) setRouteId(route);
   };
-  /**
-   * The first prompt starts the chat: the user's line appears (the screen becomes the regular chat), then
-   * after about half a second the assistant's intake reply: an intro line and the questions, inline. A
-   * formula with no questions goes straight to the brief. Local messages: nothing here reaches Claude.
-   */
-  const startIntake = async (label: string, dept: string | null, id: string, set: Record<string, string>, route: string | null = null) => {
-    if (busy) return;
-    const n = ++qN.current;
-    setFill(null);
-    setBriefing(null);
-    setMessages((all) => [...dismissOpenIntake(all), userMessage(label)]);
-    requestAnimationFrame(() => scrollToBottom());
-    let d = ctx.dept;
-    if (dept && dept !== d && (await ctx.chooseDept(dept))) d = dept;
-    const [r] = await Promise.all([loadQuestions(d, id, ctx.repo || null, set), new Promise((done) => setTimeout(done, 500))]);
-    if (n !== qN.current) return;
-    if (r.questions.length === 0) return writeBrief(n, d, r.id || id, set, label, route);
-    setMessages((all) => [...all, intakeMessage({ n, dept: d, id: r.id || id, set, questions: r.questions, intro: r.intro }, isAr)]);
-  };
-  /** The card closed: Submit merges the answers over the set, Esc keeps the defaults; both go on to the brief. */
-  const finishIntake = (m: Message, answers: Record<string, string>, submitted: boolean) => {
-    const it = m.intake;
-    if (!it || it.n !== qN.current) return;
-    const given = submitted ? answers : {};
-    setMessages((all) => settleIntake(all, it.n, given));
-    void writeBrief(it.n, it.dept, it.id, { ...it.set, ...given }, m.text, null);
-  };
-  /** `fill` with no model (about a second), then the brief message. The prompt is never sent from here. */
-  const writeBrief = async (n: number, dept: string, id: string, set: Record<string, string>, label: string, route: string | null) => {
-    setBriefing(n);
-    try {
-      const f = await fillFormula(dept, id, ctx.repo || null, set);
-      if (n !== qN.current) return;
-      const meta = formulaList.list.find((x) => x.id === f.id);
-      const name = (meta && (isAr ? meta.label_ar || meta.label_en : meta.label_en || meta.label_ar)) || label;
-      const to = f.route ?? route;
-      setFormulaModel(f.model);
-      setFormulaEffort(f.effort);
-      if (to) setRouteId(to);
-      setBriefing(null);
-      setMessages((all) => [
-        ...all,
-        briefMessage({
-          id: f.id,
-          dept,
-          title: briefTitle(name, effectiveModel(null, f.model, routes.find((r) => r.id === to)?.model ?? chosen?.model ?? null), isAr),
-          prompt: f.prompt,
-          route: to,
-          record: f.record,
-          model: f.model,
-          effort: f.effort,
-          label,
-        }),
-      ]);
-    } catch {
-      if (n !== qN.current) return;
-      setBriefing(null);
-      // The station's script is unavailable: the user's own words are the request.
-      writeFilled(label, route, null);
-    }
-  };
-  /** Start: the brief runs on its route, model and effort (the chip's one-run pick wins), as Send does. */
-  const startBrief = (b: NonNullable<Message["brief"]>) => {
-    stationRef.current = { id: b.id, record: b.record };
-    const order = b.record === "issue" ? stationRef.current : null;
-    void send(order ? orderMessage(b.prompt, order.id) : b.prompt, undefined, b.route ?? chosen?.id ?? null, {
-      model: override ?? familyOf(b.model),
-      effort: b.effort,
-    });
-    if (order) stationRef.current = null;
-  };
-  /** Edit: the brief goes into the box (caret at the end); Enter sends it on the brief's route. */
-  const editBrief = (b: NonNullable<Message["brief"]>) => writeFilled(b.prompt, b.route, { id: b.id, record: b.record }, b);
-  /** A tap: the intake starts at once (no model); a quick action writes its brief and refines. */
+  /** A tap: a formula option fills the box with the station's script (no model) and the person presses Send; a quick action writes its brief and refines. */
   const pickOption = async (o: HomeOption) => {
     if (o.logId) void stationLog(ctx.dept, ctx.repo || null, o.logId, "pick");
     if (o.formula) {
-      void startIntake(o.label, null, o.formula, o.set, o.route);
+      try {
+        const f = await fillFormula(ctx.dept, o.formula, ctx.repo || null, o.set);
+        writeFilled(f.prompt, f.route ?? o.route, { id: f.id, record: f.record }, f);
+      } catch {
+        // The station's script is unavailable: the option's own English name is the request.
+        writeFilled(o.labelEn, o.route, null);
+      }
       return;
     }
     stationRef.current = null;
@@ -505,30 +435,38 @@ export default function ChatContent({
     const top = skillMatches(text)[0];
     return top ? { kind: "skill", forText: text, name: top.name } : null;
   };
-  /** Tab on the chip: the typed sentence becomes the opening line of the chat; "" clears the box. */
-  const acceptChip = async (c: Extract<Chip, { kind: "formula" }>): Promise<string | null> => {
-    void stationLog(c.match.dept || ctx.dept, ctx.repo || null, c.id, "pick");
-    void startIntake(c.forText, c.match.dept, c.id, c.match.set ?? {});
-    return "";
-  };
+  /** Tab on the chip: the station's script fills the box (no model). */
+  const acceptChip = (c: Extract<Chip, { kind: "formula" }>) => applyMatch(c.match);
   const dismissChip = (c: Chip) => {
     if (c.kind === "formula") void stationLog(ctx.dept, ctx.repo || null, c.id, "dismiss");
   };
-  /** A formula chosen from the "/" menu: its name is the opening line; "" clears the box. */
+  /** A formula chosen from the "/" menu: filled with no slots, so the open ones are for the person. */
   const pickFormula = async (id: string): Promise<string | null> => {
-    const meta = formulaList.list.find((f) => f.id === id);
-    void stationLog(ctx.dept, ctx.repo || null, id, "pick");
-    void startIntake((meta && (isAr ? meta.label_ar || meta.label_en : meta.label_en || meta.label_ar)) || id, null, id, {});
-    return "";
+    try {
+      const f = await fillFormula(ctx.dept, id, ctx.repo || null, {});
+      if (f.route) setRouteId(f.route);
+      stationRef.current = { id: f.id, record: f.record };
+      setFormulaModel(f.model);
+      setFormulaEffort(f.effort);
+      void stationLog(ctx.dept, ctx.repo || null, id, "pick");
+      return f.prompt;
+    } catch {
+      return null;
+    }
   };
-  /** Enter: a sentence the switch matches opens the intake; anything else, and any reply in a running chat, sends. */
+  /**
+   * Enter: in a new chat, a sentence the switch matches fills the box with the formula (the next Enter sends it);
+   * anything else, a filled formula and any reply in a running chat send.
+   */
   const submitText = async (text: string) => {
-    if (!busy && canStartFromText(messages, text)) {
+    if (!busy && messages.length === 0 && !stationRef.current) {
       const m = await matchText(ctx.dept, text, ctx.repo || null);
       if (usableMatch(m)) {
-        void stationLog(m.dept || ctx.dept, ctx.repo || null, m.id, "pick");
-        void startIntake(text.trim(), m.dept, m.id, m.set ?? {});
-        return;
+        const prompt = await applyMatch({ ...m, id: m.id });
+        if (prompt !== null) {
+          setFill({ text: prompt, focus: true, n: ++fillN.current });
+          return;
+        }
       }
     }
     sendRouted(text);
@@ -536,16 +474,20 @@ export default function ChatContent({
   /** A held work order's Submit: clear the box, or put the caret in it to ask for the summary line. */
   const afterSubmit = () => setFill({ text: "", focus: false, n: ++fillN.current });
   const askSummary = () => setFill({ text: draft.current, focus: true, n: ++fillN.current });
-  const modelChip = (
-    <ModelChip
-      lang={lang}
-      disabled={busy}
-      session={session}
-      model={effectiveModel(null, formulaModel, chosen?.model ?? null)}
-      override={override}
-      onOverride={setOverride}
-    />
-  );
+  /** The title at the end of the wizard's bottom rule: the chat's own (resumed), else the opening line. */
+  const firstUser = messages.find((m) => m.role === "user");
+  const chatTitle = (resumed || (firstUser?.text.split("\n")[0] ?? "").trim().slice(0, 40) || t(copy.wizTitleFallback)).trim();
+  /** The route the wizard's reply runs on: the turn that asked (the plan route), so the session carries on. */
+  const asking = last?.route ?? chosen?.id ?? null;
+  /** Submit: the answers go back into the same session at once. */
+  const answerWizard = (items: Answered[]) => void send(answersMessage(items), undefined, asking, { answers: items });
+  /** Cancel / Esc: the run is told to go on with sensible defaults. */
+  const declineWizard = () => void send(DECLINED_MESSAGE, undefined, asking, { declined: true });
+  /** "Chat about this": the wizard closes and the composer takes the focus; the reply goes as a normal message. */
+  const chatAboutIt = () => {
+    patchLast((m) => ({ ...m, asked: null }));
+    setFill({ text: draft.current, focus: true, n: ++fillN.current });
+  };
   const contextLine = (
     <ContextLine
       lang={lang}
@@ -603,7 +545,6 @@ export default function ChatContent({
                   onPickFormula={pickFormula}
                   autoFocus
                 />
-                {modelChip}
                 {contextLine}
                 {task && (
                   <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />
@@ -620,35 +561,10 @@ export default function ChatContent({
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
               {messages.map((m, i) => {
-                if (m.kind === "intake" && m.intake) {
-                  const it = m.intake;
-                  return (
-                    <AgentTurn key={i}>
-                      <p dir="auto" className="text-start">{m.text}</p>
-                      {it.status === "open" ? (
-                        <QuestionCard key={it.n} questions={it.questions} isAr={isAr} onDone={(answers, submitted) => finishIntake(m, answers, submitted)} />
-                      ) : (
-                        <IntakeOutcome text={intakeOutcome(it, isAr)} />
-                      )}
-                      {briefing === it.n && i === messages.length - 1 && <ClaudeStatus isAr={isAr} seed={String(i)} verb={t(copy.briefWriting)} />}
-                    </AgentTurn>
-                  );
-                }
-                if (m.kind === "brief" && m.brief) {
-                  return (
-                    <AgentTurn key={i}>
-                      <BriefTurn
-                        title={m.brief.title}
-                        prompt={m.brief.prompt}
-                        isAr={isAr}
-                        canAct={i === messages.length - 1 && !busy}
-                        onStart={() => startBrief(m.brief!)}
-                        onEdit={() => editBrief(m.brief!)}
-                      />
-                    </AgentTurn>
-                  );
-                }
-                const note = splitNote(m.text);
+                if (m.role === "user" && m.declined) return <DeclinedLine key={i} text={t(copy.wizDeclined)} />;
+                if (m.role === "user" && (m.answers?.length || isAnswersMessage(m.text)))
+                  return <AnswerBlock key={i} lines={m.answers?.length ? m.answers : parseAnswers(m.text)} />;
+                const note = splitNote(m.streaming ? hideBlock(m.text) : m.text);
                 return m.role === "user" ? (
                   <UserTurn key={i} text={m.text} />
                 ) : (
@@ -683,6 +599,17 @@ export default function ChatContent({
                         )}
                       </p>
                     )}
+                    {m.asked && i === messages.length - 1 && !busy && !m.streaming && (
+                      <Wizard
+                        key={`${i}.${m.text.length}`}
+                        questions={m.asked}
+                        isAr={isAr}
+                        title={chatTitle}
+                        onSubmit={answerWizard}
+                        onCancel={declineWizard}
+                        onChat={chatAboutIt}
+                      />
+                    )}
                     {m.streaming && <ClaudeStatus isAr={isAr} seed={String(i)} onStop={() => jobId && void stop(jobId)} />}
                     {!m.streaming && m.text && !m.error && (
                       <TurnActions text={m.text} isAr={isAr} />
@@ -693,6 +620,7 @@ export default function ChatContent({
                       busy,
                       streaming: !!m.streaming,
                       hasText: !!m.text,
+                      asking: !!m.asked,
                       failed: !!m.error,
                       hasWorkingRoute: !!working,
                     }) && (
@@ -707,11 +635,6 @@ export default function ChatContent({
                   </AgentTurn>
                 );
               })}
-              {briefing !== null && !(last?.kind === "intake" && last.intake?.n === briefing) && (
-                <AgentTurn>
-                  <ClaudeStatus isAr={isAr} seed="brief" verb={t(copy.briefWriting)} />
-                </AgentTurn>
-              )}
             </ol>
           )}
         </div>
@@ -746,7 +669,6 @@ export default function ChatContent({
             onPickFormula={pickFormula}
             autoFocus
           />
-          {modelChip}
           {contextLine}
           {task && (
             <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />

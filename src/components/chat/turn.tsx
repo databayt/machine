@@ -17,6 +17,37 @@ export const UserTurn = memo(function UserTurn({ text }: { text: string }) {
   )
 })
 
+/**
+ * The wizard's answers in the transcript, as Claude Code lists them: `⎿  · <header> → <answer>`, one line each,
+ * in place of a user bubble.
+ */
+export function AnswerBlock({ lines }: { lines: readonly { header: string; answer: string }[] }) {
+  return (
+    <li className="min-w-0 font-mono text-[13px] leading-6 text-foreground/75">
+      {lines.map((l, i) => (
+        <p key={i} dir="auto" className="flex items-baseline gap-[1ch] text-start">
+          <span aria-hidden dir="ltr" className="w-[2ch] shrink-0 text-[color:var(--cli-dim)]">{i === 0 ? "⎿" : ""}</span>
+          <span className="min-w-0 break-words">
+            · {l.header} → {l.answer}
+          </span>
+        </p>
+      ))}
+    </li>
+  )
+}
+
+/** The wizard was cancelled: one quiet line. */
+export function DeclinedLine({ text }: { text: string }) {
+  return (
+    <li className="min-w-0 font-mono text-[13px] leading-6 text-[color:var(--cli-dim)]">
+      <p dir="auto" className="flex items-baseline gap-[1ch]">
+        <span aria-hidden dir="ltr" className="w-[2ch] shrink-0">⎿</span>
+        <span>{text}</span>
+      </p>
+    </li>
+  )
+}
+
 /** The agent's turn: no bubble and no avatar — its steps, then plain full-width text. */
 export function AgentTurn({ steps, children }: { steps?: React.ReactNode; children?: React.ReactNode }) {
   return <li className="min-w-0 scroll-mt-16 space-y-2.5 text-[17px] leading-7 md:text-base">{steps}{children}</li>

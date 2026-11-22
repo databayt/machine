@@ -18,6 +18,9 @@ export const settingsSchema = z.object({
   autoRun: z.boolean(),
   // The model route (brain/rust.rs); chosen on the Model page, carried through untouched here.
   brain: z.enum(["claude", "nvidia", "openrouter", "omniroute"]),
+  // Settings → Model: pinned model and the fallback policy (settings/rust.rs); edited on the Model page.
+  model_policy: z.enum(["auto", "opus", "sonnet"]),
+  fallback: z.enum(["auto", "ask", "off"]),
   // The pool opt-in (settings/rust.rs `share`); the Machines page edits it. Same shape as kun's shareSchema.
   share: z.object({
     enabled: z.boolean(),

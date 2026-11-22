@@ -11,6 +11,8 @@ import { Logo } from "../plugins/card"
 import { setSecret } from "../profile/actions"
 import { readinessFix } from "../readiness/actions"
 import { OpenInMachine, useInMachine } from "../shell/content"
+import { loadSettings, saveSettings } from "../settings/actions"
+import type { FallbackPolicy, ModelPolicy } from "../settings/types"
 import { PageShell } from "../shell/page"
 import { INSTALL_STEP, KEY_NAME, brainApply, brainStatus } from "./actions"
 import { copy } from "./config"
@@ -68,6 +70,7 @@ export default function BrainContent({ lang }: { lang: Locale }) {
       ) : (
         <>
           <p className="text-muted-foreground max-w-xl text-sm">{t(copy.intro)}</p>
+          <Policies t={t} />
           {message && <p className="text-destructive text-sm">{message}</p>}
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             {CARDS.map((c) => {
@@ -239,5 +242,89 @@ function RouteCard({
         {busy === "use" ? <Loader2 className="size-4 animate-spin" aria-hidden /> : current ? t(copy.using) : t(copy.use)}
       </button>
     </div>
+  )
+}
+
+type PolicyKey = "model_policy" | "fallback"
+
+const MODEL_CHOICES: { value: ModelPolicy; name: Copy; note: Copy }[] = [
+  { value: "auto", name: copy.policyAuto, note: copy.policyAutoNote },
+  { value: "opus", name: copy.policyOpus, note: copy.policyOpusNote },
+  { value: "sonnet", name: copy.policySonnet, note: copy.policySonnetNote },
+]
+const FALLBACK_CHOICES: { value: FallbackPolicy; name: Copy; note: Copy }[] = [
+  { value: "auto", name: copy.fallbackAuto, note: copy.fallbackAutoNote },
+  { value: "ask", name: copy.fallbackAsk, note: copy.fallbackAskNote },
+  { value: "off", name: copy.fallbackOff, note: copy.fallbackOffNote },
+]
+
+/** Model policy and Fallback: two small radio groups, saved to Settings the moment one is picked. */
+function Policies({ t }: { t: (c: Copy) => string }) {
+  const [saved, setSaved] = useState<{ model_policy: ModelPolicy; fallback: FallbackPolicy }>({ model_policy: "auto", fallback: "auto" })
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    loadSettings()
+      .then((s) => s && setSaved({ model_policy: s.model_policy, fallback: s.fallback }))
+      .catch((e) => setError(String(e)))
+  }, [])
+
+  async function pick<K extends PolicyKey>(key: K, value: (typeof saved)[K]) {
+    setError(null)
+    const before = saved
+    setSaved({ ...saved, [key]: value })
+    try {
+      // Read the stored settings fresh so nothing else on the page is overwritten.
+      const fresh = await loadSettings()
+      if (!fresh) return
+      const out = await saveSettings({ ...fresh, [key]: value })
+      setSaved({ model_policy: out.model_policy, fallback: out.fallback })
+    } catch (e) {
+      setSaved(before)
+      setError(String(e))
+    }
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+      <Group title={t(copy.policyTitle)} intro={t(copy.policyIntro)} name="model_policy" value={saved.model_policy} choices={MODEL_CHOICES} t={t} onPick={(v) => void pick("model_policy", v)} />
+      <Group title={t(copy.fallbackTitle)} intro={t(copy.fallbackIntro)} name="fallback" value={saved.fallback} choices={FALLBACK_CHOICES} t={t} onPick={(v) => void pick("fallback", v)} />
+      {error && <p className="text-destructive text-sm md:col-span-2">{error}</p>}
+    </div>
+  )
+}
+
+function Group<V extends string>({
+  title,
+  intro,
+  name,
+  value,
+  choices,
+  t,
+  onPick,
+}: {
+  title: string
+  intro: string
+  name: string
+  value: V
+  choices: { value: V; name: Copy; note: Copy }[]
+  t: (c: Copy) => string
+  onPick: (v: V) => void
+}) {
+  return (
+    <fieldset className="bg-background flex min-w-0 flex-col gap-2 rounded-2xl p-4">
+      <legend className="sr-only">{title}</legend>
+      <span className="font-semibold">{title}</span>
+      <span className="text-muted-foreground text-sm">{intro}</span>
+      {choices.map((c) => (
+        <label key={c.value} className={cn("flex cursor-pointer items-start gap-3 rounded-xl p-2 transition-colors", value === c.value ? "bg-muted" : "hover:bg-muted/50")}>
+          <input type="radio" name={name} checked={value === c.value} onChange={() => onPick(c.value)} className="mt-1 size-4 shrink-0 accent-foreground" />
+          <span className="flex min-w-0 flex-col gap-0.5">
+            <span className="text-sm font-medium">{t(c.name)}</span>
+            <span className="text-muted-foreground text-xs">{t(c.note)}</span>
+          </span>
+        </label>
+      ))}
+    </fieldset>
   )
 }

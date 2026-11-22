@@ -42,6 +42,50 @@ pub struct Settings {
     /// The shared pool (Machines → this machine): off by default, and only the kinds ticked here
     /// are ever claimed. Missing in older files, which read as off.
     pub share: ShareSettings,
+    /// Which Claude model runs are pinned to (Settings → Model): `auto` lets the formula or route decide.
+    /// Missing in older files, which read as `auto`.
+    pub model_policy: ModelPolicy,
+    /// What happens when Claude is unavailable: `auto` moves the run to a ready free route, `ask` stops
+    /// and says so, `off` is the normal error. Missing in older files, which read as `auto`.
+    pub fallback: FallbackPolicy,
+}
+
+/// The model Settings pins runs to. Never Fable.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "settings/types.ts")]
+pub enum ModelPolicy {
+    /// The formula's, else the route's model: Opus 5.5 to plan and at the gates, Sonnet 5.5 to produce.
+    #[default]
+    Auto,
+    Opus,
+    Sonnet,
+}
+
+impl ModelPolicy {
+    /// The model alias a fixed policy forces on a run; `None` for `auto`.
+    #[must_use]
+    pub fn pinned(self) -> Option<&'static str> {
+        match self {
+            Self::Auto => None,
+            Self::Opus => Some("opus"),
+            Self::Sonnet => Some("sonnet"),
+        }
+    }
+}
+
+/// What a run does when Claude is unavailable (usage limit, signed out, no subscription).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(rename_all = "lowercase")]
+#[ts(export, export_to = "settings/types.ts")]
+pub enum FallbackPolicy {
+    /// Re-run once on the first ready free route, with a "Note:" line.
+    #[default]
+    Auto,
+    /// Stop and say which free route is ready.
+    Ask,
+    /// The normal error.
+    Off,
 }
 
 /// The pool opt-in. On the wire (heartbeat `share`) it is kun's `shareSchema`, so it is camelCase.
@@ -76,6 +120,8 @@ impl Default for Settings {
             auto_run: false,
             brain: Brain::Claude,
             share: ShareSettings::default(),
+            model_policy: ModelPolicy::Auto,
+            fallback: FallbackPolicy::Auto,
         }
     }
 }

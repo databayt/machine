@@ -2,6 +2,16 @@
 import type { Brain } from "../brain/types";
 import type { DriverKind } from "../driver/types";
 
+/**
+ * What a run does when Claude is unavailable (usage limit, signed out, no subscription).
+ */
+export type FallbackPolicy = "auto" | "ask" | "off";
+
+/**
+ * The model Settings pins runs to. Never Fable.
+ */
+export type ModelPolicy = "auto" | "opus" | "sonnet";
+
 export type Settings = { person: string, 
 /**
  * The department chosen in Settings. Empty means the machine's registry default. Saving one
@@ -29,7 +39,17 @@ brain: Brain,
  * The shared pool (Machines → this machine): off by default, and only the kinds ticked here
  * are ever claimed. Missing in older files, which read as off.
  */
-share: ShareSettings, };
+share: ShareSettings, 
+/**
+ * Which Claude model runs are pinned to (Settings → Model): `auto` lets the formula or route decide.
+ * Missing in older files, which read as `auto`.
+ */
+model_policy: ModelPolicy, 
+/**
+ * What happens when Claude is unavailable: `auto` moves the run to a ready free route, `ask` stops
+ * and says so, `off` is the normal error. Missing in older files, which read as `auto`.
+ */
+fallback: FallbackPolicy, };
 
 /**
  * The pool opt-in. On the wire (heartbeat `share`) it is kun's `shareSchema`, so it is camelCase.

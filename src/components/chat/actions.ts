@@ -18,8 +18,8 @@ export interface AskOptions {
   /** One of the department pack's route ids (`PackInfo.routes`): permission mode, model, effort, agent and suffix. Wins over `mode`. */
   route?: string | null
   /**
-   * A model for this run only (`opus` | `sonnet` | `haiku`): the composer chip's pick or the formula's own.
-   * Needs the Rust `ask` to take a `model` argument and hand it to `route_flags_for`; until then it is ignored.
+   * A model for this run only (`opus` | `sonnet` | `haiku`): the formula's own. Settings → Model may pin it
+   * over this in Rust (a fixed policy wins); there is no per-run picker in the chat.
    */
   model?: string | null
   /** An effort for this run only (a formula's), same plumbing as `model`. */

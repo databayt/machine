@@ -43,6 +43,37 @@ export const copy = {
     ar: "افتح لوحة التحكم لإضافة مفاتيح Google AI Studio وGroq وMistral",
   },
   chipLabel: { en: "Model", ar: "النموذج" },
+  policyTitle: { en: "Model policy", ar: "سياسة النموذج" },
+  policyIntro: {
+    en: "Runs choose their model on their own; nothing to pick in the chat. Fable is never used.",
+    ar: "تختار التشغيلات نموذجها بنفسها فلا شيء تختاره في المحادثة. لا يُستخدم Fable أبداً.",
+  },
+  policyAuto: { en: "Automatic", ar: "تلقائي" },
+  policyAutoNote: {
+    en: "The formula or route decides: Opus 5.5 to plan and at the gates, Sonnet 5.5 for production stages.",
+    ar: "تقرّر الصيغة أو المسار: Opus 5.5 للتخطيط وعند البوابات، وSonnet 5.5 لمراحل الإنتاج.",
+  },
+  policyOpus: { en: "Always Opus 5.5", ar: "Opus 5.5 دائماً" },
+  policyOpusNote: { en: "Every run uses Opus 5.5, whatever the formula says.", ar: "كل تشغيل يستخدم Opus 5.5 مهما قالت الصيغة." },
+  policySonnet: { en: "Always Sonnet 5.5", ar: "Sonnet 5.5 دائماً" },
+  policySonnetNote: { en: "Every run uses Sonnet 5.5, whatever the formula says.", ar: "كل تشغيل يستخدم Sonnet 5.5 مهما قالت الصيغة." },
+  fallbackTitle: { en: "Fallback", ar: "البديل" },
+  fallbackIntro: {
+    en: "What a run does when Claude is unavailable (usage limit, signed out, no subscription).",
+    ar: "ما يفعله التشغيل حين لا يتوفر Claude (حد الاستخدام، تسجيل الخروج، لا اشتراك).",
+  },
+  fallbackAuto: { en: "Automatic", ar: "تلقائي" },
+  fallbackAutoNote: {
+    en: "Move to a free route that is ready, with a note in the chat. A free provider can read what it sends.",
+    ar: "ينتقل إلى مسار مجاني جاهز مع ملاحظة في المحادثة. المزوّد المجاني يستطيع قراءة ما يُرسل إليه.",
+  },
+  fallbackAsk: { en: "Ask me", ar: "اسألني" },
+  fallbackAskNote: {
+    en: "Stop and say which free route is ready; you switch it here with Use this.",
+    ar: "يتوقف ويذكر المسار المجاني الجاهز؛ تبدّله من هنا بـ«استخدم هذا».",
+  },
+  fallbackOff: { en: "Off", ar: "إيقاف" },
+  fallbackOffNote: { en: "Show the normal error and stay on Claude.", ar: "يعرض الخطأ المعتاد ويبقى على Claude." },
   chipClaude: { en: "Claude", ar: "كلود" },
   manage: { en: "Model settings", ar: "إعدادات النموذج" },
 } satisfies Record<string, Copy>

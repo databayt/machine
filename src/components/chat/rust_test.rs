@@ -632,3 +632,32 @@ fn no_route_ready_ends_with_the_reason_and_where_to_fix_it() {
     let msg = no_route_message(&Unavailable::NotSignedIn, Some((Brain::Nvidia, "proxy down.".into())), false);
     assert!(msg.contains("NVIDIA") && msg.contains("proxy down.") && msg.contains("Settings → Model"));
 }
+
+#[test]
+fn a_fixed_model_policy_overrides_the_formula_and_never_names_fable() {
+    // Automatic leaves the formula's pick (or nothing) alone.
+    assert_eq!(policy_model(ModelPolicy::Auto, None), None);
+    assert_eq!(policy_model(ModelPolicy::Auto, Some("opus".into())), Some("opus".into()));
+    // A fixed policy wins over the formula and the route's flags.
+    assert_eq!(policy_model(ModelPolicy::Sonnet, Some("opus".into())).as_deref(), Some("sonnet"));
+    assert_eq!(policy_model(ModelPolicy::Opus, None).as_deref(), Some("opus"));
+    assert_eq!(policy_model(ModelPolicy::Opus, Some("fable".into())).as_deref(), Some("opus"));
+    let flags = vec!["--model".to_owned(), "opus".to_owned(), "--effort".to_owned(), "high".to_owned()];
+    let pinned = policy_model(ModelPolicy::Sonnet, Some("opus".into()));
+    let out = pack::with_override(flags.clone(), false, pinned.as_deref(), None);
+    assert_eq!(out, ["--model", "sonnet", "--effort", "high"]);
+    // On a free route the proxy picks the model: the pin is dropped.
+    assert_eq!(pack::with_override(flags.clone(), true, pinned.as_deref(), None), flags);
+}
+
+#[test]
+fn fallback_off_is_the_normal_error_and_ask_stops_naming_the_ready_route() {
+    let why = Unavailable::UsageLimit { resets_at: None };
+    assert_eq!(fallback_stop(FallbackPolicy::Auto, &why, &[Brain::Nvidia], false), None);
+    let off = fallback_stop(FallbackPolicy::Off, &why, &[Brain::Nvidia], false).unwrap();
+    assert!(off.contains("usage limit") && !off.contains("NVIDIA"));
+    let ask = fallback_stop(FallbackPolicy::Ask, &why, &[Brain::Nvidia, Brain::OmniRoute], false).unwrap();
+    assert!(ask.contains("NVIDIA is ready") && ask.contains("Settings → Model"));
+    let none = fallback_stop(FallbackPolicy::Ask, &why, &[], true).unwrap();
+    assert!(none.contains("الإعدادات"));
+}
