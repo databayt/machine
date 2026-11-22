@@ -24,18 +24,23 @@ export interface AskOptions {
   model?: string | null
   /** An effort for this run only (a formula's), same plumbing as `model`. */
   effort?: string | null
+  /**
+   * What the UI knew before Rust did, for the `run` line of `station-log.jsonl`: the formula it filled, when it was
+   * tapped and when Send was pressed (ms since the epoch). Rust adds spawn, first event and done.
+   */
+  timing?: { formula?: string | null; tTap?: number | null; tSend?: number | null } | null
 }
 
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null }: AskOptions,
+  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null, timing = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, timing, channel })
 }
 
 /**

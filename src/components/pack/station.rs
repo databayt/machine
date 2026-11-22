@@ -574,6 +574,74 @@ pub fn iso_utc(secs: u64) -> String {
     )
 }
 
+/// The clock of one run, in milliseconds since the epoch, for the `run` line of the log. Every point is optional:
+/// a run typed by hand has no `t_tap`, a run that never started has no `t_spawn`.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct RunClock {
+    /// The person tapped a formula (or the station filled one).
+    pub tap: Option<u64>,
+    /// The person pressed Send.
+    pub send: Option<u64>,
+    /// `ask` began in Rust (the IPC arrived).
+    pub ask: Option<u64>,
+    /// The folder, profile and route were ready.
+    pub setup: Option<u64>,
+    /// The CLI was about to be spawned.
+    pub spawn: Option<u64>,
+    /// The first event came back from the CLI.
+    pub first_event: Option<u64>,
+    /// The run ended.
+    pub done: Option<u64>,
+}
+
+/// A time as `2026-11-22T09:30:00.123Z`, from milliseconds since the epoch.
+#[must_use]
+pub fn iso_utc_ms(ms: u64) -> String {
+    let base = iso_utc(ms / 1000);
+    format!("{}.{:03}Z", base.trim_end_matches('Z'), ms % 1000)
+}
+
+/// One `run` line: the five points the strip's timing needs, plus the two inside Rust (`t_ask`, `t_setup`).
+#[must_use]
+pub fn run_line(login: &str, dept: &str, repo: Option<&str>, id: Option<&str>, ok: bool, c: &RunClock) -> String {
+    let iso = |t: Option<u64>| t.map(iso_utc_ms);
+    let repo = repo.filter(|r| !r.is_empty());
+    serde_json::to_string(&serde_json::json!({
+        "ts": iso(c.done).unwrap_or_else(|| iso_utc(now_secs())),
+        "login": login,
+        "dept": dept,
+        "repo": repo,
+        "id": id,
+        "event": "run",
+        "ok": ok,
+        "t_tap": iso(c.tap),
+        "t_send": iso(c.send),
+        "t_ask": iso(c.ask),
+        "t_setup": iso(c.setup),
+        "t_spawn": iso(c.spawn),
+        "t_first_event": iso(c.first_event),
+        "t_done": iso(c.done),
+    }))
+    .unwrap_or_default()
+}
+
+/// Appends a `run` line to the same log as the taps. Best effort: a run never fails because its timing could not be written.
+pub fn log_run(dept: &str, repo: Option<&str>, id: Option<&str>, ok: bool, clock: &RunClock) {
+    let Ok(machine) = machine_dir() else { return };
+    let id = id.filter(|i| valid_formula_id(i));
+    let login = saved_login();
+    let login = if crate::profile::valid_login(&login) { login.as_str() } else { "" };
+    if let Err(e) = append_line(&log_path(&machine), &run_line(login, dept, repo, id, ok, clock)) {
+        tracing::debug!("run timing not logged: {e}");
+    }
+}
+
+/// Milliseconds since the epoch.
+#[must_use]
+pub fn now_ms() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| u64::try_from(d.as_millis()).unwrap_or(0))
+}
+
 /// `<machine>/station-log.jsonl`, the file the script reads.
 #[must_use]
 pub fn log_path(machine: &Path) -> PathBuf {

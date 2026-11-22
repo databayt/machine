@@ -883,3 +883,21 @@ fn workspace_claude_md_carries_kuns_question_protocol_else_the_built_in_copy() {
     assert!(!claude.contains(ASK_FALLBACK));
     assert!(fs::read_to_string(dir.join("AGENTS.md")).unwrap().contains("## Ask like this"));
 }
+
+#[test]
+fn company_brief_joins_the_folder_only_when_kun_has_one() {
+    let kun = kun_fixture();
+    let home = tempfile::tempdir().unwrap();
+    let before = fs::read_to_string(ensure_in(kun.path(), home.path(), "sales").unwrap().join("CLAUDE.md")).unwrap();
+    assert!(!before.contains("The Drive"));
+    // kun adds the brief: it follows the question protocol in both files, and the folder refreshes.
+    fs::create_dir_all(kun.path().join("departments/_shared")).unwrap();
+    fs::write(kun.path().join("departments/_shared/company.md"), "## Company\nThe Drive: cash flow first.\n").unwrap();
+    let dir = ensure_in(kun.path(), home.path(), "sales").unwrap();
+    let claude = fs::read_to_string(dir.join("CLAUDE.md")).unwrap();
+    assert!(claude.trim_end().ends_with("The Drive: cash flow first."));
+    assert!(fs::read_to_string(dir.join("AGENTS.md")).unwrap().contains("The Drive: cash flow first."));
+    // An empty file is the same as none.
+    fs::write(kun.path().join("departments/_shared/company.md"), "  \n").unwrap();
+    assert_eq!(company_brief(kun.path()), None);
+}

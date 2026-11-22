@@ -330,6 +330,21 @@ pub fn ask_protocol(kun: &Path) -> String {
         .unwrap_or_else(|| ASK_FALLBACK.to_owned())
 }
 
+/// The company brief every department's workspace `CLAUDE.md` may carry: kun's `departments/_shared/company.md`
+/// (the Drive, the North Star, the sprint, the pilot). `None` when kun has none yet, so older checkouts are unchanged.
+#[must_use]
+pub fn company_brief(kun: &Path) -> Option<String> {
+    fs::read_to_string(kun.join("departments/_shared/company.md"))
+        .ok()
+        .map(|t| t.trim().to_owned())
+        .filter(|t| !t.is_empty())
+}
+
+/// `\n---\n\n<brief>\n` after the question protocol, or nothing.
+fn company_section(kun: &Path) -> String {
+    company_brief(kun).map_or_else(String::new, |c| format!("\n---\n\n{c}\n"))
+}
+
 fn write_if_changed(path: &Path, content: &str) -> Result<(), PackError> {
     if fs::read_to_string(path).is_ok_and(|old| old == content) {
         return Ok(());
@@ -693,17 +708,18 @@ pub fn ensure_in(kun: &Path, machine: &Path, dept: &str) -> Result<PathBuf, Pack
     let rules = kun.join("CLAUDE.md");
     let body = prompt.trim_end();
     let ask = ask_protocol(kun);
+    let company = company_section(kun);
     write_if_changed(
         &dir.join("CLAUDE.md"),
         &format!(
-            "{body}\n\n---\n\n@{}\n\n---\n\n{ask}\n",
+            "{body}\n\n---\n\n@{}\n\n---\n\n{ask}\n{company}",
             rules.display().to_string().replace('\\', "/")
         ),
     )?;
     write_if_changed(
         &dir.join("AGENTS.md"),
         &format!(
-            "{body}\n\n---\n\nCompany rules: read {} before you start.\n\n---\n\n{ask}\n",
+            "{body}\n\n---\n\nCompany rules: read {} before you start.\n\n---\n\n{ask}\n{company}",
             rules.display()
         ),
     )?;

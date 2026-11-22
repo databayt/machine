@@ -285,3 +285,36 @@ async fn the_real_station_answers_board_fill_and_match() {
     let m = parse_match(&run(args, MATCH_TIMEOUT).await.unwrap());
     assert!(m.confidence.is_finite());
 }
+
+#[test]
+fn run_line_carries_the_clock_as_iso_times() {
+    let c = RunClock {
+        tap: Some(1_763_800_000_000),
+        send: Some(1_763_800_002_500),
+        ask: Some(1_763_800_002_520),
+        setup: Some(1_763_800_002_700),
+        spawn: Some(1_763_800_002_710),
+        first_event: Some(1_763_800_006_000),
+        done: Some(1_763_800_031_999),
+    };
+    let line = run_line("abdout", "video", Some("hogwarts"), Some("video.film.plan"), true, &c);
+    let v: serde_json::Value = serde_json::from_str(&line).unwrap();
+    assert_eq!(v["event"], "run");
+    assert_eq!(v["id"], "video.film.plan");
+    assert_eq!(v["t_tap"], "2025-11-22T08:26:40.000Z");
+    assert_eq!(v["t_send"], "2025-11-22T08:26:42.500Z");
+    assert_eq!(v["t_done"], "2025-11-22T08:27:11.999Z");
+    assert_eq!(v["ts"], v["t_done"]);
+    assert_eq!(v["ok"], true);
+    // A run typed by hand has no tap; the point is null, never made up.
+    let hand = run_line("", "video", None, None, false, &RunClock { send: Some(1), done: Some(2), ..RunClock::default() });
+    let h: serde_json::Value = serde_json::from_str(&hand).unwrap();
+    assert!(h["t_tap"].is_null() && h["id"].is_null() && h["repo"].is_null());
+    assert_eq!(h["ok"], false);
+}
+
+#[test]
+fn iso_with_milliseconds_pads_them() {
+    assert_eq!(iso_utc_ms(0), "1970-01-01T00:00:00.000Z");
+    assert_eq!(iso_utc_ms(1_005), "1970-01-01T00:00:01.005Z");
+}

@@ -268,6 +268,9 @@ fn claude_md(kun: &Path, repos: &Path, work: &Path, profile: &MachineProfile) ->
         }
     }
     let _ = write!(out, "---\n\n{}\n", super::ask_protocol(kun));
+    if let Some(company) = super::company_brief(kun) {
+        let _ = write!(out, "\n---\n\n{company}\n");
+    }
     out
 }
 

@@ -16,7 +16,7 @@ use std::{
     },
 };
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{
     Runtime,
     ipc::Channel,
@@ -28,7 +28,7 @@ use crate::{
     brain::{self, Brain, BrainError},
     driver::{self, DriverError, DriverKind, Event, Job, PermissionMode, Unavailable},
     network::{host::Host, valid_task_id},
-    pack::{self, PackError, Workspace},
+    pack::{self, PackError, Workspace, station::{self, RunClock}},
     profile::{self, OsStore, ProfileError, Resolved},
     sessions,
     settings::{self, FallbackPolicy, ModelPolicy, SettingsError},
@@ -408,8 +408,11 @@ async fn ask(
     route: Option<String>,
     model: Option<String>,
     effort: Option<String>,
+    timing: Option<RunTiming>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
+    let timing = timing.unwrap_or_default();
+    let mut clock = RunClock { ask: Some(station::now_ms()), tap: timing.t_tap, send: timing.t_send, ..RunClock::default() };
     let settings = settings::load()?;
     let resolved = profile::current()?;
     let kind = pick_driver(&resolved, driver, settings.driver);
@@ -430,6 +433,7 @@ async fn ask(
     };
     let first = sticky.unwrap_or(configured);
     let setup = inputs.setup(first).await?;
+    clock.setup = Some(station::now_ms());
     let title = title_from(&prompt);
     let ctx = RunCtx { title, department: inputs.department.clone(), repo: inputs.repo.clone(), kind };
     let arabic = is_arabic(&prompt);
@@ -450,17 +454,20 @@ async fn ask(
     }
     // Attempt 0 on the chosen route (held back while it might turn out to be "Claude unavailable").
     let gated = kind == DriverKind::Claude && !first.is_free();
-    let mut end = run_job(&job, &mut rx, gated, &ctx, &channel, &mut seen).await;
+    let mut end = run_job(&job, &mut rx, gated, &ctx, &channel, &mut seen, &mut clock).await;
     // Attempt 1, once: Claude was unavailable. Never a loop: the fallback run is not gated or retried.
     end = match end {
         RunEnd::Unavailable(why) if should_fall_back(kind, configured, 0, Some(&why)) => {
             match fallback_stop(settings.fallback, &why, &ready_routes().await, arabic) {
                 Some(message) => RunEnd::Failed(message),
-                None => fall_back(&inputs, &make_job, &why, arabic, &mut rx, &ctx, &channel, &mut seen).await,
+                None => fall_back(&inputs, &make_job, &why, arabic, &mut rx, &ctx, &channel, &mut seen, &mut clock).await,
             }
         }
         other => other,
     };
+    // One `run` line in station-log.jsonl: where the time went between the tap and the end.
+    clock.done = Some(station::now_ms());
+    station::log_run(&inputs.department, inputs.repo.as_deref(), timing.formula.as_deref(), matches!(end, RunEnd::Finished(Ok(()))), &clock);
     let last = match end {
         RunEnd::Finished(Ok(())) => None,
         RunEnd::Finished(Err(e)) => Some(Event::Error { message: e.to_string() }),
@@ -472,6 +479,15 @@ async fn ask(
         let _ = channel.send(event);
     }
     Ok(())
+}
+
+/// What the UI knew before Rust did: the formula it filled, when it was tapped, and when Send was pressed (ms since the epoch).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct RunTiming {
+    formula: Option<String>,
+    t_tap: Option<u64>,
+    t_send: Option<u64>,
 }
 
 /// A model and effort for one run, over its route's (`ask`'s `model` / `effort`).
@@ -620,10 +636,13 @@ async fn run_job(
     ctx: &RunCtx,
     channel: &Channel<Event>,
     seen: &mut Option<String>,
+    clock: &mut RunClock,
 ) -> RunEnd {
     let mut gate = Gate { committed: !gated, ..Gate::default() };
+    clock.spawn.get_or_insert_with(station::now_ms);
     let outcome = {
         let emit = |event: Event| {
+            clock.first_event.get_or_insert_with(station::now_ms);
             for e in gate.push(event) {
                 deliver(e, ctx, seen, channel);
             }
@@ -697,6 +716,7 @@ async fn fall_back(
     ctx: &RunCtx,
     channel: &Channel<Event>,
     seen: &mut Option<String>,
+    clock: &mut RunClock,
 ) -> RunEnd {
     let ready = ready_routes().await;
     if ready.is_empty() {
@@ -711,7 +731,7 @@ async fn fall_back(
                     Err(e) => return RunEnd::Failed(e.to_string()),
                 };
                 let _ = channel.send(Event::Text { text: fallback_notice(why, route, arabic) });
-                let end = run_job(&job, rx, false, ctx, channel, seen).await;
+                let end = run_job(&job, rx, false, ctx, channel, seen, clock).await;
                 if let Some(id) = seen.as_deref() {
                     brain::fallback_set(id, route);
                 }
