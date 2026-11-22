@@ -91,7 +91,12 @@ id: string | null, confidence: number,
 /**
  * Another department when the text names one.
  */
-dept: string | null, };
+dept: string | null, 
+/**
+ * Slot values the sentence itself gave ("give the classroom scene to sedon" names the piece
+ * and the person); handed to `fill` with the id.
+ */
+set: { [key in string]: string }, };
 
 /**
  * What the UI shows about a department's pack.

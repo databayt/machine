@@ -2,16 +2,20 @@
 // the working route. A typed reply stays on the plan route (it answers or changes the plan).
 // Pure: node --test src/components/chat/accept.test.ts
 
-/** When the filled formula records to an issue: create the film issue and its first work orders. */
+/** A film plan (`record: "film"`): the production, its film issue, and a work order per piece handed to a person. */
+export const ACCEPT_FILM =
+  "The plan is accepted. Create the production if it does not exist yet (`produce new`), then its film issue: `produce issue <ID> --create`. For each piece the plan gives to another person, create its work order: `produce order <ID> <formula> --to <login> --create`. Reply with the links, then stop at the next gate."
+
+/** A work order (`record: "issue"`): the request becomes one issue for one person. */
 export const ACCEPT_ISSUE =
-  "The plan is accepted. Create the film issue and its first work orders now: `produce issue <ID> --create`, then `produce order` for each piece that can start, and reply with the links. Then stop."
+  "The plan is accepted. Create the work order as an issue now and reply with its link. Then stop."
 
 /** Otherwise: carry out the first step. */
 export const ACCEPT_STEP = "The plan is accepted. Carry out the first step, then stop at the next gate."
 
 /** The message Accept sends, by the `record` of the formula that opened the plan. */
 export const acceptMessage = (record: string | null | undefined): string =>
-  record === "issue" ? ACCEPT_ISSUE : ACCEPT_STEP
+  record === "film" ? ACCEPT_FILM : record === "issue" ? ACCEPT_ISSUE : ACCEPT_STEP
 
 /** The route a turn runs on: the one asked for, else the one chosen on screen. */
 export const turnRoute = (asked: string | null | undefined, chosen: string | null | undefined): string | null =>

@@ -37,7 +37,7 @@ export async function fill(
 
 /** Typed text to a formula id; never rejects, no match is `{ id: null }`. */
 export async function matchText(department: string, text: string, repo: string | null): Promise<Match> {
-  const none: Match = { id: null, confidence: 0, dept: null }
+  const none: Match = { id: null, confidence: 0, dept: null, set: {} }
   if (!isTauri()) return none
   try {
     return await invoke<Match>("plugin:pack|match_text", { department, text, repo })

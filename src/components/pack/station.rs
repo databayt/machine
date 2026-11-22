@@ -120,6 +120,10 @@ pub struct Match {
     pub confidence: f64,
     /// Another department when the text names one.
     pub dept: Option<String>,
+    /// Slot values the sentence itself gave ("give the classroom scene to sedon" names the piece
+    /// and the person); handed to `fill` with the id.
+    #[serde(deserialize_with = "lenient_map")]
+    pub set: BTreeMap<String, String>,
 }
 
 /// A formula id: `video.film.plan`.

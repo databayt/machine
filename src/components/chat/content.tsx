@@ -329,7 +329,7 @@ export default function ChatContent({
       let dept = ctx.dept;
       if (m.dept && m.dept !== ctx.dept && (await ctx.chooseDept(m.dept))) dept = m.dept;
       try {
-        const f = await fillFormula(dept, m.id, ctx.repo || null, {});
+        const f = await fillFormula(dept, m.id, ctx.repo || null, m.set ?? {});
         if (dept !== ctx.dept) carry.current = { dept, route: f.route };
         else if (f.route) setRouteId(f.route);
         stationRef.current = { id: f.id, record: f.record };

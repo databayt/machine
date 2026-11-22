@@ -2,14 +2,18 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
+import { ACCEPT_FILM, ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
 
-test("a plan that records to an issue creates the film issue and its first orders", () => {
-  assert.equal(
-    acceptMessage("issue"),
-    "The plan is accepted. Create the film issue and its first work orders now: `produce issue <ID> --create`, then `produce order` for each piece that can start, and reply with the links. Then stop.",
-  )
+test("a film plan creates the production, its film issue and a work order per piece handed over", () => {
+  const m = acceptMessage("film")
+  assert.equal(m, ACCEPT_FILM)
+  for (const part of ["`produce new`", "`produce issue <ID> --create`", "`produce order <ID> <formula> --to <login> --create`", "stop at the next gate"])
+    assert.ok(m.includes(part), part)
+})
+
+test("a work order becomes one issue", () => {
   assert.equal(acceptMessage("issue"), ACCEPT_ISSUE)
+  assert.ok(ACCEPT_ISSUE.includes("Create the work order as an issue"))
 })
 
 test("any other plan carries out the first step and stops at the next gate", () => {
