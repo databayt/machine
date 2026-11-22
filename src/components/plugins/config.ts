@@ -3,7 +3,6 @@ import type { Copy } from "../chat/config.ts"
 
 export const copy = {
   title: { en: "Plugins", ar: "الإضافات" },
-  search: { en: "Search plugins", ar: "ابحث في الإضافات" },
   all: { en: "All", ar: "الكل" },
   top: { en: "Top", ar: "الأبرز" },
   add: { en: "Add", ar: "أضف" },

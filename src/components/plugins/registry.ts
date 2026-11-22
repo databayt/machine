@@ -109,7 +109,7 @@ export const CONNECTORS: Connector[] = [
     name: "Canva",
     kind: "plugin",
     departments: ["marketing", "image"],
-    logo: "/logos/canva.png",
+    logo: "/logos/canva.svg",
     blurb: { en: "Create and export designs", ar: "إنشاء التصاميم وتصديرها" },
     mcp: ["plugin:canva:canva"],
     keywords: ["canva", "كانفا"],
@@ -121,7 +121,7 @@ export const CONNECTORS: Connector[] = [
     name: "Adobe for creativity",
     kind: "plugin",
     departments: ["video", "image"],
-    logo: "/logos/adobe.png",
+    logo: "/logos/adobe.svg",
     blurb: { en: "Adobe creative skills", ar: "مهارات أدوبي الإبداعية" },
     keywords: ["adobe", "أدوبي"],
     url: `${MARKET}/plugins`,
@@ -249,7 +249,7 @@ export const CONNECTORS: Connector[] = [
     name: "Context7",
     kind: "plugin",
     departments: ["tech"],
-    logo: "/logos/context7.png",
+    logo: "/logos/context7.svg",
     blurb: { en: "Up-to-date library docs", ar: "توثيق المكتبات المحدّث" },
     mcp: ["context7"],
     keywords: ["docs", "library"],
@@ -463,11 +463,4 @@ export function isInstalled(c: Connector, names: string[]): boolean {
   if (!c.mcp) return false
   const have = new Set(names.map((n) => n.toLowerCase()))
   return c.mcp.some((n) => have.has(n.toLowerCase()))
-}
-
-/** A search over name, blurb (both languages) and keywords; empty query matches all. */
-export function matches(c: Connector, query: string): boolean {
-  const q = query.trim().toLowerCase()
-  if (!q) return true
-  return [c.name, c.blurb.en, c.blurb.ar, ...c.keywords].some((s) => s.toLowerCase().includes(q))
 }

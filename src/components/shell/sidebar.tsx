@@ -14,7 +14,7 @@ import { itemName, type NavNode } from "./nav";
 import { useNav } from "./use-nav";
 
 /**
- * The one sidebar of the app, in the menu's item style: seven parents (Sessions, Plugins, Apps, Library,
+ * The one sidebar of the app, in the menu's item style: six parents (Sessions, Plugins, Library,
  * Machines, Setup, Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
  * parent it lists only the path taken (the card opened on its page, then the step or item under it),
  * nothing before a card is opened; every line above the deepest is a link back up. One white mark, on the deepest listed
@@ -78,7 +78,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            ltr: node.id === "library" || node.id === "plugins" || node.id === "apps" || node.id === "machines",
+            ltr: node.id === "library" || node.id === "plugins" || node.id === "machines",
             active: on,
             mark: on && !leaf,
             current: on && !leaf,

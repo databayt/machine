@@ -3,7 +3,6 @@ import type { Copy } from "../chat/config.ts"
 
 export const copy = {
   title: { en: "Machines", ar: "الأجهزة" },
-  search: { en: "Search machines", ar: "ابحث في الأجهزة" },
   empty: { en: "No machines match.", ar: "لا أجهزة مطابقة." },
   loading: { en: "Loading the network…", ar: "جارٍ تحميل الشبكة…" },
   failed: { en: "Could not reach kun. Machines will show when the connection is back.", ar: "تعذّر الوصول إلى كن. ستظهر الأجهزة عند عودة الاتصال." },

@@ -106,7 +106,7 @@ export default function Overview({ lang }: { lang: Locale }) {
 
           <CardGrid>
             <NavCard
-              href={`/${lang}/apps/`}
+              href={`/${lang}/plugins/`}
               name={t(appsCopy.title)}
               hint={t(appsCopy.hint)}
               state={`${apps.filter((x) => isInstalledApp(x, removed)).length}/${apps.length}`}
@@ -147,9 +147,9 @@ export default function Overview({ lang }: { lang: Locale }) {
   )
 }
 
-/** Where a step lives: Apps owns its stages, Setup the rest. */
+/** Where a step lives: Plugins owns the app stages, Setup the rest. */
 export function stepHref(lang: string, step: { id: string; stage: string } | undefined, id: string): string {
-  if (step && APP_STAGES.includes(step.stage)) return `/${lang}/apps/?item=${encodeURIComponent(id)}`
+  if (step && APP_STAGES.includes(step.stage)) return `/${lang}/plugins/?item=${encodeURIComponent(id)}`
   const stage = step?.stage
   return stage ? `/${lang}/setup/?stage=${encodeURIComponent(stage)}&step=${encodeURIComponent(id)}` : `/${lang}/setup/`
 }

@@ -7,7 +7,7 @@ import { tr } from "@/components/chat/config"
 import type { Locale } from "@/components/local/config"
 
 import { Grid } from "../plugins/card"
-import { DeptPills, SearchField, useDeptFilter } from "../plugins/filters"
+import { DeptFilter, useDeptFilter } from "../plugins/filters"
 import { OpenInMachine } from "../shell/content"
 import { PageShell } from "../shell/page"
 import { MachineCard } from "./card"
@@ -35,7 +35,6 @@ export default function Machines({ lang }: { lang: Locale }) {
   const names = useMemo(() => filter.options.map((o) => o.name), [filter.options])
   const m = useMachines(names)
   const item = useSearchParams().get("item")
-  const [query, setQuery] = useState("")
   const [sendOpen, setSendOpen] = useState(false)
   const [target, setTarget] = useState<string | null>(null)
   const openSend = (to: string | null) => {
@@ -83,8 +82,7 @@ export default function Machines({ lang }: { lang: Locale }) {
     )
   }
 
-  const q = query.trim().toLowerCase()
-  const shown = machines.filter((x) => (filter.value === "all" || x.departments.includes(filter.value) || (m.me?.login === x.login && x.departments.length === 0)) && (!q || `${x.name} ${x.login}`.toLowerCase().includes(q)))
+  const shown = machines.filter((x) => (filter.value === "all" || x.departments.includes(filter.value) || (m.me?.login === x.login && x.departments.length === 0)))
   const totals = poolTotals(machines)
 
   return (
@@ -96,9 +94,8 @@ export default function Machines({ lang }: { lang: Locale }) {
         <Stat label={t(copy.poolRam)} value={gb(totals.ramFree)} />
         <Stat label={t(copy.poolGpus)} value={String(totals.gpus)} />
       </div>
-      <div className="flex flex-col gap-4">
-        <DeptPills options={filter.options} value={filter.value} onChange={filter.set} t={t} />
-        <SearchField value={query} onChange={setQuery} placeholder={t(copy.search)} />
+      <div className="flex">
+        <DeptFilter lang={lang} options={filter.options} value={filter.value} onChange={filter.set} />
       </div>
       {m.machines === null ? (
         <p className="text-muted-foreground text-sm">{t(m.failed ? copy.failed : copy.loading)}</p>

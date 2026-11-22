@@ -1,22 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import {
-  BriefcaseIcon,
-  CheckIcon,
-  ChevronDownIcon,
-  ClapperboardIcon,
-  CloudIcon,
-  CodeXmlIcon,
-  FlaskConicalIcon,
-  ImageIcon,
-  HandCoinsIcon,
-  LifeBuoyIcon,
-  LoaderIcon,
-  MegaphoneIcon,
-  SearchIcon,
-  type LucideIcon,
-} from "lucide-react";
+import { CheckIcon, ChevronDownIcon, CloudIcon, LoaderIcon, SearchIcon } from "lucide-react";
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -30,6 +15,7 @@ import { loadSettings, saveSettings } from "../settings/actions";
 import { HealthLight, type DeptHealth } from "../pack/health";
 import { repoMenu } from "./actions";
 import { tr } from "./config";
+import { DepartmentSelect, row, trigger } from "./department-select";
 import { filterRepos, pickRepo, repoLabel } from "./repos";
 import type { RepoEntry } from "./types";
 
@@ -97,19 +83,6 @@ export function useWorkingContext(enabled: boolean): {
   return { profile, dept, chooseDept: choose, repos, local, repo, setRepo };
 }
 
-/** Each department's mark; one not listed falls back to the briefcase. */
-const DEPT_ICONS: Record<string, LucideIcon> = {
-  tech: CodeXmlIcon,
-  business: BriefcaseIcon,
-  sales: HandCoinsIcon,
-  marketing: MegaphoneIcon,
-  video: ClapperboardIcon,
-  image: ImageIcon,
-  support: LifeBuoyIcon,
-  rnd: FlaskConicalIcon,
-};
-const deptIcon = (name: string): LucideIcon => DEPT_ICONS[name] ?? BriefcaseIcon;
-
 /** GitHub's repo mark (octicon `repo`), as the hogwarts profile uses it. */
 function RepoIcon({ className }: { className?: string }) {
   return (
@@ -118,13 +91,6 @@ function RepoIcon({ className }: { className?: string }) {
     </svg>
   );
 }
-
-/** A trigger in the row under the composer: icon, label, chevron; tinted while its menu is open. */
-const trigger =
-  "inline-flex min-w-0 items-center gap-1.5 rounded-lg px-2 py-1 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-50 data-[state=open]:bg-foreground/5 data-[state=open]:text-foreground";
-/** A row inside a menu. */
-const row =
-  "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-start text-sm text-foreground transition-colors hover:bg-muted";
 
 /** `▣ Department ▾   ▤ Repository ▾`: two selects under the composer, each opening its own menu. */
 export function ContextLine({
@@ -157,15 +123,12 @@ export function ContextLine({
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
-  const [deptOpen, setDeptOpen] = useState(false);
   const [repoOpen, setRepoOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [cloning, setCloning] = useState<string | null>(null);
   const departments = profile?.departments ?? [];
   const current = departments.find((d) => d.name === dept);
   if (!current) return null;
-  const title = (d: (typeof departments)[number]) => (isAr && d.title_ar) || d.title;
-  const CurrentIcon = deptIcon(current.name);
   const others = filterRepos(repos, repo, query);
   const shownRepo = repos.find((e) => e.name === repo);
   const pick = (r: string) => {
@@ -180,38 +143,13 @@ export function ContextLine({
 
   return (
     <div className="mt-2 flex min-w-0 items-center gap-2 px-1.5 text-sm text-foreground/80">
-      <Popover open={deptOpen} onOpenChange={setDeptOpen}>
-        <PopoverTrigger asChild>
-          <button type="button" disabled={disabled} aria-label={t(menuCopy.department)} className={trigger}>
-            <CurrentIcon className="size-4 shrink-0" aria-hidden />
-            <span className="truncate">{title(current)}</span>
-            <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          </button>
-        </PopoverTrigger>
-        <PopoverContent side="bottom" align="start" dir={isAr ? "rtl" : "ltr"} className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5">
-          <ul>
-            {departments.map((d) => {
-              const Icon = deptIcon(d.name);
-              return (
-              <li key={d.name}>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setDeptOpen(false);
-                    if (d.name !== dept) onDept(d.name);
-                  }}
-                  className={row}
-                >
-                  <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                  <span className="flex-1 truncate">{title(d)}</span>
-                  {d.name === dept && <CheckIcon className="size-4 shrink-0" aria-hidden />}
-                </button>
-              </li>
-              );
-            })}
-          </ul>
-        </PopoverContent>
-      </Popover>
+      <DepartmentSelect
+        isAr={isAr}
+        options={departments.map((d) => ({ name: d.name, title: { en: d.title, ar: d.title_ar || d.title } }))}
+        value={dept}
+        onChange={onDept}
+        disabled={disabled}
+      />
 
       {repos.length > 0 && (
       <Popover

@@ -2,7 +2,8 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { APP_STAGES, isApp } from "../apps/registry.ts"
+import { APP_STAGES, APPS, isApp } from "../apps/registry.ts"
+import { CONNECTORS } from "../plugins/registry.ts"
 import { backHref, buildTree, dirOfItem, splitPath, stageCounts, trailOf } from "./nav.ts"
 
 const q = (s: string) => new URLSearchParams(s)
@@ -43,9 +44,14 @@ test("machines: the item is a login and is the child", () => {
   assert.deepEqual(trail("/ar/machines/", "item=moed"), { parent: "machines", child: "moed", leaf: null })
 })
 
-test("apps: the item is a readiness step id", () => {
-  assert.deepEqual(trail("/en/apps/"), { parent: "apps", child: null, leaf: null })
-  assert.deepEqual(trail("/ar/apps/", "item=claude.cli"), { parent: "apps", child: "claude.cli", leaf: null })
+test("apps live inside plugins: the item is a readiness step id, and /apps is gone", () => {
+  assert.deepEqual(trail("/ar/plugins/", "item=claude.cli"), { parent: "plugins", child: "claude.cli", leaf: null })
+  assert.deepEqual(trail("/en/apps/"), { parent: null, child: null, leaf: null })
+})
+
+test("plugin ids and app ids never collide", () => {
+  const plugins = new Set(CONNECTORS.map((c) => c.id))
+  assert.deepEqual(APPS.filter((a) => plugins.has(a.id)).map((a) => a.id), [])
 })
 
 test("settings: the view and the four routes are its children", () => {
@@ -78,17 +84,19 @@ test("tree: gating, and setup's children without the app stages", () => {
   assert.deepEqual(ids(buildTree(input), "library"), ["skills", "agents", "rules", "hooks", "departments"])
 })
 
-test("tree: the seven parents in the order a person works", () => {
+test("tree: the six parents in the order a person works", () => {
   const input = { isAr: false, inApp: false, engine: false, stages: [], steps: [] }
   const tree = buildTree(input)
-  assert.deepEqual(tree.map((n) => n.id), ["sessions", "plugins", "apps", "library", "machines", "setup", "settings"])
+  assert.deepEqual(tree.map((n) => n.id), ["sessions", "plugins", "library", "machines", "setup", "settings"])
   const kids = (p: string) => tree.find((n) => n.id === p)?.children ?? []
   assert.ok(kids("plugins").some((k) => k.id === "blender" && k.href("en") === "/en/plugins/?item=blender"))
-  assert.ok(kids("apps").some((k) => k.id === "claude.cli" && k.href("en") === "/en/apps/?item=claude.cli"))
-  assert.ok(!kids("apps").some((k) => k.id.startsWith("launcher.")))
+  assert.ok(kids("plugins").some((k) => k.id === "claude.cli" && k.href("en") === "/en/plugins/?item=claude.cli"))
+  assert.ok(!kids("plugins").some((k) => k.id.startsWith("launcher.")))
+  const ids = kids("plugins").map((k) => k.id)
+  assert.ok(ids.indexOf("blender") < ids.indexOf("brew"), "plugins first, then apps")
 })
 
-test("app stages are Apps', every app step sits in one, and the hidden checks are not apps", () => {
+test("app stages are Plugins', every app step sits in one, and the hidden checks are not apps", () => {
   assert.deepEqual([...APP_STAGES], ["foundation", "agents", "tools"])
   assert.equal(isApp({ id: "tool.blender", stage: "tools" }), true)
   for (const id of ["launcher.c", "launcher.a", "launcher.o", "launcher.h"]) assert.equal(isApp({ id, stage: "agents" }), false)
