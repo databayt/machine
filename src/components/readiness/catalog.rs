@@ -9,8 +9,8 @@ use std::{
 };
 
 use super::model::{
-    Catalog, ReadinessBeat, ReadinessError, ReadinessState, ReadinessView, Step, StepStatus,
-    StepView,
+    Catalog, GateBeat, GateView, ReadinessBeat, ReadinessError, ReadinessState, ReadinessView,
+    Step, StepStatus, StepView,
 };
 
 /// `<kun>/.claude/machine/readiness.json`.
@@ -185,12 +185,106 @@ pub(super) fn view(
         role: scope.role.clone(),
         departments: scope.departments.clone(),
         removed: state.map(|s| s.removed.clone()).unwrap_or_default(),
+        gate: catalog.map(|c| gate_view(state, c, scope)),
+    }
+}
+
+/// Whether the gate covers this step for this person: the step is flagged `gate`, applies to this
+/// computer, and, when it names `gateFor`, one of those departments is the person's.
+pub(super) fn gate_applies(step: &Step, scope: &Scope) -> bool {
+    step.gate
+        && applies(step, scope)
+        && step
+            .gate_for
+            .as_ref()
+            .is_none_or(|f| f.iter().any(|d| d == "*" || scope.departments.contains(d)))
+}
+
+/// The ids of the gate steps for this person, in catalog stage order.
+pub(super) fn gate_ids(catalog: &Catalog, scope: &Scope) -> Vec<String> {
+    ordered(catalog, scope)
+        .into_iter()
+        .filter(|s| gate_applies(s, scope))
+        .map(|s| s.id)
+        .collect()
+}
+
+/// The doctor's verdict from the latest readiness state alone: no probe runs. A gate step passes
+/// when the runner last saw it `pass`, `fixed`, `updated` or `update-available`; a `skip` passes
+/// unless the person removed the step on purpose. No state yet means nothing passes.
+pub(super) fn gate_view(
+    state: Option<&ReadinessState>,
+    catalog: &Catalog,
+    scope: &Scope,
+) -> GateView {
+    let steps = gate_ids(catalog, scope);
+    let failing: Vec<String> = steps
+        .iter()
+        .filter(|id| !gate_step_ok(state, id))
+        .cloned()
+        .collect();
+    GateView {
+        pass: failing.is_empty(),
+        failing,
+        steps,
+        at: state
+            .and_then(|s| s.at.as_str())
+            .unwrap_or_default()
+            .to_owned(),
+    }
+}
+
+fn gate_step_ok(state: Option<&ReadinessState>, id: &str) -> bool {
+    let Some(state) = state else { return false };
+    match state.steps.iter().find(|s| s.id == id).map(|s| s.status) {
+        Some(
+            StepStatus::Pass | StepStatus::Fixed | StepStatus::Updated | StepStatus::UpdateAvailable,
+        ) => true,
+        Some(StepStatus::Skip) => !state.removed.iter().any(|r| r == id),
+        _ => false,
+    }
+}
+
+/// `secs` since the epoch as `YYYY-MM-DDTHH:MM:SSZ`.
+pub(super) fn iso(secs: u64) -> String {
+    let days = i64::try_from(secs / 86_400).unwrap_or(0);
+    let rem = secs % 86_400;
+    // Howard Hinnant's civil-from-days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    format!(
+        "{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z",
+        rem / 3_600,
+        rem % 3_600 / 60,
+        rem % 60
+    )
+}
+
+/// The gate as the heartbeat carries it; `now` stands in for a state with no timestamp.
+pub(super) fn gate_beat(gate: GateView, now: u64) -> GateBeat {
+    GateBeat {
+        pass: gate.pass,
+        failing: gate.failing,
+        at: if gate.at.is_empty() { iso(now) } else { gate.at },
     }
 }
 
 /// The heartbeat's readiness field; `None` before any run left a state file.
-pub(super) fn beat(state: &ReadinessState) -> ReadinessBeat {
+pub(super) fn beat(
+    state: &ReadinessState,
+    catalog: Option<&Catalog>,
+    scope: &Scope,
+    now: u64,
+) -> ReadinessBeat {
     ReadinessBeat {
+        gate: catalog.map(|c| gate_beat(gate_view(Some(state), c, scope), now)),
         // Clamped, then rounded: the heartbeat carries a whole percent.
         #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
         percent: state.percent.clamp(0.0, 100.0).round() as u32,

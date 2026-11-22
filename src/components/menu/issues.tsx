@@ -12,6 +12,7 @@ import { copy } from "./config";
 import type { Readiness, TasksView } from "./data";
 import { runStart } from "./data";
 import { quiet } from "./ui";
+import { doctorDetail, doctorSteps, isDoctorRefusal } from "../tasks/doctor";
 
 export { MAX_CARDS, upcoming } from "./queue";
 
@@ -33,6 +34,7 @@ function describe(m: string, isAr: boolean): string {
     held: `Held by ${v}`,
     wip: "Too much in progress",
     profile: `Not for ${v}`,
+    doctor: `Doctor: ${v}`,
   };
   const ar: Record<string, string> = {
     repo: `يلزم مستودع ${v}`,
@@ -42,6 +44,7 @@ function describe(m: string, isAr: boolean): string {
     held: `بيد ${v}`,
     wip: "أعمال جارية كثيرة",
     profile: `ليست لـ ${v}`,
+    doctor: `الطبيب: ${v}`,
   };
   return (isAr ? ar : en)[k] ?? m;
 }
@@ -69,14 +72,19 @@ export function Issues({
   const t = tr(isAr);
   const router = useRouter();
   const [busy, setBusy] = useState<string | null>(null);
+  // The server said no to a claim the gate let through: the doctor's refusal gets its own line.
+  const [refused, setRefused] = useState<{ id: string; doctor: boolean; text: string } | null>(null);
 
   async function start(id: string) {
     setBusy(id);
+    setRefused(null);
     try {
       await runStart(id);
       onStarted();
       router.push(taskHref(lang, id));
-    } catch {
+    } catch (e) {
+      const message = String(e);
+      setRefused({ id, doctor: isDoctorRefusal(message), text: doctorDetail(message) || message });
       setBusy(null);
     }
   }
@@ -108,6 +116,8 @@ export function Issues({
             const other = !!task.holder && task.holder !== login;
             const mine = !!task.holder && task.holder === login;
             const repoMissing = r.missing.some((m) => m.startsWith("repo:"));
+            const doctor = doctorSteps(r.missing);
+            const refusal = refused?.id === task.id ? refused : null;
             return (
               <li key={task.id} className="relative flex min-h-44 min-w-0 flex-col justify-between gap-4 rounded-3xl bg-background p-5">
                 <div className="min-w-0">
@@ -138,6 +148,14 @@ export function Issues({
                     <Link href={taskHref(lang, task.id)} className={solid}>
                       {t(copy.continue)}
                     </Link>
+                  ) : doctor.length > 0 ? (
+                    <>
+                      <LockIcon aria-hidden className="size-3.5 shrink-0" />
+                      <span className="truncate">{t(copy.doctorFirst)}</span>
+                      <Link href={`/${lang}/setup/`} className="shrink-0 underline underline-offset-4 hover:text-foreground">
+                        {t({ en: "Setup", ar: "الإعداد" })}
+                      </Link>
+                    </>
                   ) : r.state === "ready" ? (
                     <button type="button" disabled={busy !== null} onClick={() => void start(task.id)} className={solid}>
                       {t(copy.start)}
@@ -162,6 +180,21 @@ export function Issues({
                     </>
                   )}
                 </div>
+                {refusal && (
+                  <p role="alert" className="text-sm text-destructive">
+                    {refusal.doctor ? (
+                      <>
+                        {t(copy.doctorFirst)}
+                        {refusal.text !== "doctor" && refusal.text ? ` (${refusal.text})` : ""}{" "}
+                        <Link href={`/${lang}/setup/`} className="underline underline-offset-4">
+                          {t({ en: "Setup", ar: "الإعداد" })}
+                        </Link>
+                      </>
+                    ) : (
+                      refusal.text
+                    )}
+                  </p>
+                )}
               </li>
             );
           })}

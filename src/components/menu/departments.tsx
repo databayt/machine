@@ -75,6 +75,8 @@ export interface NavLink {
   current?: boolean;
   /** A muted count after the label. */
   hint?: string;
+  /** A small dot: something here needs attention. */
+  alert?: string;
   /** Literal text (a folder name) reads left to right in any language. */
   ltr?: boolean;
   /** The path under this link, at the same size, each line led by a ↳. */
@@ -103,6 +105,9 @@ export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: numbe
                 {depth > 0 && <CornerDownRight aria-hidden className="mt-1.5 size-3.5 shrink-0 text-foreground/30 rtl:-scale-x-100" />}
                 <span>
                   <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
+                  {l.alert && (
+                    <span role="img" aria-label={l.alert} title={l.alert} className="ms-1.5 inline-block size-1.5 rounded-full bg-destructive align-middle" />
+                  )}
                   {l.hint && (
                     <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums">
                       <bdi dir="ltr">{l.hint}</bdi>

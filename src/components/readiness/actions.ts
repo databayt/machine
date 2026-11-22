@@ -6,6 +6,7 @@ import type { Event as DriverEvent } from "../driver/types"
 import type {
   AgentToolRow,
   FixOutcome,
+  GateView,
   Handoff,
   Mode,
   ReadinessView,
@@ -18,6 +19,7 @@ import type {
 export type {
   AgentToolRow,
   FixOutcome,
+  GateView,
   Handoff,
   Mode,
   ReadinessView,
@@ -47,6 +49,18 @@ export async function readinessState(): Promise<ReadinessView | null> {
 export async function readinessRun(mode: Mode, onEvent?: (e: RunEvent) => void, only?: string[]): Promise<RunSummary> {
   need()
   return invoke<RunSummary>("plugin:readiness|readiness_run", { mode, only: only ?? null, channel: stream(onEvent) })
+}
+
+/** The doctor: re-checks only the gate steps for this person's departments; returns the verdict. One run at a time. */
+export async function readinessDoctor(onEvent?: (e: RunEvent) => void): Promise<GateView> {
+  need()
+  return invoke<GateView>("plugin:readiness|readiness_doctor", { channel: stream(onEvent) })
+}
+
+/** Runs the automatic fixes for the failing gate steps; steps only a person can do stay failing. */
+export async function readinessDoctorFix(onEvent?: (e: RunEvent) => void): Promise<GateView> {
+  need()
+  return invoke<GateView>("plugin:readiness|readiness_doctor_fix", { channel: stream(onEvent) })
 }
 
 export async function readinessCancel(): Promise<boolean> {

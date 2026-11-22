@@ -80,6 +80,27 @@ export const wizard = {
   os: { en: "Systems", ar: "الأنظمة" },
 } satisfies Record<string, Text>
 
+/** The doctor card on the Setup overview. */
+export const doctorCopy = {
+  ready: { en: "Ready to contribute ✓", ar: "جاهز للمساهمة ✓" },
+  readyHint: {
+    en: "Your machine holds what your department needs.",
+    ar: "جهازك يحمل ما يحتاجه قسمك.",
+  },
+  left: { en: "Doctor: {n} steps left", ar: "الطبيب: بقيت {n} خطوات" },
+  leftOne: { en: "Doctor: 1 step left", ar: "الطبيب: بقيت خطوة واحدة" },
+  leftHint: {
+    en: "Tasks stay locked until these pass.",
+    ar: "تبقى المهام مقفلة حتى تنجح هذه الخطوات.",
+  },
+  notRun: { en: "Doctor: not run yet", ar: "الطبيب: لم يُشغَّل بعد" },
+  fix: { en: "Fix automatically", ar: "أصلح تلقائياً" },
+  run: { en: "Run the doctor", ar: "شغّل الطبيب" },
+  fixing: { en: "Fixing…", ar: "جارٍ الإصلاح…" },
+  checking: { en: "Checking…", ar: "جارٍ الفحص…" },
+  needsYou: { en: "needs you", ar: "يحتاجك" },
+} satisfies Record<string, Text>
+
 export const KEYSTONE_INSTALLER = "curl -fsSL https://kun.databayt.org/install | bash"
 
 export const fill = (t: Text, isAr: boolean, n: number): string => (isAr ? t.ar : t.en).replace("{n}", String(n))

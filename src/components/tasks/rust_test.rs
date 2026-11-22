@@ -62,6 +62,7 @@ fn ready_facts() -> Facts {
         items: vec![("skill:proposal".into(), ItemStatus::Installed)],
         allowed_items: None,
         allowed_repos: Vec::new(),
+        gate_failing: Vec::new(),
     }
 }
 
@@ -574,6 +575,23 @@ fn any_4xx_with_a_reason_is_a_refusal_and_a_bare_one_is_not() {
     assert!(matches!(e(409, "plain text"), TaskError::Refused(m) if m == "plain text"));
     assert!(matches!(e(404, "plain text"), TaskError::Api(_)));
     assert!(matches!(e(500, r#"{"error":"boom"}"#), TaskError::Api(_)));
+}
+
+#[test]
+fn a_failing_gate_blocks_every_task_with_doctor_reasons() {
+    let mut f = ready_facts();
+    f.gate_failing = vec!["launcher.c".into(), "pack.tech".into()];
+    let r = run(&task(1), &f);
+    assert_eq!(r.state, ReadyState::Blocked);
+    assert_eq!(r.missing, ["doctor:launcher.c", "doctor:pack.tech"]);
+    // missing repos or items stay listed after the doctor reasons, still blocked
+    f.repos.clear();
+    let r = run(&task(1), &f);
+    assert_eq!(r.state, ReadyState::Blocked);
+    assert_eq!(r.missing[..2], ["doctor:launcher.c", "doctor:pack.tech"]);
+    assert!(r.missing.iter().any(|m| m.starts_with("repo:")));
+    // a passing gate leaves the verdict alone
+    assert_eq!(run(&task(1), &ready_facts()).state, ReadyState::Ready);
 }
 
 #[tokio::test]

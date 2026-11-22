@@ -52,7 +52,7 @@ test("settings: the view and the four routes are its children", () => {
   assert.deepEqual(trail("/en/settings/"), { parent: "settings", child: null, leaf: null })
   assert.equal(trail("/en/settings/", "view=general").child, "general")
   assert.equal(trail("/en/settings/", "view=other").child, null)
-  for (const r of ["model", "config", "health", "engine"]) assert.deepEqual(trail(`/en/${r}/`), { parent: "settings", child: r, leaf: null })
+  for (const r of ["model", "agents", "config", "health", "engine"]) assert.deepEqual(trail(`/en/${r}/`), { parent: "settings", child: r, leaf: null })
 })
 
 test("stage counts skip `skip` steps and count pass, fixed, updated as done", () => {
@@ -72,8 +72,8 @@ test("tree: gating, and setup's children without the app stages", () => {
   const input = { isAr: false, inApp: false, engine: false, stages, steps: [] }
   const ids = (n: ReturnType<typeof buildTree>, p: string) => n.find((x) => x.id === p)?.children?.map((c) => c.id)
   assert.deepEqual(ids(buildTree(input), "settings"), ["general"])
-  assert.deepEqual(ids(buildTree({ ...input, inApp: true }), "settings"), ["general", "model", "config", "health"])
-  assert.deepEqual(ids(buildTree({ ...input, inApp: true, engine: true }), "settings"), ["general", "model", "config", "health", "engine"])
+  assert.deepEqual(ids(buildTree({ ...input, inApp: true }), "settings"), ["general", "model", "agents", "config", "health"])
+  assert.deepEqual(ids(buildTree({ ...input, inApp: true, engine: true }), "settings"), ["general", "model", "agents", "config", "health", "engine"])
   assert.deepEqual(ids(buildTree(input), "setup"), ["identity", "repos"])
   assert.deepEqual(ids(buildTree(input), "library"), ["skills", "agents", "rules", "hooks", "departments"])
 })
@@ -85,13 +85,13 @@ test("tree: the seven parents in the order a person works", () => {
   const kids = (p: string) => tree.find((n) => n.id === p)?.children ?? []
   assert.ok(kids("plugins").some((k) => k.id === "blender" && k.href("en") === "/en/plugins/?item=blender"))
   assert.ok(kids("apps").some((k) => k.id === "claude.cli" && k.href("en") === "/en/apps/?item=claude.cli"))
-  assert.ok(!kids("apps").some((k) => k.id === "claude.launcher"))
+  assert.ok(!kids("apps").some((k) => k.id.startsWith("launcher.")))
 })
 
 test("app stages are Apps', every app step sits in one, and the hidden checks are not apps", () => {
   assert.deepEqual([...APP_STAGES], ["foundation", "agents", "tools"])
   assert.equal(isApp({ id: "tool.blender", stage: "tools" }), true)
-  assert.equal(isApp({ id: "claude.launcher", stage: "agents" }), false)
+  for (const id of ["launcher.c", "launcher.a", "launcher.o", "launcher.h"]) assert.equal(isApp({ id, stage: "agents" }), false)
   assert.equal(isApp({ id: "gh.login", stage: "identity" }), false)
 })
 

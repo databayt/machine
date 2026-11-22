@@ -8,6 +8,8 @@ import { useInMachine } from "../shell/content"
 import {
   healWithAgent,
   readinessCancel,
+  readinessDoctor,
+  readinessDoctorFix,
   readinessFix,
   readinessRun,
   readinessState,
@@ -17,7 +19,7 @@ import {
 import { wizard } from "./config"
 import type { ReadinessView, RunEvent, Stage, StepStatus, StepView } from "./types"
 
-export type Running = "check" | "complete" | "maintain" | "fix" | "heal" | "uninstall"
+export type Running = "check" | "complete" | "maintain" | "fix" | "heal" | "uninstall" | "doctor" | "doctorFix"
 
 type Live = Record<string, { status: StepStatus; detail: string }>
 
@@ -110,6 +112,12 @@ export function useReadiness(isAr: boolean) {
     [guarded, onEvent],
   )
 
+  /** The doctor: re-check only the gate steps. */
+  const doctor = useCallback(() => guarded("doctor", () => readinessDoctor(onEvent)), [guarded, onEvent])
+
+  /** The doctor's automatic fixes for the failing gate steps. */
+  const doctorFix = useCallback(() => guarded("doctorFix", () => readinessDoctorFix(onEvent)), [guarded, onEvent])
+
   const fix = useCallback(
     (id: string) =>
       guarded("fix", async () => {
@@ -197,6 +205,8 @@ export function useReadiness(isAr: boolean) {
     log,
     load,
     run,
+    doctor,
+    doctorFix,
     fix,
     act,
     heal,

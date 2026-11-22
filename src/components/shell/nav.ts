@@ -58,7 +58,7 @@ export function splitPath(pathname: string): { lang: string; rest: string } {
 
 type Params = { get(name: string): string | null }
 
-const SETTINGS_ROUTES: Record<string, string> = { "/model": "model", "/config": "config", "/health": "health", "/engine": "engine" }
+const SETTINGS_ROUTES: Record<string, string> = { "/model": "model", "/agents": "agents", "/config": "config", "/health": "health", "/engine": "engine" }
 
 /** Where the address is in the tree. Anything outside the seven parents (the chat, a typo) is all null. */
 export function trailOf(pathname: string, params: Params): Trail {
@@ -131,10 +131,11 @@ export interface SettingsChild {
   engine?: boolean
 }
 
-/** Settings' children: the same five everywhere (sidebar, footer, cards). */
+/** Settings' children: the same six everywhere (sidebar, footer, cards). */
 export const SETTINGS_CHILDREN: SettingsChild[] = [
   { id: "general", label: copy.general, hint: copy.generalHint, href: (l) => `/${l}/settings/?view=general` },
   { id: "model", label: copy.model, hint: copy.modelHint, href: (l) => `/${l}/model/`, app: true },
+  { id: "agents", label: copy.agents, hint: copy.agentsHint, href: (l) => `/${l}/agents/`, app: true },
   { id: "config", label: copy.configuration, hint: copy.configHint, href: (l) => `/${l}/config/`, app: true },
   { id: "health", label: copy.healthUpdates, hint: copy.healthHint, href: (l) => `/${l}/health/`, app: true },
   { id: "engine", label: copy.engine, hint: copy.engineHint, href: (l) => `/${l}/engine/`, app: true, engine: true },

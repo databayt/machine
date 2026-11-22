@@ -6,7 +6,12 @@
 //! (open Terminal, open a link, message an owner). Nothing here probes the computer itself.
 //!
 //! Commands: `readiness_state`, `readiness_run`, `readiness_cancel`, `readiness_fix`,
-//! `readiness_uninstall`, `readiness_uninstall_terminal`, `heal_with_agent`, `readiness_agents_tools`.
+//! `readiness_uninstall`, `readiness_uninstall_terminal`, `heal_with_agent`, `readiness_agents_tools`,
+//! `readiness_doctor`, `readiness_doctor_fix`.
+//!
+//! The doctor is the gate: the steps flagged `gate` that apply to this person's departments. Its
+//! verdict is computed from the latest state (`catalog::gate_view`); `readiness_doctor` re-checks
+//! only those steps, `readiness_doctor_fix` runs the auto fixes for the failing ones.
 
 use std::path::PathBuf;
 
@@ -34,7 +39,7 @@ mod uninstall;
 use catalog::Scope;
 pub use model::ReadinessBeat;
 use model::{
-    AgentToolRow, Catalog, FixKind, FixOutcome, Mode, ReadinessError, ReadinessState,
+    AgentToolRow, Catalog, FixKind, FixOutcome, GateView, Mode, ReadinessError, ReadinessState,
     ReadinessView, RunEvent, RunSummary, UninstallOutcome,
 };
 
@@ -61,7 +66,24 @@ fn load_all() -> (Option<Catalog>, Option<ReadinessState>) {
 /// The heartbeat's readiness field, from the state file; `None` before the first run.
 #[must_use]
 pub fn beat() -> Option<ReadinessBeat> {
-    catalog::load_state(&crate::engine::claude_dir()).map(|s| catalog::beat(&s))
+    let state = catalog::load_state(&crate::engine::claude_dir())?;
+    let catalog = catalog::load(&crate::engine::kun_dir()).ok();
+    Some(catalog::beat(
+        &state,
+        catalog.as_ref(),
+        &Scope::current(),
+        now_secs(),
+    ))
+}
+
+/// The gate steps that fail on this machine right now, from the latest state. Empty when kun has no
+/// catalog here (nothing to judge by) or every gate step passes. Blocking: reads files.
+#[must_use]
+pub fn gate_failing() -> Vec<String> {
+    let (catalog, state) = load_all();
+    catalog
+        .map(|c| catalog::gate_view(state.as_ref(), &c, &Scope::current()).failing)
+        .unwrap_or_default()
 }
 
 /// Failing catalog steps the health pass may fix by itself (auto, under the attempt cap).
@@ -346,6 +368,60 @@ async fn readiness_agents_tools() -> Result<Vec<AgentToolRow>, ReadinessError> {
     .map_err(|e| ReadinessError::Other(e.to_string()))
 }
 
+/// The gate verdict after a run, from the state the run just wrote.
+async fn gate_now(scope: Scope) -> Result<GateView, ReadinessError> {
+    tokio::task::spawn_blocking(move || {
+        let (catalog, state) = load_all();
+        let catalog = catalog.ok_or_else(|| {
+            ReadinessError::NoCatalog(catalog::catalog_path(&crate::engine::kun_dir()).display().to_string())
+        })?;
+        Ok(catalog::gate_view(state.as_ref(), &catalog, &scope))
+    })
+    .await
+    .map_err(|e| ReadinessError::Other(e.to_string()))?
+}
+
+/// Runs `mode` over `only`, streaming its events, then reports the gate.
+async fn run_gate(
+    mode: Mode,
+    only: &[String],
+    scope: Scope,
+    channel: &Channel<RunEvent>,
+) -> Result<GateView, ReadinessError> {
+    if !only.is_empty() {
+        let _guard = run::acquire()?;
+        run::provision(&crate::engine::kun_dir(), mode, only, &scope, &mut |e| {
+            let _ = channel.send(e);
+        })
+        .await?;
+    }
+    gate_now(scope).await
+}
+
+/// `readiness_doctor` — re-checks only the gate steps (`--check --only <gate ids>`) and returns the
+/// verdict. One run at a time.
+#[tauri::command]
+async fn readiness_doctor(channel: Channel<RunEvent>) -> Result<GateView, ReadinessError> {
+    let scope = tokio::task::spawn_blocking(Scope::current)
+        .await
+        .map_err(|e| ReadinessError::Other(e.to_string()))?;
+    let kun = crate::engine::kun_dir();
+    let ids = catalog::gate_ids(&catalog::load(&kun)?, &scope);
+    run_gate(Mode::Check, &ids, scope, &channel).await
+}
+
+/// `readiness_doctor_fix` — runs the fixes (`--complete --only <failing gate ids>`) for the gate
+/// steps that fail, then returns the verdict. A step only a person can do stays failing. One run at
+/// a time.
+#[tauri::command]
+async fn readiness_doctor_fix(channel: Channel<RunEvent>) -> Result<GateView, ReadinessError> {
+    let scope = tokio::task::spawn_blocking(Scope::current)
+        .await
+        .map_err(|e| ReadinessError::Other(e.to_string()))?;
+    let failing = gate_now(scope.clone()).await?.failing;
+    run_gate(Mode::Complete, &failing, scope, &channel).await
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("readiness")
@@ -357,7 +433,9 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             readiness_uninstall,
             readiness_uninstall_terminal,
             heal_with_agent,
-            readiness_agents_tools
+            readiness_agents_tools,
+            readiness_doctor,
+            readiness_doctor_fix
         ])
         .build()
 }

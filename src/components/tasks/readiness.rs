@@ -22,6 +22,8 @@ pub struct Facts {
     pub allowed_items: Option<Vec<String>>,
     /// Repos the profile may use; empty means any.
     pub allowed_repos: Vec<String>,
+    /// The doctor's gate steps that fail on this machine; any entry blocks every task.
+    pub gate_failing: Vec<String>,
 }
 
 /// `databayt/hogwarts` and `hogwarts` are the same repo.
@@ -36,6 +38,7 @@ pub fn readiness(task: &Task, facts: &Facts, in_progress: u32, wip_limit: u32) -
     let mut blocked: Vec<String> = Vec::new();
     let mut missing: Vec<String> = Vec::new();
 
+    blocked.extend(facts.gate_failing.iter().map(|s| format!("doctor:{s}")));
     blocked.extend(task.after_open.iter().map(|a| format!("after:{a}")));
     if let Some(holder) = task.holder.as_deref().filter(|_| !mine) {
         blocked.push(format!("held:{holder}"));

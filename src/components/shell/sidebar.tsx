@@ -93,6 +93,8 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       mark: here,
       current: here,
       ltr: node.id === "library",
+      // The doctor's gate fails: the Setup link carries a dot.
+      alert: node.id === "setup" && view?.gate && !view.gate.pass ? t(copy.doctorDot) : undefined,
       children,
     };
   });

@@ -93,7 +93,7 @@ export const doneSchema = z.object({
 
 /** Claim refusals (HTTP 409 `{ error }`). */
 export type ClaimError =
-  "held" | "wip" | "blocked" | "not-found" | "department";
+  "held" | "wip" | "blocked" | "not-found" | "department" | "doctor";
 
 export type ClaimResponse =
   { ok: true; task: Task } | { ok: false; error: ClaimError; detail?: string };
@@ -208,6 +208,14 @@ export const heartbeatSchema = z.object({
       percent: z.number().int().min(0).max(100),
       failing: z.array(z.string().max(100)).max(200),
       catalogVersion: z.union([z.string().max(40), z.number()]).nullable(),
+      /** The doctor verdict (kun-ready --gate): a failing or stale (48 h) one refuses claims with `doctor`. */
+      gate: z
+        .object({
+          pass: z.boolean(),
+          failing: z.array(z.string().max(80)).max(200),
+          at: z.string().max(40),
+        })
+        .optional(),
     })
     .optional(),
   resources: resourcesSchema.optional(),

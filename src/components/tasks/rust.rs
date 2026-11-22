@@ -72,6 +72,7 @@ pub fn gather_facts(host: &impl Host) -> Facts {
         items: host.item_states().unwrap_or_default(),
         allowed_items: host.allowed_items(),
         allowed_repos: host.allowed_repos(),
+        gate_failing: host.gate_failing(),
     }
 }
 

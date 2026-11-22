@@ -147,6 +147,12 @@ pub struct Step {
     pub update: Option<Update>,
     #[serde(default)]
     pub uninstall: Option<Uninstall>,
+    /// The step must pass before this person contributes (the doctor's gate).
+    #[serde(default)]
+    pub gate: bool,
+    /// When present, the gate applies only to people in one of these departments.
+    #[serde(default, rename = "gateFor")]
+    pub gate_for: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -348,6 +354,22 @@ pub struct ReadinessView {
     pub departments: Vec<String>,
     /// Steps the person removed on purpose.
     pub removed: Vec<String>,
+    /// The doctor's verdict; `None` when kun has no catalog on this computer.
+    pub gate: Option<GateView>,
+}
+
+/// The doctor's verdict: the gate steps that apply to this machine and which of them fail, from the
+/// latest readiness state.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
+#[ts(export, export_to = "readiness/types.ts")]
+pub struct GateView {
+    pub pass: bool,
+    /// Gate steps that do not pass, in catalog order.
+    pub failing: Vec<String>,
+    /// Every gate step that applies here, in catalog order.
+    pub steps: Vec<String>,
+    /// When the state was written (ISO); empty when there is no state.
+    pub at: String,
 }
 
 /// What `readiness_fix` did.
@@ -416,6 +438,17 @@ pub struct ReadinessBeat {
     pub percent: u32,
     pub failing: Vec<String>,
     pub catalog_version: Value,
+    /// The doctor verdict (kun's `readinessSchema.gate`); absent without a catalog.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gate: Option<GateBeat>,
+}
+
+/// kun's `gateSchema`: `{pass, failing, at}`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct GateBeat {
+    pub pass: bool,
+    pub failing: Vec<String>,
+    pub at: String,
 }
 
 #[derive(Debug, thiserror::Error)]

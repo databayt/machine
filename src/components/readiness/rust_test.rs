@@ -153,7 +153,7 @@ fn the_view_merges_state_into_the_ordered_steps() {
 
 #[test]
 fn the_heartbeat_carries_a_whole_percent() {
-    let beat = catalog::beat(&state_fixture());
+    let beat = catalog::beat(&state_fixture(), None, &scope(&[], "member"), 0);
     assert_eq!(beat.percent, 63);
     assert_eq!(beat.failing, ["claude.cli", "engine.health"]);
     let json = serde_json::to_value(&beat).unwrap();
@@ -647,4 +647,107 @@ fn the_uninstall_terminal_line_comes_from_the_catalog() {
     let empty: super::model::Step =
         serde_json::from_str(r#"{"id":"b","stage":"s","uninstall":{"kind":"terminal"}}"#).unwrap();
     assert!(fix::uninstall_line(kun, &empty).is_err());
+}
+
+fn gate_catalog() -> Catalog {
+    catalog::parse(
+        r#"{"version":5,"stages":["identity","engine"],"steps":[
+        {"id":"gh.auth","stage":"identity","gate":true,"departments":["*"]},
+        {"id":"crm.api","stage":"identity","gate":true,"gateFor":["sales","support"],"departments":["*"]},
+        {"id":"pack.tech","stage":"engine","gate":true,"departments":["tech"]},
+        {"id":"pack.sales","stage":"engine","gate":true,"departments":["sales"]},
+        {"id":"tool.x","stage":"engine","gate":true,"os":["win"],"departments":["*"]},
+        {"id":"brew","stage":"engine","departments":["*"]}]}"#,
+    )
+    .unwrap()
+}
+
+fn state_of(rows: &[(&str, &str)], removed: &[&str]) -> ReadinessState {
+    let steps: Vec<serde_json::Value> = rows
+        .iter()
+        .map(|(id, st)| serde_json::json!({"id": id, "status": st}))
+        .collect();
+    serde_json::from_value(serde_json::json!({
+        "at": "2026-11-22T06:31:15.207Z", "steps": steps, "removed": removed
+    }))
+    .unwrap()
+}
+
+#[test]
+fn the_gate_follows_the_departments_and_gate_for() {
+    let c = gate_catalog();
+    let mac = |d: &[&str]| Scope { os: "mac".into(), ..scope(d, "member") };
+    assert_eq!(catalog::gate_ids(&c, &mac(&["tech"])), ["gh.auth", "pack.tech"]);
+    assert_eq!(catalog::gate_ids(&c, &mac(&["sales"])), ["gh.auth", "crm.api", "pack.sales"]);
+    assert_eq!(
+        catalog::gate_ids(&c, &mac(&["tech", "support"])),
+        ["gh.auth", "crm.api", "pack.tech"]
+    );
+    // no profile: only the steps for everyone; the OS filter still applies
+    assert_eq!(catalog::gate_ids(&c, &mac(&[])), ["gh.auth"]);
+    let win = Scope { os: "win".into(), ..scope(&["tech"], "member") };
+    assert_eq!(catalog::gate_ids(&c, &win), ["gh.auth", "pack.tech", "tool.x"]);
+}
+
+#[test]
+fn the_gate_passes_only_when_every_gate_step_passes() {
+    let c = gate_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&["tech"], "member") };
+    let ok = state_of(&[("gh.auth", "pass"), ("pack.tech", "fixed"), ("brew", "fail")], &[]);
+    let g = catalog::gate_view(Some(&ok), &c, &sc);
+    assert!(g.pass && g.failing.is_empty());
+    assert_eq!(g.at, "2026-11-22T06:31:15.207Z");
+
+    let bad = state_of(&[("gh.auth", "fail"), ("pack.tech", "human")], &[]);
+    let g = catalog::gate_view(Some(&bad), &c, &sc);
+    assert!(!g.pass);
+    assert_eq!(g.failing, ["gh.auth", "pack.tech"]);
+
+    // a gate step no run reported on yet is not a pass; no state fails them all
+    let part = state_of(&[("gh.auth", "pass")], &[]);
+    assert_eq!(catalog::gate_view(Some(&part), &c, &sc).failing, ["pack.tech"]);
+    let none = catalog::gate_view(None, &c, &sc);
+    assert_eq!((none.pass, none.failing.len(), none.at.as_str()), (false, 2, ""));
+}
+
+#[test]
+fn a_removed_gate_step_does_not_pass_but_a_plain_skip_does() {
+    let c = gate_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&["tech"], "member") };
+    let s = state_of(&[("gh.auth", "skip"), ("pack.tech", "skip")], &["pack.tech"]);
+    assert_eq!(catalog::gate_view(Some(&s), &c, &sc).failing, ["pack.tech"]);
+}
+
+#[test]
+fn a_catalog_without_gate_flags_always_passes() {
+    let c = catalog::parse(r#"{"steps":[{"id":"a","stage":"s"}]}"#).unwrap();
+    let g = catalog::gate_view(None, &c, &scope(&[], "member"));
+    assert!(g.pass && g.steps.is_empty());
+}
+
+#[test]
+fn the_view_and_the_beat_carry_the_gate() {
+    let c = gate_catalog();
+    let sc = Scope { os: "mac".into(), ..scope(&["tech"], "member") };
+    let st = state_of(&[("gh.auth", "pass")], &[]);
+    let v = catalog::view(Some(&c), &sc, Some(&st));
+    assert_eq!(v.gate.unwrap().failing, ["pack.tech"]);
+    assert!(catalog::view(None, &sc, None).gate.is_none());
+    let b = catalog::beat(&st, Some(&c), &sc, 0);
+    let json = serde_json::to_value(&b).unwrap();
+    assert_eq!(json["gate"]["pass"], false);
+    assert_eq!(json["gate"]["failing"][0], "pack.tech");
+    assert_eq!(json["gate"]["at"], "2026-11-22T06:31:15.207Z");
+    // a state without a timestamp takes the heartbeat's clock, as ISO
+    let mut undated = st.clone();
+    undated.at = serde_json::Value::Null;
+    let b = catalog::beat(&undated, Some(&c), &sc, 1_795_000_000);
+    assert_eq!(b.gate.unwrap().at, "2026-11-18T11:06:40Z");
+    assert!(serde_json::to_value(catalog::beat(&st, None, &sc, 0)).unwrap().get("gate").is_none());
+}
+
+#[test]
+fn iso_formats_epoch_seconds() {
+    assert_eq!(catalog::iso(0), "1970-01-01T00:00:00Z");
+    assert_eq!(catalog::iso(951_782_400), "2000-02-29T00:00:00Z");
 }

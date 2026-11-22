@@ -29,6 +29,24 @@ export type FixKind = "auto" | "terminal" | "link" | "request";
 export type FixOutcome = { kind: FixKind, ok: boolean, message: string | null, };
 
 /**
+ * The doctor's verdict: the gate steps that apply to this machine and which of them fail, from the
+ * latest readiness state.
+ */
+export type GateView = { pass: boolean, 
+/**
+ * Gate steps that do not pass, in catalog order.
+ */
+failing: Array<string>, 
+/**
+ * Every gate step that applies here, in catalog order.
+ */
+steps: Array<string>, 
+/**
+ * When the state was written (ISO); empty when there is no state.
+ */
+at: string, };
+
+/**
  * An uninstall the runner will not run: the person runs `cmd` in Terminal.
  */
 export type Handoff = { id: string, 
@@ -72,7 +90,11 @@ complete: boolean, os: string, role: string, departments: Array<string>,
 /**
  * Steps the person removed on purpose.
  */
-removed: Array<string>, };
+removed: Array<string>, 
+/**
+ * The doctor's verdict; `None` when kun has no catalog on this computer.
+ */
+gate: GateView | null, };
 
 /**
  * One line of the runner's NDJSON, plus two the app adds (`log`, `error`).
@@ -113,7 +135,15 @@ roles: Array<string>, after: Array<string>,
 /**
  * Only a person can do it.
  */
-human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, };
+human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, 
+/**
+ * The step must pass before this person contributes (the doctor's gate).
+ */
+gate: boolean, 
+/**
+ * When present, the gate applies only to people in one of these departments.
+ */
+gateFor: Array<string> | null, };
 
 /**
  * One step and why it did not come out cleanly.
@@ -144,7 +174,15 @@ roles: Array<string>, after: Array<string>,
 /**
  * Only a person can do it.
  */
-human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, };
+human: boolean, check: Check | null, fix: Fix | null, update: Update | null, uninstall: Uninstall | null, 
+/**
+ * The step must pass before this person contributes (the doctor's gate).
+ */
+gate: boolean, 
+/**
+ * When present, the gate applies only to people in one of these departments.
+ */
+gateFor: Array<string> | null, };
 
 /**
  * What removing a step means. The whole field is absent when a step cannot be uninstalled.

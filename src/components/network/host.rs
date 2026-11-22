@@ -52,6 +52,11 @@ pub trait Host: Send + Sync {
     fn heal_step(&self, _id: &str) -> Result<(), String> {
         Err("readiness steps are not available here".to_owned())
     }
+    /// The doctor's gate steps that fail here (from the latest readiness state); empty when none fail
+    /// or kun has no catalog to judge by.
+    fn gate_failing(&self) -> Vec<String> {
+        Vec::new()
+    }
     /// The readiness summary the heartbeat carries.
     fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {
         None
@@ -307,6 +312,10 @@ impl Host for RealHost {
 
     fn heal_step(&self, id: &str) -> Result<(), String> {
         crate::readiness::heal_step(id)
+    }
+
+    fn gate_failing(&self) -> Vec<String> {
+        crate::readiness::gate_failing()
     }
 
     fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {

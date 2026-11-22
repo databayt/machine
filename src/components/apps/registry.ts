@@ -8,7 +8,11 @@ export const APP_STAGES: readonly string[] = ["foundation", "agents", "tools"]
 
 /** Config-only checks: they stay in the readiness run but are not apps. */
 export const HIDDEN_STEPS: readonly string[] = [
-  "claude.launcher",
+  // The shell launchers are config, set in Settings → Agents.
+  "launcher.c",
+  "launcher.a",
+  "launcher.o",
+  "launcher.h",
   "opencode.allow",
   "hermes.gateway",
   "agy.eligible",
