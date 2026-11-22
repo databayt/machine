@@ -32,10 +32,15 @@ fn task(id_n: u32) -> Task {
             items: vec!["skill:proposal".into()],
             after: Vec::new(),
             driver: None,
+            formula: None,
+            stage: None,
         },
         after_open: Vec::new(),
         body: "Quote Al-Ibda.".into(),
         updated_at: "t".into(),
+        assignee: None,
+        film: None,
+        formula: None,
     }
 }
 
@@ -486,6 +491,9 @@ fn receipt(id: &str) -> Receipt {
         artifacts: Vec::new(),
         summary: "did it".into(),
         next: None,
+        formula: None,
+        stage: None,
+        hashes: None,
     }
 }
 
@@ -516,4 +524,70 @@ async fn a_receipt_is_validated_posted_and_a_refusal_surfaced() {
     assert!(
         matches!(receipt_with(&no, &receipt("databayt/kun#3")).await, Err(TaskError::Refused(m)) if m == "held: you do not hold it")
     );
+}
+
+#[test]
+fn a_task_tolerates_the_new_optional_fields_being_absent() {
+    let base = serde_json::to_value(task(9)).unwrap();
+    let mut old = base.clone();
+    for k in ["assignee", "film", "formula"] {
+        old.as_object_mut().unwrap().remove(k);
+    }
+    let t: Task = serde_json::from_value(old).unwrap();
+    assert_eq!((t.assignee, t.film, t.formula), (None, None, None));
+    let mut new = base;
+    new["assignee"] = "sedon".into();
+    new["film"] = "databayt/hogwarts#12".into();
+    new["formula"] = "video.order.blender".into();
+    let t: Task = serde_json::from_value(new).unwrap();
+    assert_eq!(t.assignee.as_deref(), Some("sedon"));
+    assert_eq!(t.film.as_deref(), Some("databayt/hogwarts#12"));
+    assert_eq!(t.formula.as_deref(), Some("video.order.blender"));
+    // The kun block's formula= and stage= parse too, and are absent on older servers.
+    let k: KunBlock = serde_json::from_value(serde_json::json!({"repos":["hogwarts"],"formula":"video.order.blender","stage":"visual"})).unwrap();
+    assert_eq!((k.formula.as_deref(), k.stage.as_deref()), (Some("video.order.blender"), Some("visual")));
+    assert_eq!(serde_json::from_str::<KunBlock>("{}").unwrap().formula, None);
+}
+
+#[tokio::test]
+async fn an_order_assigned_to_me_outside_my_department_is_in_the_queue_and_startable() {
+    let mut order = task(40);
+    order.department = "video".into();
+    order.assignee = Some("ali".into());
+    order.film = Some("databayt/hogwarts#12".into());
+    let mut s = server(Vec::new(), 0);
+    s.tasks.mine = vec![order];
+    s.claim = Ok(r#"{"ok":true}"#.into());
+    // The server returns it for a department the caller is not in; the gate does not care.
+    let view = view_with(&s, &ready_facts(), "tech").await.unwrap();
+    assert_eq!(view.tasks.mine[0].assignee.as_deref(), Some("ali"));
+    assert_eq!(view.readiness["databayt/hogwarts#40"].state, ReadyState::Ready);
+    let dir = tempfile::tempdir().unwrap();
+    let started = start_with(&s, &ready_facts(), &["tech".to_owned()], dir.path(), "databayt/hogwarts#40").await.unwrap();
+    assert_eq!(started.department, "video");
+}
+
+#[test]
+fn any_4xx_with_a_reason_is_a_refusal_and_a_bare_one_is_not() {
+    let e = |status, body: &str| refusal(ApiError::Status { status, body: body.into() });
+    assert!(matches!(e(413, r#"{"error":"too-large","detail":"over 5 GB"}"#), TaskError::Refused(m) if m == "too-large: over 5 GB"));
+    assert!(matches!(e(409, "plain text"), TaskError::Refused(m) if m == "plain text"));
+    assert!(matches!(e(404, "plain text"), TaskError::Api(_)));
+    assert!(matches!(e(500, r#"{"error":"boom"}"#), TaskError::Api(_)));
+}
+
+#[tokio::test]
+async fn the_formula_and_stage_come_from_the_task() {
+    let mut t = task(41);
+    t.kun.formula = Some("video.order.capture".into());
+    t.kun.stage = Some("assets".into());
+    let mut s = server(Vec::new(), 0);
+    s.detail = Ok(serde_json::to_string(&serde_json::json!({ "task": t, "comments": [] })).unwrap());
+    assert_eq!(task_labels(&s, "databayt/hogwarts#41").await, (Some("video.order.capture".into()), Some("assets".into())));
+    // Task.formula wins over the block's; a failed lookup gives none.
+    t.formula = Some("video.order.blender".into());
+    s.detail = Ok(serde_json::to_string(&serde_json::json!({ "task": t, "comments": [] })).unwrap());
+    assert_eq!(task_labels(&s, "databayt/hogwarts#41").await.0.as_deref(), Some("video.order.blender"));
+    s.detail = Err((404, "no".into()));
+    assert_eq!(task_labels(&s, "databayt/hogwarts#41").await, (None, None));
 }

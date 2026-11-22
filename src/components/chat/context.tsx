@@ -28,22 +28,22 @@ import { useDepartment } from "../menu/use-department";
 import { getProfile, type MachineProfile } from "../profile/actions";
 import { loadSettings, saveSettings } from "../settings/actions";
 import { HealthLight, type DeptHealth } from "../pack/health";
+import { repoMenu } from "./actions";
 import { tr } from "./config";
+import { filterRepos, pickRepo, repoLabel } from "./repos";
+import type { RepoEntry } from "./types";
 
 /**
  * The working context of a run: the department (from Settings) and the repository, remembered per
- * department in `settings.repo_by_department`. The repository menu offers the same databayt repos on
- * every machine (`CHAT_REPOS`, mirrored in `chat/rust.rs`), hogwarts first and the default. One that
- * is not cloned here is cloned from github.com/databayt when picked.
+ * department in `settings.repo_by_department`. The repository menu is the department's pack repos plus
+ * the profile's, active in kun's registry, hogwarts first and the default (`chat/repo_menu.rs`); a repo
+ * with a `word` shows it. One that is not cloned here is cloned from github.com/databayt when picked.
  */
-export const CHAT_REPOS = ["hogwarts", "mkan", "kun", "machine", "marketing", "android-app", "ios-app"] as const;
-const DEFAULT_REPO = CHAT_REPOS[0];
-
 export function useWorkingContext(enabled: boolean): {
   profile: MachineProfile | null;
   dept: string;
-  chooseDept: (name: string) => void;
-  repos: readonly string[];
+  chooseDept: (name: string) => Promise<boolean>;
+  repos: readonly RepoEntry[];
   local: Set<string> | null;
   repo: string;
   setRepo: (repo: string) => Promise<void>;
@@ -52,6 +52,7 @@ export function useWorkingContext(enabled: boolean): {
   const [local, setLocal] = useState<Set<string> | null>(null);
   const [saved, setSaved] = useState<Record<string, string>>({});
   const { dept, choose } = useDepartment();
+  const [repos, setRepos] = useState<readonly RepoEntry[]>([]);
 
   const readLocal = useCallback(
     () => loadRepos().then((rows) => setLocal(new Set(rows.filter((r) => r.local).map((r) => r.name)))),
@@ -65,8 +66,19 @@ export function useWorkingContext(enabled: boolean): {
     loadSettings().then((s) => s && setSaved(s.repo_by_department)).catch(() => {});
   }, [enabled, readLocal]);
 
-  const pick = saved[dept];
-  const repo = pick && (CHAT_REPOS as readonly string[]).includes(pick) ? pick : DEFAULT_REPO;
+  // The menu follows the department (and the profile, which loads with the page).
+  useEffect(() => {
+    if (!enabled || !dept) return;
+    let live = true;
+    void repoMenu(dept)
+      .then((m) => live && setRepos(m))
+      .catch(() => live && setRepos([]));
+    return () => {
+      live = false;
+    };
+  }, [enabled, dept, profile]);
+
+  const repo = pickRepo(saved[dept], repos);
 
   const setRepo = useCallback(
     async (next: string) => {
@@ -82,7 +94,7 @@ export function useWorkingContext(enabled: boolean): {
     [dept, local, readLocal],
   );
 
-  return { profile, dept, chooseDept: (name) => void choose(name), repos: CHAT_REPOS, local, repo, setRepo };
+  return { profile, dept, chooseDept: choose, repos, local, repo, setRepo };
 }
 
 /** Each department's mark; one not listed falls back to the briefcase. */
@@ -132,7 +144,7 @@ export function ContextLine({
   profile: MachineProfile | null;
   dept: string;
   onDept: (name: string) => void;
-  repos: readonly string[];
+  repos: readonly RepoEntry[];
   /** The repos cloned here; null while unknown. */
   local: Set<string> | null;
   repo: string;
@@ -154,8 +166,8 @@ export function ContextLine({
   if (!current) return null;
   const title = (d: (typeof departments)[number]) => (isAr && d.title_ar) || d.title;
   const CurrentIcon = deptIcon(current.name);
-  const q = query.trim().toLowerCase();
-  const others = repos.filter((r) => r !== repo && (!q || r.toLowerCase().includes(q)));
+  const others = filterRepos(repos, repo, query);
+  const shownRepo = repos.find((e) => e.name === repo);
   const pick = (r: string) => {
     setRepoOpen(false);
     setQuery("");
@@ -201,6 +213,7 @@ export function ContextLine({
         </PopoverContent>
       </Popover>
 
+      {repos.length > 0 && (
       <Popover
         open={repoOpen}
         onOpenChange={(o) => {
@@ -215,7 +228,7 @@ export function ContextLine({
             ) : (
               <RepoIcon className="size-4 shrink-0" />
             )}
-            <span dir="ltr" className="truncate">{cloning ?? repo}</span>
+            <span dir="ltr" className="truncate">{cloning ?? (shownRepo ? repoLabel(shownRepo) : repo)}</span>
             <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
           </button>
         </PopoverTrigger>
@@ -227,7 +240,7 @@ export function ContextLine({
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && others[0]) pick(others[0]);
+                if (e.key === "Enter" && others[0]) pick(others[0].name);
               }}
               placeholder={t(menuCopy.searchRepos)}
               className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
@@ -235,17 +248,17 @@ export function ContextLine({
           </label>
           <div className="mt-1.5 flex items-center gap-2.5 rounded-lg bg-muted px-2.5 py-1.5 text-sm">
             <RepoIcon className="size-4 shrink-0 text-muted-foreground" />
-            <span dir="ltr" className="flex-1 truncate">{repo}</span>
+            <span dir="ltr" className="flex-1 truncate">{shownRepo ? repoLabel(shownRepo) : repo}</span>
             <CheckIcon className="size-4 shrink-0" aria-hidden />
           </div>
           {others.length > 0 && (
             <ul className="mt-1.5 max-h-64 overflow-y-auto border-t border-border/60 pt-1.5">
-              {others.map((r) => (
-                <li key={r}>
-                  <button type="button" onClick={() => pick(r)} className={row}>
+              {others.map((e) => (
+                <li key={e.name}>
+                  <button type="button" onClick={() => pick(e.name)} className={row}>
                     <RepoIcon className="size-4 shrink-0 text-muted-foreground" />
-                    <span dir="ltr" className="flex-1 truncate">{r}</span>
-                    {remote(r) && (
+                    <span dir="ltr" className="flex-1 truncate">{repoLabel(e)}</span>
+                    {remote(e.name) && (
                       <CloudIcon className="size-4 shrink-0 text-muted-foreground" aria-label={t(menuCopy.notCloned)} />
                     )}
                   </button>
@@ -255,6 +268,7 @@ export function ContextLine({
           )}
         </PopoverContent>
       </Popover>
+      )}
 
       {health && onAsk && <HealthLight lang={lang} dept={dept} state={health} onAsk={onAsk} />}
     </div>

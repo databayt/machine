@@ -237,34 +237,49 @@ fn ws_in(root: &Path) -> Workspace {
     }
 }
 
+/// A kun checkout with a registry (kun, mkan, souq, ios-app active; secret planned) and a pack for `video`.
+fn kun_fixture() -> tempfile::TempDir {
+    let kun = tempfile::tempdir().unwrap();
+    std::fs::create_dir_all(kun.path().join(".claude/memory")).unwrap();
+    std::fs::write(
+        kun.path().join(".claude/memory/repositories.json"),
+        r#"{"repositories":{"core":[{"id":"kun","status":"active"},{"id":"machine","status":"active"}],
+            "products":[{"id":"hogwarts","status":"active"},{"id":"mkan","status":"active"},{"id":"souq","status":"active"},
+                        {"id":"secret","status":"planned"}],
+            "specialized":[{"id":"ios-app","status":"active"},{"id":"marketing","status":"active","word":"landing"}]}}"#,
+    )
+    .unwrap();
+    let dept = kun.path().join("departments/video");
+    std::fs::create_dir_all(&dept).unwrap();
+    std::fs::write(dept.join("pack.json"), r#"{"repos":["kun","hogwarts","marketing"]}"#).unwrap();
+    kun
+}
+
 #[test]
 fn a_repo_limits_the_run_to_that_repo_and_must_be_known_and_cloned() {
+    let kun = kun_fixture();
     let root = tempfile::tempdir().unwrap();
     let ws = ws_in(root.path());
-    std::fs::create_dir_all(ws.repos.join("kun")).unwrap();
-    std::fs::create_dir_all(ws.repos.join("mkan")).unwrap();
-    std::fs::create_dir_all(ws.repos.join("secret")).unwrap();
+    for n in ["kun", "mkan", "secret", "souq"] {
+        std::fs::create_dir_all(ws.repos.join(n)).unwrap();
+    }
     let r = resolved(DriverKind::Claude, true);
-    // Known and cloned.
-    assert_eq!(
-        validate_repo(&r, "tech", Some("kun"), &ws.repos).unwrap().as_deref(),
-        Some("kun")
-    );
+    let check = |dept: &str, repo: Option<&str>| validate_repo(&r, dept, repo, &ws.repos, kun.path());
+    // On the menu and cloned.
+    assert_eq!(check("tech", Some("kun")).unwrap().as_deref(), Some("kun"));
     // None or empty means all repos.
-    assert_eq!(validate_repo(&r, "tech", None, &ws.repos).unwrap(), None);
-    assert_eq!(validate_repo(&r, "tech", Some(""), &ws.repos).unwrap(), None);
-    // On disk but not one of the profile's repos; or listed but not cloned; or unsafe.
-    for bad in ["secret", "hogwarts", "../kun"] {
-        assert!(
-            matches!(validate_repo(&r, "tech", Some(bad), &ws.repos), Err(ChatError::BadRepo)),
-            "{bad}"
-        );
+    assert_eq!(check("tech", None).unwrap(), None);
+    assert_eq!(check("tech", Some("")).unwrap(), None);
+    // Cloned but not on the menu (planned in the registry, or not the profile's); or on it but not cloned; or unsafe.
+    for bad in ["secret", "souq", "hogwarts", "../kun"] {
+        assert!(matches!(check("tech", Some(bad)), Err(ChatError::BadRepo)), "{bad}");
     }
     std::fs::remove_dir_all(ws.repos.join("mkan")).unwrap();
-    assert!(matches!(
-        validate_repo(&r, "tech", Some("mkan"), &ws.repos),
-        Err(ChatError::BadRepo)
-    ));
+    assert!(matches!(check("tech", Some("mkan")), Err(ChatError::BadRepo)));
+    // The department's pack repos join the profile's.
+    std::fs::create_dir_all(ws.repos.join("hogwarts")).unwrap();
+    assert!(check("video", Some("hogwarts")).is_ok());
+    assert!(matches!(check("tech", Some("hogwarts")), Err(ChatError::BadRepo)));
     // The extras: only that repo's --add-dir (not mkan's, though the profile lists it).
     let all = job_extras(DriverKind::Claude, &r.profile.repos, &ws);
     let one = job_extras(DriverKind::Claude, &["kun".to_owned()], &ws);
@@ -286,6 +301,7 @@ fn a_repo_limits_the_run_to_that_repo_and_must_be_known_and_cloned() {
 #[test]
 fn the_default_profile_takes_its_repos_from_the_department() {
     use crate::profile::{Department, RepoTag};
+    let kun = kun_fixture();
     let root = tempfile::tempdir().unwrap();
     std::fs::create_dir_all(root.path().join("souq")).unwrap();
     let mut r = resolved(DriverKind::Claude, false);
@@ -299,21 +315,61 @@ fn the_default_profile_takes_its_repos_from_the_department() {
         cards: Vec::new(),
         repos: vec![RepoTag { name: "souq".into(), blocks: Vec::new() }],
     }];
-    assert!(validate_repo(&r, "tech", Some("souq"), root.path()).is_ok());
-    assert!(validate_repo(&r, "sales", Some("souq"), root.path()).is_err());
+    assert!(validate_repo(&r, "tech", Some("souq"), root.path(), kun.path()).is_ok());
+    assert!(validate_repo(&r, "sales", Some("souq"), root.path(), kun.path()).is_err());
 }
 
 #[test]
-fn the_chat_repos_are_known_on_every_machine_once_cloned() {
-    let root = tempfile::tempdir().unwrap();
+fn the_menu_is_the_pack_and_profile_repos_that_are_active() {
+    let kun = kun_fixture();
     let mut r = resolved(DriverKind::Claude, false);
-    r.profile.repos = vec!["kun".into()];
-    assert!(matches!(
-        validate_repo(&r, "sales", Some("ios-app"), root.path()),
-        Err(ChatError::BadRepo)
-    ));
-    std::fs::create_dir_all(root.path().join("ios-app")).unwrap();
-    assert!(validate_repo(&r, "sales", Some("ios-app"), root.path()).is_ok());
+    r.profile.repos = vec!["mkan".into(), "kun".into(), "secret".into(), "ghost".into(), "../x".into()];
+    let names = |dept: &str| {
+        repo_menu::menu_for(kun.path(), &r.profile, dept)
+            .unwrap()
+            .into_iter()
+            .map(|e| e.name)
+            .collect::<Vec<_>>()
+    };
+    // video: its pack (kun, hogwarts, marketing) then the profile's; hogwarts first; planned, unknown and unsafe are gone.
+    assert_eq!(names("video"), ["hogwarts", "kun", "marketing", "mkan"]);
+    // A department with no pack gets the profile's repos alone.
+    assert_eq!(names("tech"), ["mkan", "kun"]);
+    // The registry's word shows; the name stays.
+    let landing = repo_menu::menu_for(kun.path(), &r.profile, "video").unwrap();
+    let m = landing.iter().find(|e| e.name == "marketing").unwrap();
+    assert_eq!(m.word.as_deref(), Some("landing"));
+    assert!(landing.iter().find(|e| e.name == "kun").unwrap().word.is_none());
+}
+
+#[test]
+fn with_no_registry_the_menu_is_not_filtered() {
+    let mut r = resolved(DriverKind::Claude, false);
+    r.profile.repos = vec!["kun".into(), "mkan".into(), "hogwarts".into()];
+    let none = tempfile::tempdir().unwrap();
+    let menu = repo_menu::menu_for(none.path(), &r.profile, "tech").unwrap();
+    assert_eq!(menu.iter().map(|e| e.name.as_str()).collect::<Vec<_>>(), ["hogwarts", "kun", "mkan"]);
+    // A damaged registry reads as none.
+    assert!(repo_menu::parse_registry("not json").is_none());
+    assert!(repo_menu::parse_registry(r#"{"repositories":{"a":[]}}"#).is_none());
+    // A flat array is accepted too.
+    let flat = repo_menu::parse_registry(r#"{"repositories":[{"id":"kun","status":"active"}]}"#).unwrap();
+    assert_eq!(repo_menu::menu(Some(&flat), &["kun".into(), "mkan".into()], &[]).len(), 1);
+}
+
+#[test]
+fn the_real_registry_gives_a_menu_with_hogwarts_first() {
+    let Ok(kun) = pack::kun_dir() else { return };
+    let Some(reg) = repo_menu::read_registry(&kun) else {
+        eprintln!("skipped: no kun clone at {}", kun.display());
+        return;
+    };
+    let all: Vec<String> = ["marketing", "kun", "hogwarts", "sijillee"].map(str::to_owned).to_vec();
+    let menu = repo_menu::menu(Some(&reg), &all, &[]);
+    let names: Vec<_> = menu.iter().map(|e| e.name.as_str()).collect();
+    assert_eq!(names.first(), Some(&"hogwarts"));
+    assert!(!names.contains(&"sijillee"), "planned in the registry");
+    assert_eq!(menu.iter().find(|e| e.name == "marketing").and_then(|e| e.word.as_deref()), Some("landing"));
 }
 
 #[test]
@@ -406,22 +462,61 @@ fn the_old_mode_picks_plan_or_do_and_other_drivers_ignore_routes() {
     assert_eq!(f, ["--effort", "low"]);
 }
 
+fn gather() -> Vec<String> {
+    [
+        "`node ~/.claude/skills/produce/scripts/produce.mjs list --json{repo_flag}` and `status <ID>` of the matching project",
+        "existing captures",
+    ]
+    .map(str::to_owned)
+    .to_vec()
+}
+
 #[test]
 fn refine_asks_for_a_complete_brief_and_lists_the_routes() {
     let meta = route_meta(ROUTED);
-    let text = refine_prompt("  اعمل فيلم  ", &meta.routes, "video", Some("hogwarts"), Some("## Task\n{{task}}"));
+    let text = refine_prompt("  اعمل فيلم  ", &meta.routes, &gather(), Some("hogwarts"), Some("## Task\n{{task}}"));
     assert!(text.starts_with("Rewrite the request below as one professional prompt, in English"));
-    assert!(text.contains("produce.mjs list --json --repo hogwarts"));
     assert!(text.contains("Fill this template exactly"));
     assert!(text.contains("## Task\n{{task}}"));
     assert!(text.contains("`route: <id>`, one of: plan, do."));
     assert!(text.ends_with("اعمل فيلم"));
-    let other = refine_prompt("x", &[], "sales", None, None);
+    let other = refine_prompt("x", &[], &[], None, None);
     assert!(!other.contains("produce.mjs") && !other.contains("route:"));
     assert!(other.contains("Task · Context · References · Constraints · Deliverable"));
     assert!(valid_job_id(&refine_job_id()));
     assert_ne!(refine_job_id(), refine_job_id());
     assert_eq!(REFINE_SECS, 240);
+}
+
+#[test]
+fn the_gather_list_comes_from_the_pack_not_from_a_department() {
+    // Each entry is one thing to read first, after the department's CLAUDE.md.
+    let text = refine_prompt("x", &[], &gather(), Some("hogwarts"), None);
+    assert!(text.contains("department's CLAUDE.md; `node ~/.claude/skills/produce/scripts/produce.mjs list --json --repo hogwarts` and `status <ID>` of the matching project; existing captures. Put every reference"));
+    // No repo: the token goes without a trace.
+    let text = refine_prompt("x", &[], &gather(), None, None);
+    assert!(text.contains("produce.mjs list --json` and `status <ID>`"));
+    assert!(!text.contains("{repo_flag}") && !text.contains("--repo"));
+    // The same department name with another gather list reads that list: nothing is keyed on "video".
+    let other = refine_prompt("x", &[], &["read the pricing sheet".to_owned(), "  ".to_owned()], None, None);
+    assert!(other.contains("CLAUDE.md; read the pricing sheet. Put every reference"));
+    assert!(!other.contains("produce"));
+    // With nothing to gather, only CLAUDE.md.
+    assert!(refine_prompt("x", &[], &[], None, None).contains("department's CLAUDE.md. Put every reference"));
+}
+
+#[test]
+fn the_real_video_pack_feeds_refine_its_gather_list() {
+    let Ok(kun) = pack::kun_dir() else { return };
+    if !kun.join("departments/video/pack.json").is_file() {
+        eprintln!("skipped: no kun clone at {}", kun.display());
+        return;
+    }
+    let meta = pack::meta_in(&kun, "video").unwrap();
+    let text = refine_prompt("x", &meta.routes, &meta.gather, Some("hogwarts"), None);
+    for must in ["produce.mjs list --json --repo hogwarts", "`status <ID>`", "brand-kit.json", "markets.json", "existing captures"] {
+        assert!(text.contains(must), "{must}");
+    }
 }
 
 #[test]

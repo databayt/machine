@@ -13,7 +13,8 @@ import { DEPT_EVENT } from "./config";
  */
 export function useDepartment(): {
   dept: string;
-  choose: (name: string) => Promise<void>;
+  /** True when the department changed; false when the profile does not authorize it. */
+  choose: (name: string) => Promise<boolean>;
 } {
   const [dept, setDept] = useState("");
 
@@ -33,13 +34,14 @@ export function useDepartment(): {
 
   const choose = useCallback(async (name: string) => {
     const now = await loadSettings();
-    if (!now) return;
+    if (!now) return false;
     try {
       await saveSettings({ ...now, department: name });
     } catch {
-      return; // not authorized: nothing changes
+      return false; // not authorized: nothing changes
     }
     window.dispatchEvent(new Event(DEPT_EVENT));
+    return true;
   }, []);
 
   return { dept, choose };

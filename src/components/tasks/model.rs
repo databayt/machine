@@ -27,7 +27,7 @@ fn known_driver<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>
         .filter(|s| DRIVERS.contains(&s.as_str())))
 }
 
-/// The parsed `<!-- kun: repos=…; items=…; after=…; driver=… -->` block of an issue.
+/// The parsed `<!-- kun: repos=…; items=…; after=…; driver=…; formula=…; stage=… -->` block of an issue.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
 #[serde(default)]
 #[ts(export, export_to = "tasks/types.ts")]
@@ -38,6 +38,14 @@ pub struct KunBlock {
     /// `claude`, `codex`, `opencode`, `agy` or `hermes`; `None` = the machine profile's default.
     #[serde(deserialize_with = "known_driver")]
     pub driver: Option<String>,
+    /// The formula the issue was filled from (`formula=`), when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub formula: Option<String>,
+    /// The produce stage the issue belongs to (`stage=`), when it has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub stage: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -70,6 +78,22 @@ pub struct Task {
     pub body: String,
     #[serde(default)]
     pub updated_at: String,
+    /// The login the issue is assigned to (`for:<login>` label): an order given to a person, who may
+    /// be outside the task's department. Absent on older servers.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub assignee: Option<String>,
+    /// The film the order belongs to (its film issue, `databayt/<repo>#<n>`), when it is a work order.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub film: Option<String>,
+    /// The formula id the issue was filled from, e.g. `video.order.blender`.
+    #[serde(default)]
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub formula: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

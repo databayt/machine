@@ -662,3 +662,155 @@ fn agents_link_into_the_workdir_and_stale_links_go() {
     assert!(out.join("producer.md").exists());
     assert!(out.join("mine.md").exists());
 }
+
+const ENGINE: &str = r#"{"lanes":{"$comment":"notes","script":{"model":null,"effort":null},
+    "judge":{"model":"opus","effort":"high"},"work":{"model":"opus","effort":"medium"},
+    "research":{"model":"sonnet","effort":"low"},"escalate":{"model":"fable","effort":"xhigh"},
+    "bad":{"model":"gpt-5","effort":"loud"}}}"#;
+
+fn kun_with(pack: &str, engine: Option<&str>) -> tempfile::TempDir {
+    let kun = tempfile::tempdir().unwrap();
+    let dept = kun.path().join("departments/video");
+    fs::create_dir_all(&dept).unwrap();
+    fs::write(dept.join("pack.json"), pack).unwrap();
+    if let Some(engine) = engine {
+        fs::create_dir_all(kun.path().join(".claude")).unwrap();
+        fs::write(kun.path().join(".claude/engine.json"), engine).unwrap();
+    }
+    kun
+}
+
+#[test]
+fn a_lane_sets_the_model_and_effort_over_the_routes_own() {
+    let pack = r#"{"routes":[
+        {"id":"plan","mode":"plan","lane":"judge","model":"sonnet","effort":"low"},
+        {"id":"do","mode":"auto","lane":"work"},
+        {"id":"quick","mode":"auto","lane":"research","model":"opus"}]}"#;
+    let m = meta_in(kun_with(pack, Some(ENGINE)).path(), "video").unwrap();
+    let flags = |i: usize| route_flags(&m.routes[i]);
+    assert_eq!(flags(0), v(&["--model", "opus", "--effort", "high"]));
+    assert_eq!(flags(1), v(&["--model", "opus", "--effort", "medium"]));
+    assert_eq!(flags(2), v(&["--model", "sonnet", "--effort", "low"]));
+    assert_eq!(m.routes[0].lane.as_deref(), Some("judge"));
+}
+
+#[test]
+fn without_the_lane_or_the_file_the_routes_own_values_stand() {
+    let pack = r#"{"routes":[
+        {"id":"plan","mode":"plan","lane":"judge","model":"opus","effort":"high"},
+        {"id":"x","mode":"auto","lane":"nowhere","model":"sonnet","effort":"low"}]}"#;
+    for engine in [None, Some("not json"), Some(r#"{"lanes":[]}"#), Some(r#"{"lanes":{"judge":{"model":"haiku"}}}"#)] {
+        let m = meta_in(kun_with(pack, engine).path(), "video").unwrap();
+        let x = &m.routes[1];
+        assert_eq!((x.model.as_deref(), x.effort.as_deref()), (Some("sonnet"), Some("low")), "{engine:?}");
+        let plan = &m.routes[0];
+        if engine == Some(r#"{"lanes":{"judge":{"model":"haiku"}}}"#) {
+            // The lane has a model but no effort: the route keeps its own effort.
+            assert_eq!((plan.model.as_deref(), plan.effort.as_deref()), (Some("haiku"), Some("high")));
+        } else {
+            assert_eq!((plan.model.as_deref(), plan.effort.as_deref()), (Some("opus"), Some("high")));
+        }
+    }
+}
+
+#[test]
+fn a_lane_never_brings_fable_or_a_bad_value() {
+    let pack = r#"{"routes":[
+        {"id":"a","mode":"auto","lane":"escalate","model":"sonnet","effort":"low"},
+        {"id":"b","mode":"auto","lane":"bad","model":"opus"},
+        {"id":"c","mode":"auto","lane":"script","model":"haiku"},
+        {"id":"d","mode":"auto","lane":"../x"}]}"#;
+    let m = meta_in(kun_with(pack, Some(ENGINE)).path(), "video").unwrap();
+    // `d` has an invalid lane name and is dropped; fable and junk never reach a flag.
+    assert_eq!(m.routes.len(), 3);
+    let a = &m.routes[0];
+    assert_eq!((a.model.as_deref(), a.effort.as_deref()), (Some("sonnet"), Some("xhigh")));
+    assert_eq!(route_flags(&m.routes[1]), v(&["--model", "opus"]));
+    assert_eq!(route_flags(&m.routes[2]), v(&["--model", "haiku"]));
+    for r in &m.routes {
+        assert!(!route_flags(r).iter().any(|f| f.contains("fable")));
+    }
+}
+
+#[test]
+fn lanes_skip_the_notes_and_the_script_lane_has_no_model() {
+    let lanes = parse_lanes(ENGINE);
+    assert!(!lanes.contains_key("$comment"));
+    assert_eq!(lanes["script"], LaneSpec::default());
+    assert_eq!(lanes["judge"].model.as_deref(), Some("opus"));
+    assert_eq!(lanes["escalate"].model, None);
+    assert_eq!(lanes["escalate"].effort.as_deref(), Some("xhigh"));
+    assert_eq!(lanes["bad"], LaneSpec::default());
+}
+
+#[test]
+fn the_station_fields_parse_and_are_cleaned() {
+    let pack = r###"{"lead":"video","line":"produce","guard":"../x",
+        "keywords":{"en":["video"," film ",""],"ar":["فيديو"]},
+        "constraints":["Stop at every gate."," ",5,"Real captures only."],
+        "gather":["list the projects","  ",null,"read brand-kit.json"],
+        "formula":{"ar":"","en":"## Task\nx"}}"###;
+    let kun = kun_with(pack, None);
+    let m = meta_in(kun.path(), "video").unwrap();
+    assert_eq!((m.lead.as_deref(), m.line.as_deref(), m.guard), (Some("video"), Some("produce"), None));
+    assert_eq!(m.keywords, Keywords { en: v(&["video", "film"]), ar: v(&["فيديو"]) });
+    assert_eq!(m.constraints, v(&["Stop at every gate.", "Real captures only."]));
+    assert_eq!(m.gather, v(&["list the projects", "read brand-kit.json"]));
+    let info = info_in(kun.path(), "video").unwrap();
+    assert_eq!(info.gather, m.gather);
+    assert_eq!(info.formula.unwrap().en, "## Task\nx");
+    assert_eq!(info.lead.as_deref(), Some("video"));
+    // A pack without them has none.
+    let bare = meta_in(kun_with("{}", None).path(), "video").unwrap();
+    assert!(bare.lead.is_none() && bare.gather.is_empty() && bare.constraints.is_empty());
+    assert_eq!(bare.keywords, Keywords::default());
+}
+
+#[test]
+fn the_navigator_is_gone_from_the_pack_info() {
+    // A pack that still carries `starters` parses; the field is ignored.
+    let kun = kun_with(r#"{"starters":[{"id":"a","children":[]}],"quickActions":[{"label_en":"x","prompt":"p","id":"q"}]}"#, None);
+    let info = info_in(kun.path(), "video").unwrap();
+    assert_eq!(info.quick_actions.len(), 1);
+}
+
+#[test]
+fn kuns_real_video_pack_parses() {
+    let Ok(kun) = kun_dir() else { return };
+    if !kun.join("departments/video/pack.json").is_file() {
+        eprintln!("skipped: no kun clone at {}", kun.display());
+        return;
+    }
+    let m = meta_in(&kun, "video").unwrap();
+    assert_eq!(m.lead.as_deref(), Some("video"));
+    assert_eq!(m.line.as_deref(), Some("produce"));
+    assert_eq!(m.guard.as_deref(), Some("media-qa"));
+    assert!(m.keywords.en.contains(&"video".to_owned()));
+    assert!(!m.constraints.is_empty(), "the pack's constraints");
+    assert!(!m.quick_actions.is_empty(), "quickActions stay as the fallback");
+    let ids: Vec<_> = m.routes.iter().map(|r| r.id.as_str()).collect();
+    assert!(ids.contains(&"plan") && ids.contains(&"do"));
+    assert!(m.routes.iter().all(|r| r.lane.is_some()), "every route names a lane");
+    // A lane, when engine.json has it, decides the model; no route is ever fable.
+    let lanes = read_lanes(&kun);
+    for r in &m.routes {
+        if let Some(lane) = r.lane.as_deref().and_then(|l| lanes.get(l)) {
+            assert_eq!(r.model, lane.model.clone().or_else(|| r.model.clone()));
+        }
+        assert!(!r.model.as_deref().unwrap_or("").contains("fable"));
+    }
+    let info = info_in(&kun, "video").unwrap();
+    assert!(info.formula.is_some_and(|f| f.en.contains("## Task")));
+    // The gather list is the pack's (task 4): every entry is one thing to read.
+    assert!(m.gather.iter().any(|g| g.contains("produce.mjs")), "{:?}", m.gather);
+}
+
+#[test]
+fn a_quick_action_keeps_a_valid_id() {
+    let kun = kun_with(
+        r#"{"quickActions":[{"id":"video.reel.footage","label_en":"a","prompt":"p"},{"id":"BAD ID","label_en":"b","prompt":"p"},{"label_en":"c","prompt":"p"}]}"#,
+        None,
+    );
+    let ids: Vec<_> = meta_in(kun.path(), "video").unwrap().quick_actions.into_iter().map(|q| q.id).collect();
+    assert_eq!(ids, [Some("video.reel.footage".to_owned()), None, None]);
+}

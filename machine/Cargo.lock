@@ -2460,6 +2460,7 @@ dependencies = [
  "anyhow",
  "dirs 6.0.0",
  "fs4",
+ "futures-util",
  "insta",
  "junction",
  "keyring",

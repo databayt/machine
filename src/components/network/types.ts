@@ -38,7 +38,19 @@ export type Receipt = { id: string, driver: string, model: string, durationMs: n
 /**
  * 1 to 4000 characters.
  */
-summary: string, next?: string | null, };
+summary: string, next?: string | null, 
+/**
+ * The formula the work was done from (`video.order.blender`), when known.
+ */
+formula?: string | null, 
+/**
+ * The produce stage the work belongs to, when known.
+ */
+stage?: string | null, 
+/**
+ * sha256 (64 lowercase hex characters) of each artifact, in the order of `artifacts`.
+ */
+hashes?: Array<string> | null, };
 
 /**
  * Whether a clone is kept or swept when its sprint ends.

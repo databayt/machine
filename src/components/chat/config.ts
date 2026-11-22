@@ -56,6 +56,7 @@ export const copy = {
   attachN: { en: "Attach", ar: "إرفاق" },
   remove: { en: "Remove", ar: "إزالة" },
   references: { en: "References", ar: "مراجع" },
+  acceptPlan: { en: "Accept", ar: "اعتمد الخطة" },
   openTitle: { en: "Open this page in the Kun app", ar: "افتح هذه الصفحة في تطبيق كن" },
   openText: {
     en: "Chat, sessions and settings run on your computer, inside the app only.",

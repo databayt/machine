@@ -66,6 +66,9 @@ impl Serialize for ChatError {
     }
 }
 
+#[path = "repo_menu.rs"]
+pub mod repo_menu;
+
 type Cancel = oneshot::Sender<()>;
 
 /// Running jobs, so `stop` can reach them.
@@ -195,41 +198,20 @@ fn task_prompt(task_id: &str, prompt: &str) -> String {
     )
 }
 
-/// The repos the chat's repository menu offers on every machine (databayt on GitHub); hogwarts first,
-/// the default. Mirrors `CHAT_REPOS` in `chat/context.tsx`.
-pub const CHAT_REPOS: &[&str] = &[
-    "hogwarts",
-    "mkan",
-    "kun",
-    "machine",
-    "marketing",
-    "android-app",
-    "ios-app",
-];
-
-/// The repo a run is limited to. It must be one the machine works in (one of `CHAT_REPOS`, the
-/// profile's repos, or when the profile lists none, the department's) and be cloned under `root`.
+/// The repo a run is limited to. It must be on the repo menu (the department's pack repos and the
+/// profile's, active in kun's registry: [`repo_menu::menu_for`]) and be cloned under `root`.
 fn validate_repo(
     resolved: &Resolved,
     department: &str,
     repo: Option<&str>,
     root: &Path,
+    kun: &Path,
 ) -> Result<Option<String>, ChatError> {
     let Some(repo) = repo.filter(|r| !r.is_empty()) else {
         return Ok(None);
     };
-    let profile = &resolved.profile;
-    let known = CHAT_REPOS.contains(&repo) || if profile.repos.is_empty() {
-        profile
-            .departments
-            .iter()
-            .filter(|d| d.name == department)
-            .flat_map(|d| d.repos.iter())
-            .any(|r| r.name == repo)
-    } else {
-        profile.repos.iter().any(|r| r == repo)
-    };
-    if known && pack::valid_name(repo) && root.join(repo).is_dir() {
+    let menu = repo_menu::menu_for(kun, &resolved.profile, department)?;
+    if menu.iter().any(|e| e.name == repo) && pack::valid_name(repo) && root.join(repo).is_dir() {
         Ok(Some(repo.to_owned()))
     } else {
         Err(ChatError::BadRepo)
@@ -418,7 +400,7 @@ async fn ask(
     let kind = pick_driver(&resolved, driver, settings.driver);
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
-    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
+    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
     let for_run = task_id.clone();
     let (for_dept, for_repo) = (department.clone(), repo.clone());
     let setup = tokio::task::spawn_blocking(move || {
@@ -495,14 +477,18 @@ async fn ask(
 /// How long `refine` may take before it gives up: it reads the project's folder first.
 const REFINE_SECS: u32 = 240;
 
+/// The token in a pack's `gather` entry that becomes ` --repo <name>` when a repo is chosen, else nothing.
+pub const GATHER_REPO_FLAG: &str = "{repo_flag}";
+
 /// The instruction `refine` puts before the user's text. The brief is always English and follows
 /// the pack's predefined `formula.en` template when it has one (a plain section list otherwise); it
-/// must stand alone, so the run first gathers context read-only (video also reads its produce
-/// projects). `routes` adds a closing `route:` line the app reads silently.
+/// must stand alone, so the run first gathers context read-only: the department's CLAUDE.md and
+/// everything in the pack's `gather` list (one thing to read per entry; no department is special).
+/// `routes` adds a closing `route:` line the app reads silently.
 fn refine_prompt(
     prompt: &str,
     routes: &[pack::Route],
-    department: &str,
+    gather: &[String],
     repo: Option<&str>,
     template: Option<&str>,
 ) -> String {
@@ -511,15 +497,11 @@ fn refine_prompt(
          request is in. First gather the context it needs, read-only (no writes, no renders): the \
          department's CLAUDE.md",
     );
-    if department == "video" {
-        let repo_flag = repo.map_or_else(String::new, |r| format!(" --repo {r}"));
-        let _ = write!(
-            out,
-            "; `node ~/.claude/skills/produce/scripts/produce.mjs list --json{repo_flag}` and \
-             `status <ID>` of the matching project, its folder (reference video, transcript, script, \
-             asset manifest), kun/content/media/brand-kit.json and markets.json (price, currency, \
-             dialect), existing captures"
-        );
+    let repo_flag = repo
+        .filter(|r| !r.is_empty())
+        .map_or_else(String::new, |r| format!(" --repo {r}"));
+    for item in gather.iter().map(|g| g.trim()).filter(|g| !g.is_empty()) {
+        let _ = write!(out, "; {}", item.replace(GATHER_REPO_FLAG, &repo_flag));
     }
     out.push_str(
         ". Put every reference and fact the worker needs into the prompt (absolute paths, CDN URLs, \
@@ -579,10 +561,10 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
     let resolved = profile::current()?;
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
-    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root)?;
+    let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
     let for_dept = department.clone();
     let repo_name = repo.clone();
-    let (cwd, extras, routes, template) = tokio::task::spawn_blocking(move || {
+    let (cwd, extras, routes, gather, template) = tokio::task::spawn_blocking(move || {
         let setup = prepare_run(
             &resolved,
             &for_dept,
@@ -598,14 +580,14 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
         let mut extras = setup.extras;
         extras.extend(["--model", "sonnet", "--effort", "medium"].map(str::to_owned));
         let template = pack::info_in(&pack::kun_dir()?, &for_dept)?.formula.map(|f| f.en);
-        Ok::<_, ChatError>((setup.cwd, extras, meta.routes, template))
+        Ok::<_, ChatError>((setup.cwd, extras, meta.routes, meta.gather, template))
     })
     .await
     .map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))??;
     let mut job = build_job(
         &refine_job_id(),
         DriverKind::Claude,
-        refine_prompt(&prompt, &routes, &department, repo_name.as_deref(), template.as_deref()),
+        refine_prompt(&prompt, &routes, &gather, repo_name.as_deref(), template.as_deref()),
         cwd,
         None,
         extras,
@@ -640,6 +622,14 @@ async fn refine(prompt: String, repo: Option<String>) -> Result<String, ChatErro
     refined_text(&streamed, result.as_deref())
 }
 
+/// `repo_menu` — the repositories the menu offers for a department on this machine, hogwarts first.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn repo_menu(department: String) -> Result<Vec<repo_menu::RepoEntry>, ChatError> {
+    let resolved = profile::current()?;
+    Ok(repo_menu::menu_for(&pack::kun_dir()?, &resolved.profile, &department)?)
+}
+
 /// `stop` — cancels a running job. True when it was running.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
@@ -650,7 +640,7 @@ fn stop(job_id: String) -> bool {
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("chat")
-        .invoke_handler(tauri::generate_handler![ask, refine, stop])
+        .invoke_handler(tauri::generate_handler![ask, refine, stop, repo_menu])
         .build()
 }
 

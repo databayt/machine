@@ -35,6 +35,8 @@ keyring = "4.2"
 whisper-rs = { version = "=0.16.0", optional = true }
 # reqwest: the network feature talks to kun.databayt.org; voice reuses it for model downloads.
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "stream", "json"] }
+# streams a file as a request body (work submissions): `stream::unfold` over a reader.
+futures-util = { version = "0.3", default-features = false }
 # free disk space, portable (network health check).
 fs4 = { version = "1.1", features = ["sync"] }
 # self-update: checks GitHub releases (latest.json), verifies the minisign signature, installs on confirm.

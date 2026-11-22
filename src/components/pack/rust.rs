@@ -12,6 +12,7 @@
 //! (`link.rs`) use junctions on Windows.
 
 use std::{
+    collections::BTreeMap,
     fs, io,
     path::{Path, PathBuf},
 };
@@ -31,8 +32,8 @@ use crate::driver::{DriverKind, PermissionMode};
 pub mod health;
 #[path = "link.rs"]
 mod link;
-#[path = "starters.rs"]
-pub mod starters;
+#[path = "station.rs"]
+pub mod station;
 #[path = "workspace.rs"]
 mod workspace;
 
@@ -55,6 +56,8 @@ pub enum PackError {
     Profile(String),
     #[error("this department has no route `{0}`")]
     UnknownRoute(String),
+    #[error("{0}")]
+    Station(String),
 }
 
 impl Serialize for PackError {
@@ -71,6 +74,8 @@ fn io_err(path: &Path) -> impl FnOnce(io::Error) -> PackError + '_ {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "pack/types.ts")]
 pub struct QuickAction {
+    /// The action's id in the pack (`video.reel.footage`), when it has one: the station log's key.
+    pub id: Option<String>,
     pub label_ar: String,
     pub label_en: String,
     pub prompt: String,
@@ -99,6 +104,9 @@ pub struct Route {
     pub icon: Option<String>,
     /// `"plan"` or `"auto"`: Claude's permission mode for the run.
     pub mode: String,
+    /// The engine lane the route runs in (`engine.json` `lanes`); its model and effort win over the route's own.
+    pub lane: Option<String>,
+    /// The model the run uses: the lane's when it resolves, else the route's own.
     pub model: Option<String>,
     pub effort: Option<String>,
     pub agent: Option<String>,
@@ -114,6 +122,32 @@ impl Route {
     }
 }
 
+/// The pack's fixed frame, `formula.en`: the headings every finished prompt uses.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Formula {
+    pub ar: String,
+    pub en: String,
+}
+
+/// Parses the pack's raw `formula`; absent, malformed or blank gives none.
+#[must_use]
+pub fn parse_formula(raw: Option<&Value>) -> Option<Formula> {
+    let f = serde_json::from_value::<Formula>(raw?.clone()).ok()?;
+    let f = Formula { ar: f.ar.trim().to_owned(), en: f.en.trim().to_owned() };
+    (!f.ar.is_empty() || !f.en.is_empty()).then_some(f)
+}
+
+/// The words that route a request to the department, per language.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "pack/types.ts")]
+#[serde(default)]
+pub struct Keywords {
+    pub en: Vec<String>,
+    pub ar: Vec<String>,
+}
+
 /// What the UI shows about a department's pack.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "pack/types.ts")]
@@ -122,11 +156,19 @@ pub struct PackInfo {
     pub title_ar: String,
     pub title_en: String,
     pub default_driver: Option<DriverKind>,
+    /// The fallback home options when the station's board is empty.
     pub quick_actions: Vec<QuickAction>,
-    /// The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
-    pub starters: Vec<starters::Starter>,
-    /// The sentence the navigator writes when the deepest chosen node has no fill of its own.
-    pub formula: Option<starters::Formula>,
+    /// The pack's frame for a finished prompt (`formula`).
+    pub formula: Option<Formula>,
+    /// The lead agent (`lead`), the produce-style line (`line`) and the guard agent (`guard`).
+    pub lead: Option<String>,
+    pub line: Option<String>,
+    pub guard: Option<String>,
+    pub keywords: Keywords,
+    /// Rules every prompt of the department carries.
+    pub constraints: Vec<String>,
+    /// Things refine reads first, one per entry (`gather`).
+    pub gather: Vec<String>,
     /// Where a home prompt can run, in the pack's order (at most [`MAX_ROUTES`]).
     pub routes: Vec<Route>,
     /// The route the home selector starts on: the pack's choice when it exists, else the first.
@@ -135,6 +177,8 @@ pub struct PackInfo {
 
 #[derive(Debug, Default, Deserialize)]
 struct RawQuick {
+    #[serde(default)]
+    id: Option<String>,
     #[serde(default)]
     label_ar: String,
     #[serde(default)]
@@ -169,6 +213,8 @@ struct RawRoute {
     #[serde(default)]
     mode: String,
     #[serde(default)]
+    lane: Option<String>,
+    #[serde(default)]
     model: Option<String>,
     #[serde(default)]
     effort: Option<String>,
@@ -192,12 +238,22 @@ struct RawPack {
     default_driver: Option<DriverKind>,
     #[serde(default, rename = "quickActions")]
     quick_actions: Vec<RawQuick>,
-    /// The home drill-down navigator (`starters.rs`); nodes are parsed one by one.
-    #[serde(default)]
-    starters: Vec<Value>,
-    /// The navigator's fallback sentence `{ar, en}` (`starters::parse_formula`).
+    /// The frame for a finished prompt `{ar, en}` ([`parse_formula`]).
     #[serde(default)]
     formula: Option<Value>,
+    #[serde(default)]
+    lead: Option<String>,
+    #[serde(default)]
+    line: Option<String>,
+    #[serde(default)]
+    guard: Option<String>,
+    #[serde(default)]
+    keywords: Option<Value>,
+    #[serde(default)]
+    constraints: Vec<Value>,
+    /// Things refine reads first; each entry is one thing to read.
+    #[serde(default)]
+    gather: Vec<Value>,
     /// kun.databayt.org home card ids this department shows (`public/r/kun/home.json`).
     #[serde(default)]
     cards: Vec<String>,
@@ -386,8 +442,57 @@ fn valid_agent(s: &str) -> bool {
             .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
 }
 
-/// One route from its raw form; `None` (with a warning) when any field is invalid.
-fn parse_route(v: &Value) -> Option<Route> {
+/// One engine lane: the model and effort a route resolves to (`engine.json` `lanes.<name>`).
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LaneSpec {
+    pub model: Option<String>,
+    pub effort: Option<String>,
+}
+
+/// The engine's lanes by name. A lane without a model (`script`) or with a rejected one (`fable`)
+/// leaves that field to the route's own value.
+pub type Lanes = BTreeMap<String, LaneSpec>;
+
+/// Reads `lanes` out of `engine.json`'s text. Names starting with `$` are the file's own notes.
+#[must_use]
+pub fn parse_lanes(text: &str) -> Lanes {
+    let Some(map) = serde_json::from_str::<Value>(text)
+        .ok()
+        .and_then(|v| v.get("lanes").cloned())
+        .and_then(|v| v.as_object().cloned())
+    else {
+        return Lanes::new();
+    };
+    map.iter()
+        .filter(|(name, _)| !name.starts_with('$') && valid_route_id(name))
+        .filter_map(|(name, v)| {
+            let o = v.as_object()?;
+            let model = o
+                .get("model")
+                .and_then(Value::as_str)
+                .filter(|m| valid_model(m))
+                .map(str::to_owned);
+            let effort = o
+                .get("effort")
+                .and_then(Value::as_str)
+                .filter(|e| VALID_EFFORT.contains(e))
+                .map(str::to_owned);
+            Some((name.clone(), LaneSpec { model, effort }))
+        })
+        .collect()
+}
+
+/// `<kun>/.claude/engine.json`'s lanes; a missing or damaged file gives none (routes keep their own values).
+#[must_use]
+pub fn read_lanes(kun: &Path) -> Lanes {
+    fs::read_to_string(kun.join(".claude/engine.json"))
+        .map(|t| parse_lanes(&t))
+        .unwrap_or_default()
+}
+
+/// One route from its raw form; `None` (with a warning) when any field is invalid. A `lane` that
+/// `lanes` knows sets the model and effort, over the route's own.
+fn parse_route(v: &Value, lanes: &Lanes) -> Option<Route> {
     let r: RawRoute = serde_json::from_value(v.clone()).ok()?;
     let drop = |why: &str| {
         tracing::warn!("pack route `{}` dropped: {why}", r.id);
@@ -408,6 +513,12 @@ fn parse_route(v: &Value) -> Option<Route> {
     if r.agent.as_deref().is_some_and(|a| !valid_agent(a)) {
         return drop("invalid agent");
     }
+    if r.lane.as_deref().is_some_and(|l| !valid_route_id(l)) {
+        return drop("invalid lane");
+    }
+    let lane = r.lane.as_deref().and_then(|l| lanes.get(l));
+    let model = lane.and_then(|l| l.model.clone()).or_else(|| r.model.clone());
+    let effort = lane.and_then(|l| l.effort.clone()).or_else(|| r.effort.clone());
     let suffix = r.suffix.as_deref().map_or("", str::trim);
     if suffix.chars().count() > MAX_SUFFIX_CHARS {
         return drop("suffix too long");
@@ -420,8 +531,9 @@ fn parse_route(v: &Value) -> Option<Route> {
         description_en: r.description_en.clone(),
         icon: r.icon.clone().filter(|i| !i.trim().is_empty()),
         mode: r.mode.clone(),
-        model: r.model.clone(),
-        effort: r.effort.clone(),
+        lane: r.lane.clone(),
+        model,
+        effort,
         agent: r.agent.clone(),
         suffix: suffix.to_owned(),
         id: r.id.clone(),
@@ -438,6 +550,7 @@ fn derived_route(id: &str, en: &str, ar: &str, mode: &str, spec: Option<&RunSpec
         description_en: String::new(),
         icon: None,
         mode: mode.to_owned(),
+        lane: None,
         model: spec.model,
         effort: spec.effort,
         agent: spec.agent,
@@ -447,9 +560,14 @@ fn derived_route(id: &str, en: &str, ar: &str, mode: &str, spec: Option<&RunSpec
 
 /// The pack's routes: its valid `routes` (unique ids, at most [`MAX_ROUTES`]); with none declared, a
 /// pack that has a `run` block gets `plan` and `do` derived from it. Plus the default route id.
-fn parse_routes(raw: &[Value], default: Option<&str>, run: Option<&RunMeta>) -> (Vec<Route>, Option<String>) {
+fn parse_routes(
+    raw: &[Value],
+    default: Option<&str>,
+    run: Option<&RunMeta>,
+    lanes: &Lanes,
+) -> (Vec<Route>, Option<String>) {
     let mut routes: Vec<Route> = Vec::new();
-    for route in raw.iter().filter_map(parse_route) {
+    for route in raw.iter().filter_map(|v| parse_route(v, lanes)) {
         if routes.len() < MAX_ROUTES && !routes.iter().any(|r| r.id == route.id) {
             routes.push(route);
         }
@@ -595,6 +713,40 @@ pub struct PackMeta {
     pub routes: Vec<Route>,
     /// The route a request without one uses: `defaultRoute` when it exists, else the first.
     pub default_route: Option<String>,
+    /// The lead agent, the produce-style line and the guard agent (names, validated).
+    pub lead: Option<String>,
+    pub line: Option<String>,
+    pub guard: Option<String>,
+    pub keywords: Keywords,
+    /// Rules every prompt of the department carries.
+    pub constraints: Vec<String>,
+    /// Things refine reads first; each is one thing to read.
+    pub gather: Vec<String>,
+}
+
+/// The most entries of a pack's `constraints`, `gather` and each `keywords` list.
+pub const MAX_LIST: usize = 24;
+/// The longest `constraints` / `gather` entry, in characters; a longer one is dropped.
+pub const MAX_LINE_CHARS: usize = 600;
+
+/// The non-blank strings of a list, trimmed, at most [`MAX_LIST`], each at most `max` characters.
+fn clean_lines(raw: &[Value], max: usize) -> Vec<String> {
+    raw.iter()
+        .filter_map(Value::as_str)
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && l.chars().count() <= max)
+        .take(MAX_LIST)
+        .map(str::to_owned)
+        .collect()
+}
+
+fn parse_keywords(raw: Option<&Value>) -> Keywords {
+    let list = |key: &str| {
+        raw.and_then(|v| v.get(key))
+            .and_then(Value::as_array)
+            .map_or_else(Vec::new, |a| clean_lines(a, 64))
+    };
+    Keywords { en: list("en"), ar: list("ar") }
 }
 
 /// The shortest and longest turn timeout a pack may ask for.
@@ -674,10 +826,19 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
         _ => None,
     };
     let run = parse_run(raw.run.as_ref());
-    let (routes, default_route) = parse_routes(&raw.routes, raw.default_route.as_deref(), run.as_ref());
+    let lanes = read_lanes(kun);
+    let (routes, default_route) =
+        parse_routes(&raw.routes, raw.default_route.as_deref(), run.as_ref(), &lanes);
+    let name = |v: &Option<String>| v.clone().filter(|n| valid_name(n));
     Ok(PackMeta {
         routes,
         default_route,
+        lead: name(&raw.lead),
+        line: name(&raw.line),
+        guard: name(&raw.guard),
+        keywords: parse_keywords(raw.keywords.as_ref()),
+        constraints: clean_lines(&raw.constraints, MAX_LINE_CHARS),
+        gather: clean_lines(&raw.gather, MAX_LINE_CHARS),
         title_ar: raw.title_ar.clone().or_else(|| pick("ar")),
         title_en: pick("en").or(plain),
         skills: item_names(&raw.items),
@@ -695,6 +856,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
             .into_iter()
             .filter(|q| !q.prompt.trim().is_empty())
             .map(|q| QuickAction {
+                id: q.id.filter(|i| station::valid_formula_id(i)),
                 label_ar: q.label_ar,
                 label_en: q.label_en,
                 prompt: q.prompt,
@@ -714,8 +876,7 @@ pub fn meta_in(kun: &Path, dept: &str) -> Result<PackMeta, PackError> {
 pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
     let meta = meta_in(kun, dept)?;
     let raw = read_pack(kun, dept);
-    let starters = starters::parse(&raw.starters);
-    let formula = starters::parse_formula(raw.formula.as_ref());
+    let formula = parse_formula(raw.formula.as_ref());
     let fallback = raw.name.unwrap_or_else(|| dept.to_owned());
     Ok(PackInfo {
         department: dept.to_owned(),
@@ -723,8 +884,13 @@ pub fn info_in(kun: &Path, dept: &str) -> Result<PackInfo, PackError> {
         title_en: meta.title_en.unwrap_or(fallback),
         default_driver: meta.default_driver,
         quick_actions: meta.quick_actions,
-        starters,
         formula,
+        lead: meta.lead,
+        line: meta.line,
+        guard: meta.guard,
+        keywords: meta.keywords,
+        constraints: meta.constraints,
+        gather: meta.gather,
         routes: meta.routes,
         default_route: meta.default_route,
     })
@@ -751,25 +917,46 @@ fn departments() -> Result<Vec<String>, PackError> {
     Ok(departments_in(&kun_dir()?))
 }
 
-/// `info` — one department's title, quick actions and starters (filtered to `repo` when given).
+/// `info` — one department's title, fallback quick actions, formula and routes.
 #[tauri::command]
 #[allow(clippy::needless_pass_by_value)]
-fn info(department: String, repo: Option<String>) -> Result<PackInfo, PackError> {
-    let mut pack = info_in(&kun_dir()?, &department)?;
-    if let Some(repo) = repo {
-        pack.starters = starters::filter_repo(pack.starters, &repo);
-    }
-    Ok(pack)
+fn info(department: String) -> Result<PackInfo, PackError> {
+    info_in(&kun_dir()?, &department)
 }
 
-/// `starter_source` — the generated children of a dynamic starter level (cached 60 s).
+/// `board` — the station's departure board: at most three options, never an error.
 #[tauri::command]
-async fn starter_source(
-    dept: String,
-    source: starters::SourceKind,
-    ctx: starters::SourceCtx,
-) -> Result<Vec<starters::SourceItem>, PackError> {
-    starters::items_for(&dept, source, &ctx).await
+async fn board(department: String, repo: Option<String>, health_level: Option<String>) -> station::Board {
+    station::board(&department, repo.as_deref(), health_level.as_deref()).await
+}
+
+/// `fill` — one formula filled by the station's script, nothing sent anywhere.
+#[tauri::command]
+async fn fill(
+    department: String,
+    id: String,
+    repo: Option<String>,
+    set: Option<BTreeMap<String, String>>,
+) -> Result<station::Filled, PackError> {
+    station::fill(&department, &id, repo.as_deref(), &set.unwrap_or_default()).await
+}
+
+/// `match_text` — the station's switch: typed text to a formula id, or none.
+#[tauri::command]
+async fn match_text(department: String, text: String, repo: Option<String>) -> station::Match {
+    station::match_text(&department, &text, repo.as_deref()).await
+}
+
+/// `station_log` — appends a tap or a dismissal to `~/.kun/machine/station-log.jsonl`.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn station_log(
+    department: String,
+    repo: Option<String>,
+    id: String,
+    event: station::LogEvent,
+) -> Result<(), PackError> {
+    station::log_event(&department, repo.as_deref(), &id, event)
 }
 
 /// `health` — runs the department's declared check and returns the light.
@@ -856,7 +1043,10 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             sync_repos,
             health,
             health_fix,
-            starter_source
+            board,
+            fill,
+            match_text,
+            station_log
         ])
         .build()
 }

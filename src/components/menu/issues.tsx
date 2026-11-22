@@ -13,23 +13,9 @@ import type { Readiness, TasksView } from "./data";
 import { runStart } from "./data";
 import { quiet } from "./ui";
 
-export const MAX_CARDS = 6;
+export { MAX_CARDS, upcoming } from "./queue";
 
 const taskHref = (lang: string, id: string) => `/${lang}/?task=${encodeURIComponent(id)}`;
-
-/** The upcoming issues: mine first, then the rest of the board in queue order, others' last. */
-export function upcoming(view: TasksView | null, login: string | undefined): Task[] {
-  if (!view) return [];
-  const seen = new Set<string>();
-  const out: Task[] = [];
-  const free = (t: Task) => !t.holder || t.holder === login;
-  for (const t of [...view.mine, ...view.board.filter(free), ...view.board.filter((x) => !free(x))]) {
-    if (seen.has(t.id)) continue;
-    seen.add(t.id);
-    out.push(t);
-  }
-  return out.slice(0, MAX_CARDS);
-}
 
 function readinessOf(view: TasksView, t: Task): Readiness {
   return view.readiness?.[t.id] ?? { state: t.afterOpen.length ? "blocked" : "ready", missing: [] };

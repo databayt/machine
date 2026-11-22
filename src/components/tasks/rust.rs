@@ -8,11 +8,13 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    sync::Arc,
 };
 
 use serde::Serialize;
 use tauri::{
     Runtime,
+    ipc::Channel,
     plugin::{Builder, TauriPlugin},
 };
 
@@ -30,6 +32,8 @@ use crate::{
 pub mod model;
 #[path = "readiness.rs"]
 pub mod readiness;
+#[path = "upload.rs"]
+pub mod upload;
 
 use model::{Context, ReadyState, Task, TaskDetail, TasksResponse, TasksView};
 use readiness::Facts;
@@ -114,9 +118,12 @@ pub async fn view_with(
     Ok(readiness::view(tasks, facts))
 }
 
-/// A claim refusal arrives as 409 `{ error, detail? }`.
+/// A refusal arrives as `{ error, detail? }`: always on a 409, and on any other 4xx that carries one.
+/// The reason is the server's, word then detail, so the person reads what kun said.
 fn refusal(err: ApiError) -> TaskError {
-    if let ApiError::Status { status: 409, body } = &err {
+    if let ApiError::Status { status, body } = &err
+        && (400..500).contains(status)
+    {
         let parsed: Option<serde_json::Value> = serde_json::from_str(body).ok();
         let word = parsed
             .as_ref()
@@ -126,11 +133,12 @@ fn refusal(err: ApiError) -> TaskError {
             .as_ref()
             .and_then(|v| v.get("detail"))
             .and_then(|e| e.as_str());
-        return TaskError::Refused(match (word, detail) {
-            (Some(w), Some(d)) => format!("{w}: {d}"),
-            (Some(w), None) => w.to_owned(),
-            _ => body.clone(),
-        });
+        match (word, detail) {
+            (Some(w), Some(d)) => return TaskError::Refused(format!("{w}: {d}")),
+            (Some(w), None) => return TaskError::Refused(w.to_owned()),
+            _ if *status == 409 => return TaskError::Refused(body.clone()),
+            _ => {}
+        }
     }
     TaskError::Api(err)
 }
@@ -303,6 +311,39 @@ pub async fn receipt_with(api: &impl Api, receipt: &Receipt) -> Result<(), TaskE
     Ok(())
 }
 
+/// The formula and the stage an issue was filled from, best effort: `Task.formula` or the kun block's
+/// `formula=`, and the block's `stage=`. A failed lookup only means a thinner receipt.
+pub async fn task_labels(api: &impl Api, id: &str) -> (Option<String>, Option<String>) {
+    match api::get_json::<TaskDetail>(api, &format!("/api/machine/task?id={}", id.replace('#', "%23"))).await {
+        Ok(d) => (d.task.formula.or(d.task.kun.formula), d.task.kun.stage),
+        Err(_) => (None, None),
+    }
+}
+
+/// The driver this machine runs (the profile's when it fixes one) and the milliseconds since the
+/// task was started here (the seed's age); both best effort.
+/// The longest duration the kun API accepts on a run receipt (`receiptSchema.durationMs`).
+const MAX_RECEIPT_MS: u64 = 7 * 24 * 3600 * 1000;
+
+fn run_facts() -> (String, u64) {
+    let driver = match (profile::current(), settings::load()) {
+        (Ok(r), _) if r.driver_locked => r.profile.driver,
+        (_, Ok(s)) => s.driver,
+        (Ok(r), Err(_)) => r.profile.driver,
+        _ => crate::driver::DriverKind::Claude,
+    };
+    let started = work_dir()
+        .ok()
+        .and_then(|d| fs::metadata(d.join(SEED_FILE)).ok())
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.elapsed().ok())
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or(0)
+        // The server refuses a receipt longer than a week; an order may be held longer.
+        .min(MAX_RECEIPT_MS);
+    (driver.binary().to_owned(), started)
+}
+
 /// Forgets the held task and its seed, when they are `id`'s.
 fn clear_held(id: &str) {
     if host::held_task().as_deref() == Some(id) {
@@ -377,10 +418,39 @@ async fn post_receipt(receipt: Receipt) -> Result<(), TaskError> {
     receipt_with(&HttpApi::from_process()?, &receipt).await
 }
 
+/// `submit_work` — uploads the chosen files to the CDN through kun's presigned links (progress goes down
+/// `channel`), then posts the run receipt with their links and sha256 hashes; the task goes to review.
+/// `summary` is the person's one line; the receipt's model is `human`. Returns the public links. A refused
+/// upload or receipt comes back as kun's own reason.
+#[tauri::command]
+async fn submit_work(
+    id: String,
+    paths: Vec<String>,
+    summary: String,
+    next: Option<String>,
+    channel: Channel<upload::SubmitEvent>,
+) -> Result<Vec<String>, TaskError> {
+    if !valid_task_id(&id) {
+        return Err(TaskError::Invalid("task id is invalid"));
+    }
+    let home = dirs::home_dir().ok_or_else(|| TaskError::Local("could not find the home folder".into()))?;
+    let picked = upload::pick_files(&paths, &upload::allowed_roots(&home))?;
+    let api = HttpApi::from_process()?;
+    let (formula, stage) = task_labels(&api, &id).await;
+    let (driver, duration_ms) = tokio::task::spawn_blocking(run_facts)
+        .await
+        .map_err(|e| TaskError::Local(e.to_string()))?;
+    let notes = upload::Notes { driver, model: "human".to_owned(), duration_ms, summary, next, formula, stage };
+    let on_event: Arc<dyn Fn(upload::SubmitEvent) + Send + Sync> = Arc::new(move |e| {
+        let _ = channel.send(e);
+    });
+    upload::submit_with(&api, &upload::put_client()?, &id, &picked, &notes, on_event).await
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("tasks")
-        .invoke_handler(tauri::generate_handler![tasks, start, release, done, post_receipt])
+        .invoke_handler(tauri::generate_handler![tasks, start, release, done, post_receipt, submit_work])
         .build()
 }
 

@@ -2,18 +2,58 @@
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core"
 
 import type { SyncEvent } from "../repos/types"
-import type { Health, PackInfo, SourceCtx, SourceItem, SourceKind } from "./types"
+import type { Board, Filled, Health, LogEvent, Match, PackInfo } from "./types"
 
-/** A department's title and quick actions; null outside the machine app. */
-export async function packInfo(department: string, repo?: string): Promise<PackInfo | null> {
+/** A department's title, fallback quick actions, frame and routes; null outside the machine app. */
+export async function packInfo(department: string): Promise<PackInfo | null> {
   if (!isTauri()) return null
-  return invoke<PackInfo>("plugin:pack|info", { department, repo: repo ?? null })
+  return invoke<PackInfo>("plugin:pack|info", { department })
 }
 
-/** The generated children of a dynamic starter level (markets, projects, variants); cached 60 s in Rust. */
-export async function starterSource(dept: string, source: SourceKind, ctx: SourceCtx): Promise<SourceItem[]> {
-  if (!isTauri()) return []
-  return invoke<SourceItem[]>("plugin:pack|starter_source", { dept, source, ctx })
+/**
+ * The station's departure board: at most three options, already ordered. It never rejects: any failure
+ * is an empty board, so the home falls back to the pack's quick actions.
+ */
+export async function board(department: string, repo: string | null, healthLevel: string | null): Promise<Board> {
+  const empty: Board = { department, repo, options: [], error: null }
+  if (!isTauri()) return empty
+  try {
+    return await invoke<Board>("plugin:pack|board", { department, repo, healthLevel })
+  } catch (e) {
+    return { ...empty, error: String(e) }
+  }
+}
+
+/** One formula filled by the station's script (about 0.1 s, no model); rejects with a message on failure. */
+export async function fill(
+  department: string,
+  id: string,
+  repo: string | null,
+  set: Record<string, string> = {},
+): Promise<Filled> {
+  if (!isTauri()) throw new Error("not in the machine app")
+  return invoke<Filled>("plugin:pack|fill", { department, id, repo, set })
+}
+
+/** Typed text to a formula id; never rejects, no match is `{ id: null }`. */
+export async function matchText(department: string, text: string, repo: string | null): Promise<Match> {
+  const none: Match = { id: null, confidence: 0, dept: null }
+  if (!isTauri()) return none
+  try {
+    return await invoke<Match>("plugin:pack|match_text", { department, text, repo })
+  } catch {
+    return none
+  }
+}
+
+/** Records a tap or a dismissal for the board's scoring (`~/.kun/machine/station-log.jsonl`); best effort. */
+export async function stationLog(department: string, repo: string | null, id: string, event: LogEvent): Promise<void> {
+  if (!isTauri()) return
+  try {
+    await invoke("plugin:pack|station_log", { department, repo, id, event })
+  } catch {
+    // the log only sharpens the next board
+  }
 }
 
 /** Departments that ship a pack in this kun checkout. */

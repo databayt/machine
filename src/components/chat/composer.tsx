@@ -68,6 +68,7 @@ export function Composer({
   repo,
   fill,
   onRefine,
+  onDraft,
 }: {
   lang: Locale;
   onSend: (text: string) => void;
@@ -82,6 +83,8 @@ export function Composer({
   fill?: Fill | null;
   /** Rewrites the text as a professional brief; null when it could not. */
   onRefine?: (text: string) => Promise<string | null>;
+  /** Told the box's text on every change (the held task's Submit reads it as the summary). */
+  onDraft?: (text: string) => void;
 }) {
   const isAr = lang === "ar";
   const t = tr(isAr);
@@ -98,6 +101,10 @@ export function Composer({
   const [refineError, setRefineError] = useState(false);
   /** The text before the last refine, and what refine wrote: ⌘Z swaps back while it is untouched. */
   const beforeRefine = useRef<{ before: string; after: string } | null>(null);
+
+  useEffect(() => {
+    onDraft?.(text);
+  }, [text, onDraft]);
 
   // `field-sizing: content` is not in Safari yet.
   useLayoutEffect(() => {
@@ -120,15 +127,13 @@ export function Composer({
     beforeRefine.current = null;
     setText(fill.text);
     if (fill.text && fill.refine) void refineRef.current(fill.text);
-    if (fill.text) {
-      if (fill.focus) {
-        requestAnimationFrame(() => {
-          const el = ref.current;
-          if (!el) return;
-          el.focus();
-          el.setSelectionRange(el.value.length, el.value.length);
-        });
-      }
+    if (fill.focus) {
+      requestAnimationFrame(() => {
+        const el = ref.current;
+        if (!el) return;
+        el.focus();
+        el.setSelectionRange(el.value.length, el.value.length);
+      });
     }
   }, [fill]);
 

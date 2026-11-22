@@ -2,7 +2,55 @@
 import type { DriverKind } from "../driver/types";
 
 /**
- * The pack's fallback sentence (`formula`), used when the deepest chosen node has no fill.
+ * The departure board: zero to three options. `error` says why it is empty when it failed.
+ */
+export type Board = { department: string, repo: string | null, options: Array<BoardOption>, error: string | null, };
+
+/**
+ * One of the options on the home, already ordered by the script.
+ */
+export type BoardOption = { 
+/**
+ * `waiting`, `next` or `start`.
+ */
+role: string, 
+/**
+ * The formula id, e.g. `video.film.plan`.
+ */
+id: string, label_en: string, label_ar: string, 
+/**
+ * A lucide icon name; the UI falls back to a bulb.
+ */
+icon: string | null, 
+/**
+ * The route id the formula runs in.
+ */
+route: string | null, 
+/**
+ * `issue` or `none`: whether accepting the plan records an issue.
+ */
+record: string, score: number, why: Array<string>, 
+/**
+ * The slot values to hand back to `fill`.
+ */
+set: { [key in string]: string }, };
+
+/**
+ * A local reference the formula wants on the CDN: where it is, where it goes and its link.
+ */
+export type FillUpload = { local: string, key: string, url: string, };
+
+/**
+ * One formula, filled. Unfilled slots stay in `prompt` as the script writes them.
+ */
+export type Filled = { id: string, prompt: string, route: string | null, record: string, missing: Array<string>, 
+/**
+ * The formula the request asked for when the script moved it to another.
+ */
+redirected_from: string | null, uploads: Array<FillUpload>, };
+
+/**
+ * The pack's fixed frame, `formula.en`: the headings every finished prompt uses.
  */
 export type Formula = { ar: string, en: string, };
 
@@ -23,17 +71,52 @@ export type HealthRow = { name: string,
 level: string, critical: boolean, detail: string, };
 
 /**
+ * The words that route a request to the department, per language.
+ */
+export type Keywords = { en: Array<string>, ar: Array<string>, };
+
+/**
+ * What the person did with an option.
+ */
+export type LogEvent = "pick" | "dismiss";
+
+/**
+ * The switch's answer for typed text.
+ */
+export type Match = { 
+/**
+ * The formula id, or none.
+ */
+id: string | null, confidence: number, 
+/**
+ * Another department when the text names one.
+ */
+dept: string | null, };
+
+/**
  * What the UI shows about a department's pack.
  */
-export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, quick_actions: Array<QuickAction>, 
+export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, 
 /**
- * The home navigator's tree; when it is not empty it replaces `quick_actions` on the home list.
+ * The fallback home options when the station's board is empty.
  */
-starters: Array<Starter>, 
+quick_actions: Array<QuickAction>, 
 /**
- * The sentence the navigator writes when the deepest chosen node has no fill of its own.
+ * The pack's frame for a finished prompt (`formula`).
  */
 formula: Formula | null, 
+/**
+ * The lead agent (`lead`), the produce-style line (`line`) and the guard agent (`guard`).
+ */
+lead: string | null, line: string | null, guard: string | null, keywords: Keywords, 
+/**
+ * Rules every prompt of the department carries.
+ */
+constraints: Array<string>, 
+/**
+ * Things refine reads first, one per entry (`gather`).
+ */
+gather: Array<string>, 
 /**
  * Where a home prompt can run, in the pack's order (at most [`MAX_ROUTES`]).
  */
@@ -46,7 +129,11 @@ default_route: string | null, };
 /**
  * A one-tap prompt shown under the greeting.
  */
-export type QuickAction = { label_ar: string, label_en: string, prompt: string, 
+export type QuickAction = { 
+/**
+ * The action's id in the pack (`video.reel.footage`), when it has one: the station log's key.
+ */
+id: string | null, label_ar: string, label_en: string, prompt: string, 
 /**
  * One or two lines saying what the action does, per language (the menu's workflow cards).
  */
@@ -68,53 +155,16 @@ export type Route = { id: string, label_ar: string, label_en: string, descriptio
 /**
  * `"plan"` or `"auto"`: Claude's permission mode for the run.
  */
-mode: string, model: string | null, effort: string | null, agent: string | null, 
+mode: string, 
+/**
+ * The engine lane the route runs in (`engine.json` `lanes`); its model and effort win over the route's own.
+ */
+lane: string | null, 
+/**
+ * The model the run uses: the lane's when it resolves, else the route's own.
+ */
+model: string | null, effort: string | null, agent: string | null, 
 /**
  * Appended to the prompt as `\n\n<suffix>`; empty when none.
  */
 suffix: string, };
-
-/**
- * What a source may depend on.
- */
-export type SourceCtx = { repo: string, project: string | null, };
-
-/**
- * One generated child of a dynamic level.
- */
-export type SourceItem = { label_ar: string, label_en: string, description_ar: string, description_en: string, set: { [key in string]: string }, };
-
-/**
- * Where a branch's children come from when they are generated.
- */
-export type SourceKind = "markets" | "projects" | "variants";
-
-/**
- * One row of the navigator: a branch (children / source) or a leaf (prompt).
- */
-export type Starter = { id: string, label_ar: string, label_en: string, description_ar: string, description_en: string, 
-/**
- * A lucide icon name from a small fixed set; the UI falls back to a bulb.
- */
-icon: string | null, 
-/**
- * Visible only when the selected repo is listed; empty = any repo.
- */
-repos: Array<string>, 
-/**
- * Facets recorded when this node is chosen.
- */
-set: { [key in string]: string }, children: Array<Starter>, source: SourceKind | null, 
-/**
- * The subtree under every generated child of `source`.
- */
-then: Array<Starter>, 
-/**
- * The leaf's prompt template (`{{repo}}`, `{{facet}}`, `{{facet_label}}`).
- */
-prompt: string | null, 
-/**
- * One concise sentence the navigator writes into the composer instead of sending (same
- * tokens as `prompt`). A node with a fill never sends; the person edits and sends it.
- */
-fill_ar: string | null, fill_en: string | null, };

@@ -121,38 +121,45 @@ pub fn parse_output(stdout: &str) -> Health {
     }
 }
 
-/// The roots a script may live under: `~/.claude/skills` and `<kun>/.claude/skills`, canonical.
-fn allowed_roots(home: &Path, kun: &Path) -> Vec<PathBuf> {
-    [home.join(".claude/skills"), kun.join(".claude/skills")]
-        .iter()
-        .filter_map(|p| p.canonicalize().ok())
-        .collect()
+/// The roots a health script may live under: `~/.claude/skills` and `<kun>/.claude/skills`.
+fn skills_roots(home: &Path, kun: &Path) -> Vec<PathBuf> {
+    vec![home.join(".claude/skills"), kun.join(".claude/skills")]
 }
 
-/// Validates an argv: `node` first, then a script that resolves under an allowed root. Returns
-/// the argv with `~/` expanded and the script canonical.
+/// Validates a health argv: `node` first, then a script that resolves under a skills folder.
+/// Returns the argv with `~/` expanded and the script canonical.
 ///
 /// # Errors
 /// A message when the argv is not allowed.
 pub fn safe_argv(argv: &[String], home: &Path, kun: &Path) -> Result<Vec<String>, String> {
+    safe_argv_under(argv, home, &skills_roots(home, kun))
+}
+
+/// [`safe_argv`] with the allowed roots named by the caller (the station's script lives in
+/// `<kun>/.claude/scripts`). Roots that do not exist allow nothing.
+///
+/// # Errors
+/// A message when the argv is not allowed.
+pub fn safe_argv_under(argv: &[String], home: &Path, roots: &[PathBuf]) -> Result<Vec<String>, String> {
     let [prog, script, rest @ ..] = argv else {
-        return Err("the health command needs `node` and a script".to_owned());
+        return Err("the command needs `node` and a script".to_owned());
     };
     if prog != "node" {
-        return Err("the health command must run `node`".to_owned());
+        return Err("the command must run `node`".to_owned());
     }
     let expanded = match script.strip_prefix("~/") {
         Some(rest) => home.join(rest),
         None => PathBuf::from(script),
     };
     if !expanded.is_absolute() {
-        return Err("the health script path must be absolute or start with ~/".to_owned());
+        return Err("the script path must be absolute or start with ~/".to_owned());
     }
     let real = expanded
         .canonicalize()
-        .map_err(|_| format!("health script not found: {script}"))?;
-    if !real.is_file() || !allowed_roots(home, kun).iter().any(|r| real.starts_with(r)) {
-        return Err("the health script is outside the skills folders".to_owned());
+        .map_err(|_| format!("script not found: {script}"))?;
+    let roots: Vec<PathBuf> = roots.iter().filter_map(|p| p.canonicalize().ok()).collect();
+    if !real.is_file() || !roots.iter().any(|r| real.starts_with(r)) {
+        return Err("the script is outside the allowed folders".to_owned());
     }
     let mut out = vec![prog.clone(), real.display().to_string()];
     out.extend(rest.iter().cloned());

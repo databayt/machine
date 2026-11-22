@@ -153,6 +153,15 @@ pub struct Receipt {
     pub summary: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub next: Option<String>,
+    /// The formula the work was done from (`video.order.blender`), when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formula: Option<String>,
+    /// The produce stage the work belongs to, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    /// sha256 (64 lowercase hex characters) of each artifact, in the order of `artifacts`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hashes: Option<Vec<String>>,
 }
 
 impl Receipt {
@@ -181,6 +190,17 @@ impl Receipt {
         }
         if self.commits.len() > 100 || self.artifacts.len() > 100 {
             return Err("at most 100 commits and 100 artifacts");
+        }
+        for field in [&self.formula, &self.stage].into_iter().flatten() {
+            if field.trim().is_empty() || field.chars().count() > 100 {
+                return Err("formula and stage must be 1 to 100 characters");
+            }
+        }
+        if let Some(hashes) = &self.hashes {
+            let hex = |h: &String| h.len() == 64 && h.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+            if hashes.len() != self.artifacts.len() || !hashes.iter().all(hex) {
+                return Err("hashes must be sha256 hex, one per artifact");
+            }
         }
         Ok(())
     }
