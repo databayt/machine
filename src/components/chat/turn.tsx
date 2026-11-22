@@ -4,15 +4,39 @@ import { Fragment, memo, useState } from "react"
 import { CheckIcon, CopyIcon, ThumbsDownIcon, ThumbsUpIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
+import { clampLines } from "./clamp-pure"
 import { copy, tr } from "./config"
 
-/** The user's turn as Claude draws it: a rounded bubble at the end side, a 5% tint of the text colour, up to 85% of the column. */
-export const UserTurn = memo(function UserTurn({ text }: { text: string }) {
+/**
+ * The user's turn as Claude draws it: a rounded bubble at the end side, a 5% tint of the text colour, up to 85% of the
+ * column. A message over three lines folds to three with a fade and Show more / Show less; the first message of a
+ * session starts folded (`first`), the others start open.
+ */
+export const UserTurn = memo(function UserTurn({ text, first = false, isAr = false }: { text: string; first?: boolean; isAr?: boolean }) {
+  const t = tr(isAr)
+  const long = clampLines(text).clamped
+  const [open, setOpen] = useState(!first)
+  const folded = long && !open
   return (
     <li className="flex justify-end">
-      <p dir="auto" className="max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-foreground/5 px-4 py-3 text-[17px] leading-[1.45] text-foreground md:text-base">
-        {text}
-      </p>
+      <div className="max-w-[85%] rounded-2xl bg-foreground/5 px-4 py-3 text-[17px] leading-[1.45] text-foreground md:text-base">
+        <p
+          dir="auto"
+          className={cn("whitespace-pre-wrap break-words", folded && "line-clamp-3 [mask-image:linear-gradient(to_bottom,#000_55%,transparent)]")}
+        >
+          {text}
+        </p>
+        {long && (
+          <button
+            type="button"
+            onClick={() => setOpen(!open)}
+            aria-expanded={open}
+            className="mt-1 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {open ? t(copy.showLess) : t(copy.showMore)}
+          </button>
+        )}
+      </div>
     </li>
   )
 })

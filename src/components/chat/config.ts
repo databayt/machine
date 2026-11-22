@@ -20,6 +20,8 @@ export const copy = {
   working: { en: "Working", ar: "جارٍ العمل" },
   showSteps: { en: "Show steps", ar: "أظهر الخطوات" },
   hideSteps: { en: "Hide steps", ar: "أخفِ الخطوات" },
+  showMore: { en: "Show more", ar: "أظهر المزيد" },
+  showLess: { en: "Show less", ar: "أظهر أقل" },
   continuing: { en: "Continuing", ar: "تتابع" },
   attach: { en: "Attach", ar: "إرفاق" },
   media: { en: "Media", ar: "وسائط" },
