@@ -72,7 +72,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            ltr: node.id === "claude",
+            ltr: node.id === "claude" || node.id === "connectors",
             active: on,
             mark: on && !leaf,
             current: on && !leaf,

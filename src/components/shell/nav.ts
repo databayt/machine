@@ -1,10 +1,11 @@
 // shell — the one navigation tree (the sidebar, the menu footer and the Settings cards read it) and
 // the pure function that turns the address into "where am I". No React here, so node can test it.
 import type { Copy } from "../chat/config.ts"
+import { CONNECTORS } from "../connectors/registry.ts"
 import { copy } from "../menu/config.ts"
 import type { Stage, StepStatus } from "../readiness/types.ts"
 
-export type ParentId = "sessions" | "install" | "claude" | "settings"
+export type ParentId = "sessions" | "install" | "claude" | "connectors" | "settings"
 
 export interface NavNode {
   id: string
@@ -73,6 +74,7 @@ export function trailOf(pathname: string, params: Params): Trail {
     const child = (CLAUDE_DIRS as readonly string[]).includes(dir ?? "") ? dir : null
     return { parent: "claude", child, leaf: child ? params.get("item") || null : null }
   }
+  if (rest === "/connectors") return { ...none, parent: "connectors", child: params.get("item") || null }
   if (rest === "/settings") return { ...none, parent: "settings", child: params.get("view") === "general" ? "general" : null }
   if (rest in SETTINGS_ROUTES) return { ...none, parent: "settings", child: SETTINGS_ROUTES[rest] }
   return none
@@ -82,6 +84,7 @@ const PARENT_HREF: Record<ParentId, string> = {
   sessions: "/sessions/",
   install: "/install/",
   claude: "/catalog/",
+  connectors: "/connectors/",
   settings: "/settings/",
 }
 
@@ -166,6 +169,12 @@ export function buildTree({ isAr, inApp, engine, stages, steps }: TreeInput): Na
       label: copy.claude,
       href: (l) => `/${l}/catalog/`,
       children: CLAUDE_DIRS.map((d) => ({ id: d, label: d, href: (l: string) => `/${l}/catalog/?dir=${d}` })),
+    },
+    {
+      id: "connectors",
+      label: copy.connectors,
+      href: (l) => `/${l}/connectors/`,
+      children: CONNECTORS.map((c) => ({ id: c.id, label: c.name, href: (l: string) => `/${l}/connectors/?item=${encodeURIComponent(c.id)}` })),
     },
     {
       id: "settings",

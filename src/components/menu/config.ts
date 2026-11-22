@@ -31,6 +31,7 @@ export const copy = {
   catalog: { en: "Catalog", ar: "الكتالوج" },
   install: { en: "Install", ar: "التثبيت" },
   claude: { en: ".claude", ar: ".claude" },
+  connectors: { en: "Connectors", ar: "الموصلات" },
   generalHint: { en: "Language, who you are, your department", ar: "اللغة، من أنت، وقسمك" },
   configHint: { en: "Settings, notifications and secrets, with a backup first", ar: "الإعدادات والإشعارات والأسرار، مع نسخة احتياطية أولاً" },
   healthHint: { en: "Machine health and app updates", ar: "صحة الجهاز وتحديثات التطبيق" },

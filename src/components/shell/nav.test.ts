@@ -32,6 +32,11 @@ test(".claude: only the six folders count, and an item needs its folder", () => 
   assert.deepEqual(trail("/en/catalog/", "dir=bogus&item=skill:funnel"), { parent: "claude", child: null, leaf: null })
 })
 
+test("connectors: the item rides on the query and is the child", () => {
+  assert.deepEqual(trail("/en/connectors/"), { parent: "connectors", child: null, leaf: null })
+  assert.deepEqual(trail("/ar/connectors/", "item=blender"), { parent: "connectors", child: "blender", leaf: null })
+})
+
 test("settings: the view and the three routes are its children", () => {
   assert.deepEqual(trail("/en/settings/"), { parent: "settings", child: null, leaf: null })
   assert.equal(trail("/en/settings/", "view=general").child, "general")
@@ -61,6 +66,15 @@ test("tree: gating and install's dynamic children", () => {
   assert.deepEqual(ids(buildTree(input), "claude"), ["skills", "agents", "rules", "hooks", "departments", "mcp"])
 })
 
+test("tree: connectors sit between .claude and settings", () => {
+  const input = { isAr: false, inApp: false, engine: false, stages: [], steps: [] }
+  const ids = buildTree(input).map((n) => n.id)
+  assert.equal(ids.indexOf("connectors"), ids.indexOf("claude") + 1)
+  assert.equal(ids.indexOf("settings"), ids.indexOf("connectors") + 1)
+  const kids = buildTree(input).find((n) => n.id === "connectors")?.children ?? []
+  assert.ok(kids.some((k) => k.id === "blender" && k.href("en") === "/en/connectors/?item=blender"))
+})
+
 test("an item id names its folder", () => {
   assert.equal(dirOfItem("pack:sales"), "departments")
   assert.equal(dirOfItem("hook:x"), "hooks")
@@ -74,6 +88,8 @@ test("back goes one level up the breadcrumb, and from a parent to the chat", () 
   assert.equal(back("/en/install/"), "/en/")
   assert.equal(back("/ar/catalog/", "dir=skills&item=skill:funnel"), "/ar/catalog/?dir=skills")
   assert.equal(back("/ar/catalog/", "dir=skills"), "/ar/catalog/")
+  assert.equal(back("/ar/connectors/", "item=blender"), "/ar/connectors/")
+  assert.equal(back("/ar/connectors/"), "/ar/")
   assert.equal(back("/en/config/"), "/en/settings/")
   assert.equal(back("/en/sessions/"), "/en/")
 })
