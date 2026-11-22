@@ -13,13 +13,13 @@ import { itemName, type NavNode } from "./nav";
 import { useNav } from "./use-nav";
 
 /**
- * The one sidebar of the app, in the menu's item style: six parents (Sessions, Plugins, Apps, Library,
- * Setup, Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
+ * The one sidebar of the app, in the menu's item style: seven parents (Sessions, Plugins, Apps, Library,
+ * Machines, Setup, Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
  * parent it lists only the path taken (the card opened on its page, then the step or item under it),
  * nothing before a card is opened; every line above the deepest is a link back up. One white mark, on the deepest listed
  * line. The mega menu's first column renders this same component on the same shell grid. It reads the
  * address (`useSearchParams`), so it needs a `<Suspense>` above it. Large screens only; below `lg` the
- * menu's footer carries the six parents.
+ * menu's footer carries the seven parents.
  */
 export function AppSidebar({ lang, className }: { lang: Locale; className?: string }): React.JSX.Element {
   const isAr = lang === "ar";
@@ -63,6 +63,11 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       const id = trail.child;
       kids = [...kids, { id, label: id, href: (l) => `/${l}/setup/?stage=${encodeURIComponent(id)}` }];
     }
+    // A machine has no list in the tree: the one open on the address is the child.
+    if (open && node.id === "machines" && trail.child) {
+      const id = trail.child;
+      kids = [{ id, label: id, href: (l) => `/${l}/machines/?item=${encodeURIComponent(id)}` }];
+    }
     // A breadcrumb, not a menu: nothing under the parent until a card on its page is opened, then
     // only that card (and the step or item open under it).
     const children: NavLink[] | undefined = open && trail.child
@@ -72,7 +77,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            ltr: node.id === "library" || node.id === "plugins" || node.id === "apps",
+            ltr: node.id === "library" || node.id === "plugins" || node.id === "apps" || node.id === "machines",
             active: on,
             mark: on && !leaf,
             current: on && !leaf,

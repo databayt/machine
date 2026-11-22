@@ -56,6 +56,14 @@ pub trait Host: Send + Sync {
     fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {
         None
     }
+    /// What this machine can lend; `None` when nothing could be read.
+    fn resources(&self) -> Option<super::resources::Resources> {
+        None
+    }
+    /// The pool opt-in from Settings.
+    fn share(&self) -> Option<crate::settings::ShareSettings> {
+        None
+    }
 }
 
 fn git(dir: &Path, args: &[&str]) -> Option<String> {
@@ -304,6 +312,17 @@ impl Host for RealHost {
     fn readiness(&self) -> Option<crate::readiness::ReadinessBeat> {
         crate::readiness::beat()
     }
+
+    fn resources(&self) -> Option<super::resources::Resources> {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |d| d.as_secs());
+        Some(super::resources::real(self.disk_free_bytes(), now))
+    }
+
+    fn share(&self) -> Option<crate::settings::ShareSettings> {
+        crate::settings::load().ok().map(|s| s.share)
+    }
 }
 /// A scripted machine for the tests of `health`, `tasks` and `chat`.
 #[cfg(test)]
@@ -330,6 +349,8 @@ pub mod fake {
         pub swept: Vec<String>,
         /// Failing readiness steps the host reports as auto-fixable.
         pub steps: Vec<String>,
+        pub resources: Option<super::super::resources::Resources>,
+        pub share: Option<crate::settings::ShareSettings>,
         /// Every heal the host was asked to do, in order.
         pub calls: Mutex<Vec<String>>,
     }
@@ -408,6 +429,12 @@ pub mod fake {
         }
         fn heal_step(&self, id: &str) -> Result<(), String> {
             self.act(&format!("step:{id}"))
+        }
+        fn resources(&self) -> Option<super::super::resources::Resources> {
+            self.resources.clone()
+        }
+        fn share(&self) -> Option<crate::settings::ShareSettings> {
+            self.share.clone()
         }
     }
 }

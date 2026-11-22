@@ -47,7 +47,7 @@ pub struct LocalRepo {
 }
 
 /// POST `/api/machine/heartbeat`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Heartbeat {
     pub app_version: String,
@@ -58,6 +58,12 @@ pub struct Heartbeat {
     /// How ready this computer is, from `~/.claude/state/readiness.json`; absent before a first run.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub readiness: Option<crate::readiness::ReadinessBeat>,
+    /// What this machine can lend (`resources.rs`); every field inside is optional.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub resources: Option<super::resources::Resources>,
+    /// The pool opt-in from Settings.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub share: Option<crate::settings::ShareSettings>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -105,7 +111,7 @@ pub struct MessagesResponse {
     pub messages: Vec<MachineMessage>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[serde(rename_all = "camelCase")]
 #[ts(export, export_to = "network/types.ts")]
 pub struct MachineStatus {
@@ -116,9 +122,33 @@ pub struct MachineStatus {
     pub last_seen_at: Option<String>,
     pub health_ok: Option<bool>,
     pub current_task: Option<String>,
+    /// Last reported resources; absent until that machine's app has sent a heartbeat with them.
+    #[serde(default)]
+    pub resources: Option<super::resources::Resources>,
+    /// The pool opt-in; absent = never reported (not sharing).
+    #[serde(default)]
+    pub share: Option<crate::settings::ShareSettings>,
+    /// Seen within the last 15 minutes.
+    #[serde(default)]
+    pub online: bool,
+    /// The readiness percent from its last heartbeat.
+    #[serde(default)]
+    pub readiness_percent: Option<f64>,
+    /// The contributor gate: whether it may share its compute, and what it still fails.
+    #[serde(default)]
+    pub gate: Option<Gate>,
 }
 
+/// The contributor gate kun evaluates from the readiness a machine reports.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[ts(export, export_to = "network/types.ts")]
+pub struct Gate {
+    pub pass: bool,
+    pub failing: Vec<String>,
+    pub at: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, TS)]
 #[ts(export, export_to = "network/types.ts")]
 pub struct TeamResponse {
     pub machines: Vec<MachineStatus>,

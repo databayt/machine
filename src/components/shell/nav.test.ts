@@ -38,6 +38,11 @@ test("plugins: the item rides on the query and is the child", () => {
   assert.deepEqual(trail("/ar/plugins/", "item=blender"), { parent: "plugins", child: "blender", leaf: null })
 })
 
+test("machines: the item is a login and is the child", () => {
+  assert.deepEqual(trail("/en/machines/"), { parent: "machines", child: null, leaf: null })
+  assert.deepEqual(trail("/ar/machines/", "item=moed"), { parent: "machines", child: "moed", leaf: null })
+})
+
 test("apps: the item is a readiness step id", () => {
   assert.deepEqual(trail("/en/apps/"), { parent: "apps", child: null, leaf: null })
   assert.deepEqual(trail("/ar/apps/", "item=claude.cli"), { parent: "apps", child: "claude.cli", leaf: null })
@@ -73,10 +78,10 @@ test("tree: gating, and setup's children without the app stages", () => {
   assert.deepEqual(ids(buildTree(input), "library"), ["skills", "agents", "rules", "hooks", "departments"])
 })
 
-test("tree: the six parents in the order a person works", () => {
+test("tree: the seven parents in the order a person works", () => {
   const input = { isAr: false, inApp: false, engine: false, stages: [], steps: [] }
   const tree = buildTree(input)
-  assert.deepEqual(tree.map((n) => n.id), ["sessions", "plugins", "apps", "library", "setup", "settings"])
+  assert.deepEqual(tree.map((n) => n.id), ["sessions", "plugins", "apps", "library", "machines", "setup", "settings"])
   const kids = (p: string) => tree.find((n) => n.id === p)?.children ?? []
   assert.ok(kids("plugins").some((k) => k.id === "blender" && k.href("en") === "/en/plugins/?item=blender"))
   assert.ok(kids("apps").some((k) => k.id === "claude.cli" && k.href("en") === "/en/apps/?item=claude.cli"))
@@ -105,6 +110,8 @@ test("back goes one level up the breadcrumb, and from a parent to the chat", () 
   assert.equal(back("/ar/library/", "dir=skills"), "/ar/library/")
   assert.equal(back("/ar/plugins/", "item=blender"), "/ar/plugins/")
   assert.equal(back("/ar/plugins/"), "/ar/")
+  assert.equal(back("/ar/machines/", "item=moed"), "/ar/machines/")
+  assert.equal(back("/ar/machines/"), "/ar/")
   assert.equal(back("/en/config/"), "/en/settings/")
   assert.equal(back("/en/sessions/"), "/en/")
 })

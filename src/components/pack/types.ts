@@ -7,40 +7,6 @@ import type { DriverKind } from "../driver/types";
 export type Board = { department: string, repo: string | null, options: Array<BoardOption>, error: string | null, };
 
 /**
- * The departure board: zero to three options. `error` says why it is empty when it failed.
- */
-export type Board = { department: string, repo: string | null, options: Array<BoardOption>, error: string | null, };
-
-/**
- * One of the options on the home, already ordered by the script.
- */
-export type BoardOption = { 
-/**
- * `waiting`, `next` or `start`.
- */
-role: string, 
-/**
- * The formula id, e.g. `video.film.plan`.
- */
-id: string, label_en: string, label_ar: string, 
-/**
- * A lucide icon name; the UI falls back to a bulb.
- */
-icon: string | null, 
-/**
- * The route id the formula runs in.
- */
-route: string | null, 
-/**
- * `issue` or `none`: whether accepting the plan records an issue.
- */
-record: string, score: number, why: Array<string>, 
-/**
- * The slot values to hand back to `fill`.
- */
-set: { [key in string]: string }, };
-
-/**
  * One of the options on the home, already ordered by the script.
  */
 export type BoardOption = { 
@@ -73,20 +39,6 @@ set: { [key in string]: string }, };
  * A local reference the formula wants on the CDN: where it is, where it goes and its link.
  */
 export type FillUpload = { local: string, key: string, url: string, };
-
-/**
- * A local reference the formula wants on the CDN: where it is, where it goes and its link.
- */
-export type FillUpload = { local: string, key: string, url: string, };
-
-/**
- * One formula, filled. Unfilled slots stay in `prompt` as the script writes them.
- */
-export type Filled = { id: string, prompt: string, route: string | null, record: string, missing: Array<string>, 
-/**
- * The formula the request asked for when the script moved it to another.
- */
-redirected_from: string | null, uploads: Array<FillUpload>, };
 
 /**
  * One formula, filled. Unfilled slots stay in `prompt` as the script writes them.
@@ -124,23 +76,7 @@ icon: string | null, };
  */
 export type Health = { level: HealthLevel, percent: number, rows: Array<HealthRow>, error: string | null, checked_at: number, };
 
-/**
- * The light and what is behind it.
- */
-export type Health = { level: HealthLevel, percent: number, rows: Array<HealthRow>, error: string | null, checked_at: number, };
-
 export type HealthLevel = "green" | "orange" | "red" | "none";
-
-export type HealthLevel = "green" | "orange" | "red" | "none";
-
-/**
- * One line of a health check.
- */
-export type HealthRow = { name: string, 
-/**
- * `ok`, `warn` or `fail`.
- */
-level: string, critical: boolean, detail: string, };
 
 /**
  * One line of a health check.
@@ -155,16 +91,6 @@ level: string, critical: boolean, detail: string, };
  * The words that route a request to the department, per language.
  */
 export type Keywords = { en: Array<string>, ar: Array<string>, };
-
-/**
- * The words that route a request to the department, per language.
- */
-export type Keywords = { en: Array<string>, ar: Array<string>, };
-
-/**
- * What the person did with an option.
- */
-export type LogEvent = "pick" | "dismiss";
 
 /**
  * What the person did with an option.
@@ -188,57 +114,6 @@ dept: string | null,
  * and the person); handed to `fill` with the id.
  */
 set: { [key in string]: string }, };
-
-/**
- * The switch's answer for typed text.
- */
-export type Match = { 
-/**
- * The formula id, or none.
- */
-id: string | null, confidence: number, 
-/**
- * Another department when the text names one.
- */
-dept: string | null, 
-/**
- * Slot values the sentence itself gave ("give the classroom scene to sedon" names the piece
- * and the person); handed to `fill` with the id.
- */
-set: { [key in string]: string }, };
-
-/**
- * What the UI shows about a department's pack.
- */
-export type PackInfo = { department: string, title_ar: string, title_en: string, default_driver: DriverKind | null, 
-/**
- * The fallback home options when the station's board is empty.
- */
-quick_actions: Array<QuickAction>, 
-/**
- * The pack's frame for a finished prompt (`formula`).
- */
-formula: Formula | null, 
-/**
- * The lead agent (`lead`), the produce-style line (`line`) and the guard agent (`guard`).
- */
-lead: string | null, line: string | null, guard: string | null, keywords: Keywords, 
-/**
- * Rules every prompt of the department carries.
- */
-constraints: Array<string>, 
-/**
- * Things refine reads first, one per entry (`gather`).
- */
-gather: Array<string>, 
-/**
- * Where a home prompt can run, in the pack's order (at most [`MAX_ROUTES`]).
- */
-routes: Array<Route>, 
-/**
- * The route the home selector starts on: the pack's choice when it exists, else the first.
- */
-default_route: string | null, };
 
 /**
  * What the UI shows about a department's pack.
@@ -293,49 +168,6 @@ repos: Array<string>,
  * The route (`pack.json` `routes[].id`) this action runs in; none = the pack's default.
  */
 route: string | null, };
-
-/**
- * A one-tap prompt shown under the greeting.
- */
-export type QuickAction = { 
-/**
- * The action's id in the pack (`video.reel.footage`), when it has one: the station log's key.
- */
-id: string | null, label_ar: string, label_en: string, prompt: string, 
-/**
- * One or two lines saying what the action does, per language (the menu's workflow cards).
- */
-description_en: string, description_ar: string, 
-/**
- * Repos this starter belongs to; empty = shown for any repo.
- */
-repos: Array<string>, 
-/**
- * The route (`pack.json` `routes[].id`) this action runs in; none = the pack's default.
- */
-route: string | null, };
-
-/**
- * A named place a home prompt runs: permission mode, model, effort, agent and an instruction
- * appended to every prompt sent through it.
- */
-export type Route = { id: string, label_ar: string, label_en: string, description_ar: string, description_en: string, icon: string | null, 
-/**
- * `"plan"` or `"auto"`: Claude's permission mode for the run.
- */
-mode: string, 
-/**
- * The engine lane the route runs in (`engine.json` `lanes`); its model and effort win over the route's own.
- */
-lane: string | null, 
-/**
- * The model the run uses: the lane's when it resolves, else the route's own.
- */
-model: string | null, effort: string | null, agent: string | null, 
-/**
- * Appended to the prompt as `\n\n<suffix>`; empty when none.
- */
-suffix: string, };
 
 /**
  * A named place a home prompt runs: permission mode, model, effort, agent and an instruction

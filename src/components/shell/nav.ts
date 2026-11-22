@@ -6,7 +6,7 @@ import { copy } from "../menu/config.ts"
 import { CONNECTORS } from "../plugins/registry.ts"
 import type { Stage, StepStatus } from "../readiness/types.ts"
 
-export type ParentId = "sessions" | "plugins" | "apps" | "library" | "setup" | "settings"
+export type ParentId = "sessions" | "plugins" | "apps" | "library" | "machines" | "setup" | "settings"
 
 export interface NavNode {
   id: string
@@ -60,7 +60,7 @@ type Params = { get(name: string): string | null }
 
 const SETTINGS_ROUTES: Record<string, string> = { "/model": "model", "/config": "config", "/health": "health", "/engine": "engine" }
 
-/** Where the address is in the tree. Anything outside the six parents (the chat, a typo) is all null. */
+/** Where the address is in the tree. Anything outside the seven parents (the chat, a typo) is all null. */
 export function trailOf(pathname: string, params: Params): Trail {
   const { rest } = splitPath(pathname)
   const none: Trail = { parent: null, child: null, leaf: null }
@@ -75,6 +75,7 @@ export function trailOf(pathname: string, params: Params): Trail {
     return { parent: "library", child, leaf: child ? params.get("item") || null : null }
   }
   if (rest === "/plugins") return { ...none, parent: "plugins", child: params.get("item") || null }
+  if (rest === "/machines") return { ...none, parent: "machines", child: params.get("item") || null }
   if (rest === "/apps") return { ...none, parent: "apps", child: params.get("item") || null }
   if (rest === "/settings") return { ...none, parent: "settings", child: params.get("view") === "general" ? "general" : null }
   if (rest in SETTINGS_ROUTES) return { ...none, parent: "settings", child: SETTINGS_ROUTES[rest] }
@@ -86,6 +87,7 @@ const PARENT_HREF: Record<ParentId, string> = {
   plugins: "/plugins/",
   apps: "/apps/",
   library: "/library/",
+  machines: "/machines/",
   setup: "/setup/",
   settings: "/settings/",
 }
@@ -151,7 +153,7 @@ export interface TreeInput {
   steps: { stage: string; status: StepStatus }[]
 }
 
-/** The tree, in the order a person works: Sessions, Plugins, Apps, Library, Setup, Settings. Setup's children are the readiness stages Apps does not own, each with its `done/total`. */
+/** The tree, in the order a person works: Sessions, Plugins, Apps, Library, Machines, Setup, Settings. Setup's children are the readiness stages Apps does not own, each with its `done/total`. */
 export function buildTree({ isAr, inApp, engine, stages, steps }: TreeInput): NavNode[] {
   const counts = stageCounts(steps)
   return [
@@ -174,6 +176,9 @@ export function buildTree({ isAr, inApp, engine, stages, steps }: TreeInput): Na
       href: (l) => `/${l}/library/`,
       children: CLAUDE_DIRS.map((d) => ({ id: d, label: d, href: (l: string) => `/${l}/library/?dir=${d}` })),
     },
+    // Its children are the machines on the network, known only to the page: the one open on the
+    // address is added by the sidebar (like an open Setup stage the catalog does not list).
+    { id: "machines", label: copy.machines, href: (l) => `/${l}/machines/`, children: [] },
     {
       id: "setup",
       label: copy.setup,

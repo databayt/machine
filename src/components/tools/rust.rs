@@ -73,6 +73,13 @@ fn locate(spec: &Spec, dirs: &[PathBuf]) -> Option<PathBuf> {
         .or_else(|| spec.apps.iter().map(PathBuf::from).find(|p| p.is_file()))
 }
 
+/// Where a tool's program is, by its id (`blender`, `ffmpeg`, `whisper-cli`); `None` when not installed.
+#[must_use]
+pub fn find(id: &str) -> Option<PathBuf> {
+    let spec = SPECS.iter().find(|s| s.id == id)?;
+    locate(spec, &search_dirs())
+}
+
 /// The key is only tested for presence, never read into the output.
 fn key_present(is_set: impl Fn(&str) -> bool) -> bool {
     KEY_ENVS.iter().any(|n| is_set(n))

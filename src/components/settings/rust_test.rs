@@ -149,3 +149,25 @@ fn repo_memory_is_per_department_and_validated() {
         Err(SettingsError::BadRepo)
     ));
 }
+
+#[test]
+fn old_files_load_with_sharing_off_and_share_is_validated() {
+    let old = r#"{"person":"x","department":"","repo_by_department":{},"driver":"claude","login":"","autoRun":false,"brain":"claude"}"#;
+    let s: Settings = serde_json::from_str(old).unwrap();
+    assert_eq!(s.share, ShareSettings { enabled: false, kinds: Vec::new(), idle_minutes: 10 });
+    let d = tempfile::tempdir().unwrap();
+    std::fs::write(d.path().join("settings.json"), old).unwrap();
+    assert!(!load_in(d.path()).unwrap().share.enabled);
+    // The saved shape is the heartbeat's `share`: camelCase.
+    let on = Settings { share: ShareSettings { enabled: true, kinds: vec!["encode".into(), "encode".into(), "render".into()], idle_minutes: 5 }, ..Settings::default() };
+    let saved = save_in(d.path(), on).unwrap();
+    assert_eq!(saved.share.kinds, ["encode", "render"], "duplicates fold");
+    assert!(std::fs::read_to_string(d.path().join("settings.json")).unwrap().contains("\"idleMinutes\": 5"));
+    for bad in [
+        ShareSettings { enabled: true, kinds: vec!["claude".into()], idle_minutes: 10 },
+        ShareSettings { enabled: true, kinds: vec![], idle_minutes: 0 },
+        ShareSettings { enabled: true, kinds: vec![], idle_minutes: 1441 },
+    ] {
+        assert!(matches!(save_in(d.path(), Settings { share: bad, ..Settings::default() }), Err(SettingsError::BadShare)));
+    }
+}

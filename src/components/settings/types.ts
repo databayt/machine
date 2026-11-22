@@ -24,4 +24,22 @@ autoRun: boolean,
  * Which model runs the Claude Code CLI: `claude` (the person's own sign-in, the default) or a
  * free route (Settings → Model). Missing in older files, which read as `claude`.
  */
-brain: Brain, };
+brain: Brain, 
+/**
+ * The shared pool (Machines → this machine): off by default, and only the kinds ticked here
+ * are ever claimed. Missing in older files, which read as off.
+ */
+share: ShareSettings, };
+
+/**
+ * The pool opt-in. On the wire (heartbeat `share`) it is kun's `shareSchema`, so it is camelCase.
+ */
+export type ShareSettings = { enabled: boolean, 
+/**
+ * Job kinds this machine accepts: `transcribe`, `render`, `encode`.
+ */
+kinds: Array<string>, 
+/**
+ * Minutes without a key or mouse before it may claim a job.
+ */
+idleMinutes: number, };

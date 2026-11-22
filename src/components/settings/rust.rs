@@ -39,7 +39,31 @@ pub struct Settings {
     /// Which model runs the Claude Code CLI: `claude` (the person's own sign-in, the default) or a
     /// free route (Settings → Model). Missing in older files, which read as `claude`.
     pub brain: Brain,
+    /// The shared pool (Machines → this machine): off by default, and only the kinds ticked here
+    /// are ever claimed. Missing in older files, which read as off.
+    pub share: ShareSettings,
 }
+
+/// The pool opt-in. On the wire (heartbeat `share`) it is kun's `shareSchema`, so it is camelCase.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[serde(default, rename_all = "camelCase")]
+#[ts(export, export_to = "settings/types.ts")]
+pub struct ShareSettings {
+    pub enabled: bool,
+    /// Job kinds this machine accepts: `transcribe`, `render`, `encode`.
+    pub kinds: Vec<String>,
+    /// Minutes without a key or mouse before it may claim a job.
+    pub idle_minutes: u32,
+}
+
+impl Default for ShareSettings {
+    fn default() -> Self {
+        Self { enabled: false, kinds: Vec::new(), idle_minutes: 10 }
+    }
+}
+
+/// The job kinds a donor may accept (kun's `POOL_KINDS`).
+pub const POOL_KINDS: [&str; 3] = ["transcribe", "render", "encode"];
 
 impl Default for Settings {
     fn default() -> Self {
@@ -51,6 +75,7 @@ impl Default for Settings {
             login: String::new(),
             auto_run: false,
             brain: Brain::Claude,
+            share: ShareSettings::default(),
         }
     }
 }
@@ -67,6 +92,8 @@ pub enum SettingsError {
     BadRepo,
     #[error("login must be lowercase letters, digits and -")]
     BadLogin,
+    #[error("sharing: pick known job kinds and 1 to 1440 idle minutes")]
+    BadShare,
     #[error("could not find the home folder")]
     NoHome,
     #[error("settings.json is damaged ({0}); fix or delete it")]
@@ -106,6 +133,13 @@ impl Settings {
         if !self.login.is_empty() && !crate::profile::valid_login(&self.login) {
             return Err(SettingsError::BadLogin);
         }
+        if self.share.kinds.iter().any(|k| !POOL_KINDS.contains(&k.as_str()))
+            || !(1..=1440).contains(&self.share.idle_minutes)
+        {
+            return Err(SettingsError::BadShare);
+        }
+        self.share.kinds.sort();
+        self.share.kinds.dedup();
         Ok(self)
     }
 }

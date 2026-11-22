@@ -27,6 +27,8 @@ pub mod health;
 pub mod host;
 #[path = "model.rs"]
 pub mod model;
+#[path = "resources.rs"]
+pub mod resources;
 #[path = "token.rs"]
 pub mod token;
 
@@ -114,6 +116,8 @@ fn now_iso() -> String {
 pub struct Cycle {
     pub report: HealthReport,
     pub unread: Result<u32, ApiError>,
+    /// How long the heartbeat took to answer, in ms: the line's latency.
+    pub latency_ms: f64,
 }
 
 /// One full pass: check and heal (blocking work on a thread), then the heartbeat.
@@ -130,8 +134,8 @@ pub async fn sync_once<H: Host + 'static>(
         .await
         .map_err(|_| NetError::Join)?;
     let (h, repos_report) = (Arc::clone(host), report.clone());
-    let (repos, current_task, os, readiness) = tokio::task::spawn_blocking(move || {
-        (h.repos(), h.current_task(), std::env::consts::OS, h.readiness())
+    let (repos, current_task, os, readiness, resources, share) = tokio::task::spawn_blocking(move || {
+        (h.repos(), h.current_task(), std::env::consts::OS, h.readiness(), h.resources(), h.share())
     })
     .await
     .map_err(|_| NetError::Join)?;
@@ -142,11 +146,15 @@ pub async fn sync_once<H: Host + 'static>(
         repos,
         current_task,
         readiness,
+        resources,
+        share,
     };
+    let sent = std::time::Instant::now();
     let unread = api::post_json::<HeartbeatResponse>(api, "/api/machine/heartbeat", &beat)
         .await
         .map(|r| r.unread);
-    Ok(Cycle { report, unread })
+    let latency_ms = sent.elapsed().as_secs_f64() * 1000.0;
+    Ok(Cycle { report, unread, latency_ms })
 }
 
 type Emit = Box<dyn Fn(&str, serde_json::Value) + Send + Sync>;
@@ -167,7 +175,10 @@ async fn run_real() -> Result<HealthReport, NetError> {
     let _one_at_a_time = RUNNING.lock().await;
     let host = Arc::new(RealHost);
     let api = HttpApi::from_process()?;
+    let unix = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_secs());
+    resources::refresh_speed(unix, &now_iso()).await;
     let cycle = sync_once(&host, &api, &now_iso()).await?;
+    resources::note_heartbeat(cycle.unread.is_ok().then_some(cycle.latency_ms), cycle.unread.is_ok());
     match &cycle.unread {
         Ok(n) => emit("network:unread", serde_json::json!({ "count": n })),
         Err(ApiError::NoToken) => tracing::debug!("no machine token yet; heartbeat skipped"),

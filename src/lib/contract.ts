@@ -123,6 +123,55 @@ export interface LocalRepo {
   dirty: boolean;
 }
 
+/** What a machine can lend. Every field is optional so older apps and failed reads still send. Bytes are bytes. */
+export const resourcesSchema = z.object({
+  cpu: z.object({ model: z.string().max(120), cores: z.number().int().min(0).max(1024) }).optional(),
+  ramTotal: z.number().min(0).optional(),
+  ramFree: z.number().min(0).optional(),
+  gpu: z
+    .array(
+      z.object({
+        name: z.string().max(120),
+        cores: z.number().int().min(0).optional(),
+        vramBytes: z.number().min(0).optional(),
+      }),
+    )
+    .max(8)
+    .optional(),
+  diskFree: z.number().min(0).optional(),
+  drive: z
+    .object({
+      installed: z.boolean(),
+      account: z.string().max(120).optional(),
+      usedBytes: z.number().min(0).optional(),
+    })
+    .optional(),
+  internet: z
+    .object({
+      online: z.boolean(),
+      latencyMs: z.number().min(0).optional(),
+      mbpsDown: z.number().min(0).optional(),
+      measuredAt: z.string().max(40).optional(),
+    })
+    .optional(),
+  power: z.object({ onAc: z.boolean(), batteryPercent: z.number().min(0).max(100).optional() }).optional(),
+  idleSecs: z.number().min(0).optional(),
+});
+export type Resources = z.infer<typeof resourcesSchema>;
+
+/** The pool job kinds a donor may accept: fixed templates only, never a Claude run. */
+export const POOL_KINDS = ["transcribe", "render", "encode"] as const;
+export type PoolKind = (typeof POOL_KINDS)[number];
+export const poolKindSchema = z.enum(POOL_KINDS);
+
+/** The machine's pool opt-in: off by default; `idleMinutes` of no input before it may claim. */
+export const shareSchema = z.object({
+  enabled: z.boolean(),
+  kinds: z.array(poolKindSchema).max(POOL_KINDS.length),
+  idleMinutes: z.number().int().min(1).max(1440),
+});
+export type Share = z.infer<typeof shareSchema>;
+
 /** POST /api/machine/heartbeat */
 export const heartbeatSchema = z.object({
   appVersion: z.string().max(40),
@@ -161,6 +210,8 @@ export const heartbeatSchema = z.object({
       catalogVersion: z.union([z.string().max(40), z.number()]).nullable(),
     })
     .optional(),
+  resources: resourcesSchema.optional(),
+  share: shareSchema.optional(),
 });
 export type Heartbeat = z.infer<typeof heartbeatSchema>;
 
@@ -228,9 +279,185 @@ export interface MachineStatus {
   /** False when any health item failed and was not healed. */
   healthOk: boolean | null;
   currentTask: string | null;
+  /** Last reported resources; null until a machine on the new app has sent a heartbeat. */
+  resources: Resources | null;
+  /** The pool opt-in; null = never reported (treated as not sharing). */
+  share: Share | null;
+  /** Seen within the last {@link ONLINE_WINDOW_MS}. */
+  online: boolean;
+  /** The readiness percent from its last heartbeat; null when it never reported one. */
+  readinessPercent: number | null;
+  /** The contributor gate (`pass` = may share its compute); null when never evaluated. */
+  gate: { pass: boolean; failing: string[]; at: string } | null;
 }
+
+/** A machine counts as online when its last heartbeat is newer than this (heartbeats run every 10 min). */
+export const ONLINE_WINDOW_MS = 15 * 60 * 1000;
 
 /** GET /api/machine/team?department=<d> */
 export interface TeamResponse {
   machines: MachineStatus[];
 }
+
+/** Largest file a presigned upload carries. */
+export const UPLOAD_MAX_BYTES = 2 * 1024 * 1024 * 1024;
+
+// ---- the pool (shared compute) ------------------------------------------------------------------
+//
+// Heavy jobs run on a teammate's idle machine. Rules: opt-in donors only (`share.enabled`), fixed
+// allow-listed kinds (POOL_KINDS), never Claude runs. Files go through presigned S3 links under
+// `pool/<jobId>/in/<name>` and `pool/<jobId>/out/<name>` (keys are always built by the server; the
+// 7-day expiry is a bucket lifecycle rule on the `pool/` prefix). All routes need the bearer token.
+//
+//   POST /api/machine/pool          create (requester)  -> PoolCreateResponse (job is `uploading`; presigned PUTs for inputs)
+//   POST /api/machine/pool/ready    requester PUT its inputs -> { ok } uploading -> queued (requester only)
+//   GET  /api/machine/pool          list                -> PoolListResponse   (mine + the donor queue)
+//   POST /api/machine/pool/claim    donor takes a job   -> PoolClaimResponse  (compare-and-swap, 2 claims max)
+//   POST /api/machine/pool/progress donor heartbeat     -> PoolProgressResponse (cancelled=true: stop now)
+//   POST /api/machine/pool/done     donor finished run  -> PoolDoneResponse   (ok: presigned PUTs for outputs)
+//   POST /api/machine/pool/finish   donor uploaded      -> { ok } marks the job done; the requester gets a MachineMessage
+//   POST /api/machine/pool/ready    requester uploaded  -> { ok } uploading -> queued (cancel if an upload fails)
+//   POST /api/machine/pool/cancel   requester cancels (uploading|queued|running); donor releases a running job to the queue
+//
+// Only `queued` jobs can be claimed, so a donor never starts on inputs that are still uploading. An `uploading`
+// job older than POOL_UPLOAD_STALE_MS is cancelled lazily. A donor whose gate fails or is stale gets `doctor`.
+//
+// A running job with no progress for POOL_STALE_MS goes back to the queue (lazily, on list and claim).
+
+export const POOL_STALE_MS = 15 * 60 * 1000;
+export const POOL_MAX_CLAIMS = 2;
+export const POOL_GET_SECONDS = 600;
+export const POOL_LOG_MAX = 4096;
+/** An `uploading` job that never reached /pool/ready within this is cancelled. */
+export const POOL_UPLOAD_STALE_MS = 24 * 60 * 60 * 1000;
+/** A donor may return up to this many output files (or one archive). */
+export const POOL_MAX_OUTPUTS = 50;
+
+const fileSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  size: z.number().int().min(0).max(UPLOAD_MAX_BYTES),
+  contentType: z.string().trim().min(1).max(120),
+});
+
+export const transcribeParamsSchema = z.object({
+  model: z.enum(["base", "small", "medium", "large-v3"]).optional(),
+  language: z.string().regex(/^[a-z]{2}$/).optional(),
+  format: z.enum(["srt", "txt"]),
+});
+export const renderParamsSchema = z
+  .object({
+    engine: z.enum(["eevee", "cycles"]),
+    frameStart: z.number().int().min(0).max(1_000_000),
+    frameEnd: z.number().int().min(0).max(1_000_000),
+    format: z.enum(["png", "mp4"]),
+  })
+  .refine((p) => p.frameEnd >= p.frameStart, { message: "frameEnd < frameStart" });
+export const encodeParamsSchema = z.object({ preset: z.enum(["h264-web", "hevc", "proxy"]) });
+
+export const poolParamsSchemas = {
+  transcribe: transcribeParamsSchema,
+  render: renderParamsSchema,
+  encode: encodeParamsSchema,
+} as const;
+
+export const poolNeedsSchema = z.object({
+  ramBytes: z.number().min(0).optional(),
+  gpu: z.boolean().optional(),
+  diskBytes: z.number().min(0).optional(),
+});
+export type PoolNeeds = z.infer<typeof poolNeedsSchema>;
+
+/** POST /api/machine/pool — `params` is validated against the kind's schema above. */
+export const poolCreateSchema = z
+  .object({
+    kind: poolKindSchema,
+    params: z.record(z.string(), z.unknown()),
+    target: z.string().regex(/^[a-z0-9-]{1,32}$/).optional(),
+    files: z.array(fileSchema).min(1).max(10),
+    needs: poolNeedsSchema.optional(),
+  })
+  .superRefine((v, ctx) => {
+    if (!poolParamsSchemas[v.kind].safeParse(v.params).success)
+      ctx.addIssue({ code: "custom", path: ["params"], message: "invalid params for kind" });
+  });
+export type PoolCreate = z.infer<typeof poolCreateSchema>;
+
+export type PoolStatus = "uploading" | "queued" | "running" | "done" | "failed" | "cancelled";
+
+export interface PoolFile {
+  name: string;
+  key: string;
+  size: number;
+  contentType: string;
+}
+
+export interface PoolJob {
+  id: string;
+  kind: PoolKind;
+  params: Record<string, unknown>;
+  requester: string;
+  target: string | null;
+  donor: string | null;
+  status: PoolStatus;
+  inputs: PoolFile[];
+  /** Done jobs only. `getUrl` is a presigned GET (10 min) and only appears in `mine`. */
+  outputs: (PoolFile & { getUrl?: string })[] | null;
+  needs: PoolNeeds | null;
+  progress: number;
+  log: string;
+  claims: number;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+}
+
+export interface PoolUpload {
+  name: string;
+  key: string;
+  putUrl: string;
+  contentType: string;
+}
+
+export interface PoolCreateResponse {
+  job: PoolJob;
+  uploads: PoolUpload[];
+}
+
+export interface PoolListResponse {
+  /** My jobs (requester = me), newest first, max 50. */
+  mine: PoolJob[];
+  /** Queued jobs I may claim: target null or me; empty unless my share is enabled. Inputs carry no links. */
+  queue: PoolJob[];
+}
+
+export const poolIdSchema = z.object({ id: z.string().min(1).max(40) });
+
+export type PoolClaimError = "not-found" | "taken" | "kind" | "target" | "share" | "needs" | "own" | "doctor";
+export type PoolClaimResponse =
+  | { ok: true; job: PoolJob; inputs: (PoolFile & { getUrl: string })[] }
+  | { ok: false; error: PoolClaimError };
+
+export const poolProgressSchema = z.object({
+  id: z.string().min(1).max(40),
+  progress: z.number().min(0).max(1),
+  log: z.string().max(100_000).optional(),
+});
+/** `cancelled`: the job is no longer yours (cancelled, released or re-queued) — kill the run and clean up. */
+export interface PoolProgressResponse {
+  ok: boolean;
+  cancelled: boolean;
+}
+
+export const poolDoneSchema = z.object({
+  id: z.string().min(1).max(40),
+  ok: z.boolean(),
+  error: z.string().max(1000).optional(),
+  outputs: z.array(fileSchema).max(POOL_MAX_OUTPUTS).default([]),
+});
+export type PoolDone = z.infer<typeof poolDoneSchema>;
+export type PoolDoneResponse = { ok: true; uploads: PoolUpload[] } | { ok: false; error: string };
+
+export const poolCancelSchema = poolIdSchema;
+export const poolReadySchema = poolIdSchema;
+/** POST /pool/ready: the requester says every input is PUT. 409 `{ok:false}` when it is not yours or not `uploading`. */
+export type PoolReadyResponse = { ok: true } | { ok: false; error: string };

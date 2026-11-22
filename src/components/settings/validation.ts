@@ -18,6 +18,12 @@ export const settingsSchema = z.object({
   autoRun: z.boolean(),
   // The model route (brain/rust.rs); chosen on the Model page, carried through untouched here.
   brain: z.enum(["claude", "nvidia", "openrouter", "omniroute"]),
+  // The pool opt-in (settings/rust.rs `share`); the Machines page edits it. Same shape as kun's shareSchema.
+  share: z.object({
+    enabled: z.boolean(),
+    kinds: z.array(z.enum(["transcribe", "render", "encode"])).max(3),
+    idleMinutes: z.number().int().min(1).max(1440),
+  }),
 })
 
 export type SettingsInput = z.infer<typeof settingsSchema>
