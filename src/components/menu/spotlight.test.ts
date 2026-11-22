@@ -86,7 +86,7 @@ test("a missing repo becomes one Clone item pointing at Repos", () => {
   const clone = rankSpotlight(base({ view: v, tasks: [a, b] })).filter((i) => i.kind === "clone")
   assert.equal(clone.length, 1)
   assert.equal(clone[0].mark, "hogwarts")
-  assert.equal(clone[0].href, "/install/?stage=repos&step=all")
+  assert.equal(clone[0].href, "/setup/?stage=repos&step=all")
   assert.match(clone[0].template, /#5\b/)
 })
 

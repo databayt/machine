@@ -8,7 +8,7 @@ import Overview from "./overview"
 import StageScreen from "./stage"
 import StepScreen from "./step"
 
-/** `/install/?stage=<id>&step=<id>` — the three levels ride on the query (static export). */
+/** `/setup/?stage=<id>&step=<id>` — the three levels ride on the query (static export). */
 export default function InstallRoute({ lang }: { lang: Locale }) {
   const params = useSearchParams()
   const stage = params.get("stage")

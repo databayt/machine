@@ -4,13 +4,15 @@ import type { Locale } from "@/components/local/config"
 
 import { CardGrid, NavCard } from "../shell/cards"
 import { OpenInMachine } from "../shell/content"
+import { appSteps, APP_STAGES, isInstalledApp } from "../apps/registry"
+import { copy as appsCopy } from "../apps/config"
 import { stageCounts } from "../shell/nav"
 import { PageShell, Section } from "../shell/page"
 import { copy, fill, pick, wizard } from "./config"
 import { Messages, button, quiet } from "./parts"
 import { needsWork, stageList, useReadiness } from "./use-readiness"
 
-/** `/install/` — one status card, then the stages. */
+/** `/setup/` — one status card, then the stages. */
 export default function Overview({ lang }: { lang: Locale }) {
   const isAr = lang === "ar"
   const t = (k: { en: string; ar: string }) => (isAr ? k.ar : k.en)
@@ -28,6 +30,7 @@ export default function Overview({ lang }: { lang: Locale }) {
   const pct = Math.round(r.percent ?? 0)
   const failing = steps.filter((s) => !removed.includes(s.id) && (s.status === "fail" || s.status === "blocked" || s.status === "human"))
   const counts = stageCounts(steps)
+  const apps = appSteps(steps, removed)
   const line = !view
     ? ""
     : !view.hasState
@@ -93,7 +96,13 @@ export default function Overview({ lang }: { lang: Locale }) {
           <Messages error={r.error} notice={r.notice} />
 
           <CardGrid>
-            {stageList(view).map((s) => {
+            <NavCard
+              href={`/${lang}/apps/`}
+              name={t(appsCopy.title)}
+              hint={t(appsCopy.hint)}
+              state={`${apps.filter((x) => isInstalledApp(x, removed)).length}/${apps.length}`}
+            />
+            {stageList(view).filter((s) => !APP_STAGES.includes(s.id)).map((s) => {
               const c = counts[s.id] ?? { done: 0, total: 0 }
               const inStage = steps.filter((x) => x.stage === s.id && !removed.includes(x.id))
               const human = inStage.filter((x) => x.status === "human").length
@@ -107,7 +116,7 @@ export default function Overview({ lang }: { lang: Locale }) {
               return (
                 <NavCard
                   key={s.id}
-                  href={`/${lang}/install/?stage=${encodeURIComponent(s.id)}`}
+                  href={`/${lang}/setup/?stage=${encodeURIComponent(s.id)}`}
                   name={pick(s.title ?? undefined, isAr, s.id)}
                   hint={hint}
                   state={`${c.done}/${c.total}`}

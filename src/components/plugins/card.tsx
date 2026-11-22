@@ -24,8 +24,17 @@ export interface Actions {
   remove: (c: Connector) => Promise<void>
 }
 
+/** What a card shows: a plugin or an app. */
+export interface Item {
+  id: string
+  name: string
+  /** `/logos/<file>`; absent: a lettered tile. */
+  logo?: string
+  blurb: Copy
+}
+
 /** The original mark, no frame. A white backing only in dark mode, where black marks would vanish. */
-export function Logo({ c, size = 40 }: { c: Connector; size?: number }) {
+export function Logo({ c, size = 40 }: { c: Item; size?: number }) {
   const inner = Math.round(size * 0.7)
   return (
     <span
@@ -46,7 +55,7 @@ export function Logo({ c, size = 40 }: { c: Connector; size?: number }) {
 
 export const kindLabel = (c: Connector, t: T) => t(KINDS.find((k) => k.id === c.kind)!.label)
 
-const iconButton =
+export const iconButton =
   "text-muted-foreground hover:text-foreground hover:bg-muted flex size-8 shrink-0 items-center justify-center rounded-full transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring"
 
 /** `+` for one not installed yet; `…` with Remove / Open for one already installed. */
@@ -105,13 +114,13 @@ export function Action({ c, actions, t, className }: { c: Connector; actions: Ac
   )
 }
 
-/** The whole card links to the detail; the action sits above that layer and shows on hover. */
-export function Card({ c, lang, actions, t }: { c: Connector; lang: string; actions: Actions; t: T }) {
+/** The whole card links to the detail; the action sits above that layer. Logo, text and action are top-aligned. */
+export function Card({ c, href, action, t }: { c: Item; href: string; action?: React.ReactNode; t: T }) {
   return (
-    <div className="group bg-background hover:bg-background/60 relative flex min-w-0 items-center gap-3 rounded-2xl p-4 transition-colors">
+    <div className="group bg-background hover:bg-background/60 relative flex min-w-0 items-start gap-3 rounded-2xl p-4 transition-colors">
       <Logo c={c} />
       <Link
-        href={`/${lang}/connectors/?item=${encodeURIComponent(c.id)}`}
+        href={href}
         className="flex min-w-0 flex-1 flex-col gap-0.5 outline-none after:absolute after:inset-0 after:rounded-2xl focus-visible:after:ring-2 focus-visible:after:ring-ring"
       >
         <span className="truncate font-semibold">
@@ -119,22 +128,19 @@ export function Card({ c, lang, actions, t }: { c: Connector; lang: string; acti
         </span>
         <span className="text-muted-foreground truncate text-sm">{t(c.blurb)}</span>
       </Link>
-      <Action
-        c={c}
-        actions={actions}
-        t={t}
-        className="relative z-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
-      />
+      {action}
     </div>
   )
 }
 
-export function Grid({ items, lang, actions, t }: { items: Connector[]; lang: string; actions: Actions; t: T }) {
-  return (
-    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-      {items.map((c) => (
-        <Card key={c.id} c={c} lang={lang} actions={actions} t={t} />
-      ))}
-    </div>
-  )
+/** The action's hover-reveal classes, above the card's link layer. */
+export const hoverAction = "relative z-10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+
+export function Grid({ children }: { children: React.ReactNode }) {
+  return <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</div>
+}
+
+/** The plugins' card: its action is `+` / `…`. */
+export function PluginCard({ c, lang, actions, t }: { c: Connector; lang: string; actions: Actions; t: T }) {
+  return <Card c={c} t={t} href={`/${lang}/plugins/?item=${encodeURIComponent(c.id)}`} action={<Action c={c} actions={actions} t={t} className={hoverAction} />} />
 }

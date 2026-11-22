@@ -16,7 +16,7 @@ import type { StepView } from "./types"
 
 const mono = "font-mono text-sm break-words"
 
-/** `/install/?stage=<id>&step=<id>` — one step, with its install and uninstall. */
+/** `/setup/?stage=<id>&step=<id>` — one step, with its install and uninstall. */
 export default function StepScreen({ lang, stage, step }: { lang: Locale; stage: string; step: string }) {
   if (stage === "repos" && step === "all") return <ReposContent lang={lang} />
   if (stage === "agents" && step === "default") return <AgentsContent lang={lang} />
@@ -50,7 +50,7 @@ function StepDetail({ lang, stage, stepId }: { lang: Locale; stage: string; step
   const isRemoved = removed.includes(s.id)
   const status = isRemoved ? "removed" : s.status
   const title = pick(s.title, isAr, s.id)
-  const href = (id: string) => `/${lang}/install/?stage=${encodeURIComponent(steps.find((x) => x.id === id)?.stage ?? stage)}&step=${encodeURIComponent(id)}`
+  const href = (id: string) => `/${lang}/setup/?stage=${encodeURIComponent(steps.find((x) => x.id === id)?.stage ?? stage)}&step=${encodeURIComponent(id)}`
   const titleOf = (id: string) => pick(steps.find((x) => x.id === id)?.title, isAr, id)
   const neededBy = steps.filter((x) => x.after.includes(s.id))
   const dependents = neededBy.filter((x) => isPassing(x.status))

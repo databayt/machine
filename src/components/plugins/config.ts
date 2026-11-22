@@ -1,9 +1,9 @@
-// connectors page — every string the page shows, ar + en.
+// plugins page — every string the page shows, ar + en.
 import type { Copy } from "../chat/config.ts"
 
 export const copy = {
-  title: { en: "Connectors", ar: "الموصلات" },
-  search: { en: "Search connectors, plugins and MCP servers", ar: "ابحث في الموصلات والإضافات وخوادم MCP" },
+  title: { en: "Plugins", ar: "الإضافات" },
+  search: { en: "Search plugins", ar: "ابحث في الإضافات" },
   all: { en: "All", ar: "الكل" },
   top: { en: "Top", ar: "الأبرز" },
   add: { en: "Add", ar: "أضف" },
@@ -15,6 +15,6 @@ export const copy = {
   notFound: { en: "Not found.", ar: "غير موجود." },
   keywords: { en: "Say any of these and the prompt routes here", ar: "اذكر أياً منها فيتجه الطلب إلى هنا" },
   mcpNames: { en: "MCP names", ar: "أسماء MCP" },
-  type: { en: "Type", ar: "النوع" },
-  category: { en: "Category", ar: "الفئة" },
+  department: { en: "Department", ar: "القسم" },
+  everyone: { en: "Everyone", ar: "للجميع" },
 } satisfies Record<string, Copy>

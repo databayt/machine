@@ -12,7 +12,7 @@ import { useTree } from "./use-tree"
 
 const DIRS = ["skills", "agents", "rules", "hooks", "departments"]
 
-/** `/catalog/` → `?dir=<dir>` → `?dir=<dir>&item=<id>`; read in the client (static export). */
+/** `/library/` → `?dir=<dir>` → `?dir=<dir>&item=<id>`; read in the client (static export). */
 export default function CatalogRoute({ lang }: { lang: Locale }) {
   const params = useSearchParams()
   const dir = params.get("dir") ?? ""

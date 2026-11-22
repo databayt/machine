@@ -40,6 +40,7 @@ export const wizard = {
   heal: { en: "Heal with agent", ar: "عالج بالوكيل" },
   cancel: { en: "Cancel", ar: "إلغاء" },
   install: { en: "Install", ar: "ثبّت" },
+  requiredSigned: { en: "Required {n} · signed in {m}", ar: "مطلوب {n} · مسجّل {m}" },
   installStage: { en: "Install this stage", ar: "ثبّت هذه المرحلة" },
   uninstall: { en: "Uninstall", ar: "أزل" },
   remove: { en: "Remove", ar: "أزل" },

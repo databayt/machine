@@ -3,10 +3,12 @@ import { ExternalLink } from "lucide-react"
 import type { Copy } from "../chat/config"
 import { Action, kindLabel, Logo, type Actions } from "./card"
 import { copy } from "./config"
-import { CATEGORIES, type Connector } from "./registry"
+import { DEPARTMENTS, type Connector } from "./registry"
 
 export function Detail({ c, actions, t }: { c: Connector; actions: Actions; t: (c: Copy) => string }) {
-  const category = t(CATEGORIES.find((x) => x.id === c.category)!.label)
+  const depts = c.departments.includes("*")
+    ? t(copy.everyone)
+    : c.departments.map((d) => { const x = DEPARTMENTS.find((y) => y.name === d); return x ? t(x.title) : d }).join(" · ")
   return (
     <>
       <div className="flex flex-wrap items-center gap-4">
@@ -16,7 +18,7 @@ export function Detail({ c, actions, t }: { c: Connector; actions: Actions; t: (
             <bdi>{c.name}</bdi>
           </h2>
           <p className="text-muted-foreground text-sm">
-            {kindLabel(c, t)} · {category}
+            {kindLabel(c, t)} · {depts}
           </p>
         </div>
         <Action c={c} actions={actions} t={t} />

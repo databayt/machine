@@ -1,17 +1,17 @@
 import { Suspense } from "react"
 
-import CatalogRoute from "@/components/catalog/route"
+import Plugins from "@/components/plugins/content"
 import { type Locale } from "@/components/local/config"
 
 export const metadata = {
-  title: ".claude",
+  title: "Plugins",
 }
 
-export default async function CatalogPage({ params }: { params: Promise<{ lang: string }> }) {
+export default async function PluginsPage({ params }: { params: Promise<{ lang: string }> }) {
   const { lang } = await params
   return (
     <Suspense fallback={null}>
-      <CatalogRoute lang={lang as Locale} />
+      <Plugins lang={lang as Locale} />
     </Suspense>
   )
 }

@@ -24,7 +24,7 @@ export function LaunchGate({ lang }: { lang: Locale }) {
     readinessState()
       .then((v) => {
         // No state file, or below 100%: this computer is not done. No catalog: nothing to show.
-        if (v && v.catalogFound && (!v.hasState || v.percent < 100)) router.replace(`/${lang}/install/`)
+        if (v && v.catalogFound && (!v.hasState || v.percent < 100)) router.replace(`/${lang}/setup/`)
       })
       .catch(() => null)
   }, [lang, router])

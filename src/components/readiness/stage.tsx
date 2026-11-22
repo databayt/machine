@@ -8,6 +8,7 @@ import type { Locale } from "@/components/local/config"
 
 import { CardGrid, NavCard } from "../shell/cards"
 import { OpenInMachine } from "../shell/content"
+import { APP_STAGES } from "../apps/registry"
 import { stageCounts } from "../shell/nav"
 import { PageShell } from "../shell/page"
 import { fixLabel, pick, wizard } from "./config"
@@ -24,7 +25,7 @@ export function actionLabel(step: StepView, removed: boolean, isAr: boolean): st
   return null
 }
 
-/** `/install/?stage=<id>` — the stage's steps as cards. */
+/** `/setup/?stage=<id>` — the stage's steps as cards. */
 export default function StageScreen({ lang, stage }: { lang: Locale; stage: string }) {
   const isAr = lang === "ar"
   const t = (k: { en: string; ar: string }) => (isAr ? k.ar : k.en)
@@ -38,9 +39,10 @@ export default function StageScreen({ lang, stage }: { lang: Locale; stage: stri
     if (r.running !== null || !installing.current || !view) return
     installing.current = false
     if (stageNeedsWork(steps, removed, stage)) return
-    const order = stageList(view).map((s) => s.id)
-    const next = order.slice(order.indexOf(stage) + 1).concat(order.slice(0, order.indexOf(stage))).find((id) => stageNeedsWork(steps, removed, id))
-    router.replace(next ? `/${lang}/install/?stage=${encodeURIComponent(next)}` : `/${lang}/install/`)
+    const order = stageList(view).map((s) => s.id).filter((id) => !APP_STAGES.includes(id) || id === stage)
+    const at = order.indexOf(stage)
+    const next = order.slice(at + 1).concat(order.slice(0, at)).find((id) => stageNeedsWork(steps, removed, id))
+    router.replace(next ? `/${lang}/setup/?stage=${encodeURIComponent(next)}` : `/${lang}/setup/`)
   }, [r.running, view, steps, removed, stage, lang, router])
 
   if (r.inApp === null) return null
@@ -66,7 +68,7 @@ export default function StageScreen({ lang, stage }: { lang: Locale; stage: stri
   const installable = inStage.filter(
     (s) => !removed.includes(s.id) && (s.status === "fail" || s.status === "blocked") && !s.human && s.fix?.kind === "auto",
   )
-  const href = (step: string) => `/${lang}/install/?stage=${encodeURIComponent(stage)}&step=${encodeURIComponent(step)}`
+  const href = (step: string) => `/${lang}/setup/?stage=${encodeURIComponent(stage)}&step=${encodeURIComponent(step)}`
 
   return (
     <PageShell title={title}>
@@ -81,6 +83,9 @@ export default function StageScreen({ lang, stage }: { lang: Locale; stage: stri
             </span>
           )}
         </div>
+        {stage === "accounts" && (
+          <p className="mt-2 text-sm text-muted-foreground">{t(wizard.requiredSigned).replace("{n}", String(c.total)).replace("{m}", String(c.done))}</p>
+        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             className={button}

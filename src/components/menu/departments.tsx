@@ -1,5 +1,6 @@
 "use client";
 
+import { CornerDownRight } from "lucide-react";
 import Link from "next/link";
 
 import { cn } from "@/lib/utils";
@@ -76,14 +77,14 @@ export interface NavLink {
   hint?: string;
   /** Literal text (a folder name) reads left to right in any language. */
   ltr?: boolean;
-  /** The path under this link, indented, at the same size. */
+  /** The path under this link, at the same size, each line led by a ↳. */
   children?: NavLink[];
 }
 
 /** A column of the sidebar's links; a link with `children` lists them under it (the path doubles as the breadcrumb). */
 export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: number }): React.JSX.Element {
   return (
-    <ul className={cn("flex flex-col gap-1", depth > 0 && "mt-1 ps-4")}>
+    <ul className={cn("flex flex-col gap-1", depth > 0 && "mt-1", depth === 1 && "ps-1", depth > 1 && "ps-5")}>
       {links.map((l) => {
         // Only the deepest link of the path is strong; the links above it (the parent too) go quiet.
         const tone = l.current || l.mark ? "text-foreground" : "text-muted-foreground hover:text-foreground";
@@ -97,14 +98,17 @@ export function NavLinks({ links, depth = 0 }: { links: NavLink[]; depth?: numbe
               <Link
                 href={l.href}
                 aria-current={l.current ? "page" : undefined}
-                className={cn(item, depth > 0 && "whitespace-normal", tone)}
+                className={cn(item, depth > 0 && "flex items-start gap-1.5 whitespace-normal", tone)}
               >
-                <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
-                {l.hint && (
-                  <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums">
-                    <bdi dir="ltr">{l.hint}</bdi>
-                  </span>
-                )}
+                {depth > 0 && <CornerDownRight aria-hidden className="mt-1.5 size-3.5 shrink-0 text-foreground/30 rtl:-scale-x-100" />}
+                <span>
+                  <Label on={!!l.mark}>{l.ltr ? <bdi dir="ltr">{l.label}</bdi> : l.label}</Label>
+                  {l.hint && (
+                    <span className="ms-1.5 text-xs font-normal text-muted-foreground/70 tabular-nums">
+                      <bdi dir="ltr">{l.hint}</bdi>
+                    </span>
+                  )}
+                </span>
               </Link>
             )}
             {l.children && l.children.length > 0 && <NavLinks links={l.children} depth={depth + 1} />}

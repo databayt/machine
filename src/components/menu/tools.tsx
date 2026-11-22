@@ -53,7 +53,7 @@ export function Tools({
         <SquarePenIcon className={icon} strokeWidth={1.75} aria-hidden />
       </Link>
       {inApp && (
-        <Link href={`/${lang}/install/?stage=repos&step=all`} aria-label={t(copy.repos)} title={t(copy.repos)} className={button}>
+        <Link href={`/${lang}/setup/?stage=repos&step=all`} aria-label={t(copy.repos)} title={t(copy.repos)} className={button}>
           <FolderGit2Icon className={icon} strokeWidth={1.75} aria-hidden />
         </Link>
       )}

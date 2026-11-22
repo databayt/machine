@@ -87,7 +87,7 @@ export function Footer({
             </span>
           </>
         )}
-        {/* The same four parents the sidebar has; the open one reads darker. */}
+        {/* The same six parents the sidebar has; the open one reads darker. */}
         {tree.map((n) => (
           <Link
             key={n.id}

@@ -36,8 +36,10 @@ params, read in the client (`useSearchParams`), since a static export has no dyn
 | Parent (sidebar) | Level 1 | Level 2 | Level 3 |
 | --- | --- | --- | --- |
 | Sessions | `/sessions/` | | |
-| Install (` · 82%` while not ready) | `/install/` | `/install/?stage=<stageId>` | `/install/?stage=<stageId>&step=<stepId>` |
-| .claude | `/catalog/` | `/catalog/?dir=<skills\|agents\|rules\|hooks\|departments\|mcp>` | `/catalog/?dir=<dir>&item=<type:name>` |
+| Plugins | `/plugins/` | `/plugins/?item=<id>` | |
+| Apps | `/apps/` | `/apps/?item=<stepId>` | |
+| Library | `/library/` | `/library/?dir=<skills\|agents\|rules\|hooks\|departments>` | `/library/?dir=<dir>&item=<type:name>` |
+| Setup | `/setup/` | `/setup/?stage=<stageId>` (not foundation, agents, tools: those are Apps) | `/setup/?stage=<stageId>&step=<stepId>` |
 | Settings | `/settings/` | `/settings/?view=general`, `/config/`, `/health/`, `/engine/` | |
 
 The chat is `/` (`?s=<session>`, `?prompt=`, `?task=`). The tree lives in `src/components/shell/nav.ts`.

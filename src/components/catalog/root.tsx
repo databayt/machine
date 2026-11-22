@@ -1,11 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
 
 import type { Locale } from "@/components/local/config"
 
-import { mcpList } from "../config/actions"
 import { CLAUDE_DIRS } from "../shell/nav"
 import { useInMachine } from "../shell/content"
 import { PageShell } from "../shell/page"
@@ -20,34 +18,24 @@ const FILES = [
   { name: ".env", glyph: "env" },
 ] as const
 
-/** `/catalog/`: the six folders of `~/.claude`, then its three loose files. */
+/** `/library/`: the five folders of `~/.claude`, then its three loose files. */
 export default function Root({ lang, state }: { lang: Locale; state: TreeState }) {
   const isAr = lang === "ar"
   const t = tr(isAr)
   const inApp = useInMachine()
   const { entries, error } = state
-  const [mcpCount, setMcpCount] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!inApp) return
-    mcpList()
-      .then((v) => setMcpCount(v.installed.length))
-      .catch(() => null)
-  }, [inApp])
-
   const count = (dir: string): string | undefined => {
     if (!inApp) return undefined
-    if (dir === "mcp") return mcpCount === null ? undefined : String(mcpCount)
     if (!entries) return undefined
     return String(entries.filter((e) => e.dir === dir && e.state !== "available").length)
   }
 
   return (
-    <PageShell title=".claude">
+    <PageShell title="Library">
       {error && <p className="text-destructive text-sm">{error}</p>}
       <TileGrid>
         {CLAUDE_DIRS.map((d) => (
-          <Tile key={d} href={`/${lang}/catalog/?dir=${d}`} icon={<FolderIcon />} name={d} sub={count(d)} />
+          <Tile key={d} href={`/${lang}/library/?dir=${d}`} icon={<FolderIcon />} name={d} sub={count(d)} />
         ))}
         {inApp &&
           FILES.map((f) => <Tile key={f.name} href={`/${lang}/config/`} icon={<DocIcon glyph={f.glyph} />} name={f.name} />)}

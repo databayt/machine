@@ -138,7 +138,7 @@ export default function Mcp({ lang, name }: { lang: Locale; name?: string }) {
         {servers?.map((s) => (
           <Tile
             key={s.name}
-            href={`/${lang}/catalog/?dir=mcp&item=${encodeURIComponent(`mcp:${s.name}`)}`}
+            href={`/${lang}/library/?dir=mcp&item=${encodeURIComponent(`mcp:${s.name}`)}`}
             icon={<DocIcon glyph="mcp" dimmed={!s.on} />}
             name={s.name}
             toggle={toggle(s)}

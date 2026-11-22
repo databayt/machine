@@ -13,13 +13,13 @@ import { itemName, type NavNode } from "./nav";
 import { useNav } from "./use-nav";
 
 /**
- * The one sidebar of the app, in the menu's item style: four parents (Sessions, Install, .claude,
- * Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
+ * The one sidebar of the app, in the menu's item style: six parents (Sessions, Plugins, Apps, Library,
+ * Setup, Settings), then Docs and Mathematics, then the tools row. It is the breadcrumb: under the active
  * parent it lists only the path taken (the card opened on its page, then the step or item under it),
  * nothing before a card is opened; every line above the deepest is a link back up. One white mark, on the deepest listed
  * line. The mega menu's first column renders this same component on the same shell grid. It reads the
  * address (`useSearchParams`), so it needs a `<Suspense>` above it. Large screens only; below `lg` the
- * menu's footer carries the four parents.
+ * menu's footer carries the six parents.
  */
 export function AppSidebar({ lang, className }: { lang: Locale; className?: string }): React.JSX.Element {
   const isAr = lang === "ar";
@@ -39,7 +39,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
     if (!leaf) return null;
     let label: string;
     let href: string;
-    if (parent.id === "install") {
+    if (parent.id === "setup") {
       const step = view?.steps.find((s) => s.id === leaf);
       label =
         child.id === "repos" && leaf === "all"
@@ -52,16 +52,16 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       label = itemName(leaf);
       href = `${child.href(lang)}&item=${encodeURIComponent(leaf)}`;
     }
-    return { href, label, active: true, mark: true, current: true, ltr: parent.id === "claude" };
+    return { href, label, active: true, mark: true, current: true, ltr: parent.id === "library" };
   };
 
   const parents: NavLink[] = tree.map((node) => {
     const open = trail.parent === node.id;
     let kids = node.children ?? [];
     // An open stage the catalog does not list (yet) still shows, by its id.
-    if (open && node.id === "install" && trail.child && !kids.some((k) => k.id === trail.child)) {
+    if (open && node.id === "setup" && trail.child && !kids.some((k) => k.id === trail.child)) {
       const id = trail.child;
-      kids = [...kids, { id, label: id, href: (l) => `/${l}/install/?stage=${encodeURIComponent(id)}` }];
+      kids = [...kids, { id, label: id, href: (l) => `/${l}/setup/?stage=${encodeURIComponent(id)}` }];
     }
     // A breadcrumb, not a menu: nothing under the parent until a card on its page is opened, then
     // only that card (and the step or item open under it).
@@ -72,7 +72,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            ltr: node.id === "claude" || node.id === "connectors",
+            ltr: node.id === "library" || node.id === "plugins" || node.id === "apps",
             active: on,
             mark: on && !leaf,
             current: on && !leaf,
@@ -87,7 +87,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       active: open,
       mark: here,
       current: here,
-      ltr: node.id === "claude",
+      ltr: node.id === "library",
       children,
     };
   });

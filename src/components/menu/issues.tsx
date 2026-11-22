@@ -155,7 +155,7 @@ export function Issues({
                     <>
                       <span className="line-clamp-2">{r.missing.map((m) => describe(m, isAr)).join(" · ")}</span>
                       {repoMissing && (
-                        <Link href={`/${lang}/install/?stage=repos&step=all`} className="shrink-0 underline underline-offset-4 hover:text-foreground">
+                        <Link href={`/${lang}/setup/?stage=repos&step=all`} className="shrink-0 underline underline-offset-4 hover:text-foreground">
                           {t(copy.addRepo)}
                         </Link>
                       )}

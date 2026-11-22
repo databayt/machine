@@ -133,7 +133,7 @@ export function rankSpotlight(input: SpotlightInput): SpotlightItem[] {
         kind: "clone",
         template: pick("clone").replace("{title}", () => num(t)),
         mark: repo,
-        href: "/install/?stage=repos&step=all",
+        href: "/setup/?stage=repos&step=all",
       })
     }
   }
