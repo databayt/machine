@@ -12,7 +12,6 @@ import {
   LoaderIcon,
   MusicIcon,
   PlusIcon,
-  SparklesIcon,
   SquareIcon,
   XIcon,
 } from "lucide-react";
@@ -537,23 +536,6 @@ export function Composer({
               className="relative block w-full resize-none bg-transparent px-1 py-2 text-[17px] leading-6 outline-none placeholder:text-muted-foreground"
             />
           </div>
-
-          {!busy && onRefine && hasText && (
-            <button
-              type="button"
-              onClick={() => void refine()}
-              disabled={refining}
-              aria-label={t(refining ? copy.refining : refineError ? copy.refineFailed : copy.refine)}
-              title={t(refining ? copy.refining : refineError ? copy.refineFailed : copy.refine)}
-              className={cn(icon, "text-foreground hover:bg-muted", refineError && "text-destructive")}
-            >
-              {refining ? (
-                <LoaderIcon className="size-5 animate-spin" strokeWidth={1.5} aria-hidden />
-              ) : (
-                <SparklesIcon className="size-5" strokeWidth={1.5} aria-hidden />
-              )}
-            </button>
-          )}
 
           {!busy && (
             <span className="contents">
