@@ -15,7 +15,7 @@ import { OpenInMachine, useInMachine } from "../shell/content";
 import { storedLang, swapLocale } from "../shell/lang";
 import { SubmitWork } from "../tasks/submit-work";
 import { speak } from "../voice/actions";
-import { acceptMessage, showAccept, workingRoute } from "./accept";
+import { acceptMessage, orderMessage, showAccept, workingRoute } from "./accept";
 import { ask, refine, stop } from "./actions";
 import { ActivityRows, StatusLine } from "./activity";
 import { Composer, type Fill } from "./composer";
@@ -289,7 +289,12 @@ export default function ChatContent({
   /** The route that carries work on: the first that is not plan mode. */
   const working = workingRoute(routes);
   /** Sends on the chosen route. A reply to a plan stays on the plan route: it answers or changes the plan. */
-  const sendRouted = (text: string) => void send(text, undefined, chosen?.id ?? null);
+  const sendRouted = (text: string) => {
+    // A filled work order is for someone else: sending it asks the lead to create the issue, not to do the work.
+    const order = stationRef.current?.record === "issue" ? stationRef.current : null;
+    void send(order ? orderMessage(text, order.id) : text, undefined, chosen?.id ?? null);
+    if (order) stationRef.current = null;
+  };
   /** Accept: the plan becomes work. Only this switches to the working route. */
   const accept = (record: string | null | undefined) => {
     if (!working) return;

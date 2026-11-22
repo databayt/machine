@@ -4,11 +4,18 @@
 
 /** A film plan (`record: "film"`): the production, its film issue, and a work order per piece handed to a person. */
 export const ACCEPT_FILM =
-  "The plan is accepted. Create the production if it does not exist yet (`produce new`), then its film issue: `produce issue <ID> --create`. For each piece the plan gives to another person, create its work order: `produce order <ID> <formula> --to <login> --create`. Reply with the links, then stop at the next gate."
+  "The plan is accepted. Create the production if it does not exist yet (`produce init`), then its film issue: `produce issue <ID> --create`. For each piece the plan gives to another person, create its work order: `produce order <ID> <formula> --to <login> --create`. Reply with the links, then stop at the next gate."
 
 /** A work order (`record: "issue"`): the request becomes one issue for one person. */
 export const ACCEPT_ISSUE =
   "The plan is accepted. Create the work order as an issue now and reply with its link. Then stop."
+
+/**
+ * A filled work order is a request for ANOTHER person. Sent as it is, the lead would do the work
+ * itself; this preface turns the send into "create the issue". The text after it is the issue body.
+ */
+export const orderMessage = (text: string, formulaId: string): string =>
+  `This is a work order for another person, not work for you. Create it as a GitHub issue for the person it names, reply with the link, then stop; do not do the work yourself. For a film: \`produce order <film ID> ${formulaId} --to <login> --set …\` with the values below (print the draft first, then add \`--create\`). Otherwise: an issue labelled \`dept:<department>\` and \`for:<login>\` whose body is the text below.\n\n---\n\n${text}`
 
 /** Otherwise: carry out the first step. */
 export const ACCEPT_STEP = "The plan is accepted. Carry out the first step, then stop at the next gate."

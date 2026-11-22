@@ -2,12 +2,12 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { ACCEPT_FILM, ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
+import { ACCEPT_FILM, ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, orderMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
 
 test("a film plan creates the production, its film issue and a work order per piece handed over", () => {
   const m = acceptMessage("film")
   assert.equal(m, ACCEPT_FILM)
-  for (const part of ["`produce new`", "`produce issue <ID> --create`", "`produce order <ID> <formula> --to <login> --create`", "stop at the next gate"])
+  for (const part of ["`produce init`", "`produce issue <ID> --create`", "`produce order <ID> <formula> --to <login> --create`", "stop at the next gate"])
     assert.ok(m.includes(part), part)
 })
 
@@ -52,4 +52,12 @@ test("Accept shows only under the last finished plan turn, and only when there i
     { hasWorkingRoute: false },
   ])
     assert.equal(showAccept({ ...ok, ...off }), false, JSON.stringify(off))
+})
+
+test("a filled work order is sent as a request to create the issue, with its text as the body", () => {
+  const m = orderMessage("## Task\nBuild the classroom scene", "video.order.blender")
+  assert.ok(m.startsWith("This is a work order for another person, not work for you."))
+  assert.ok(m.includes("`produce order <film ID> video.order.blender --to <login> --set …`"))
+  assert.ok(m.includes("do not do the work yourself"))
+  assert.ok(m.endsWith("---\n\n## Task\nBuild the classroom scene"))
 })
