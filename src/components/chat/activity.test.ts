@@ -56,8 +56,8 @@ test("the verb is fixed for the whole turn: one pick from the seed, never a tick
   assert.ok(new Set(["0", "1", "2", "3", "4", "5"].map((s) => turnWord(list, s))).size > 1)
 })
 
-test("motion is tuned: 200 ms glyph frames, a 3 s shimmer cycle that a whole verb sweeps inside", () => {
-  assert.equal(GLYPH_FRAME_MS, 200)
+test("motion is tuned: 320 ms glyph frames, a 3 s shimmer cycle that a whole verb sweeps inside", () => {
+  assert.equal(GLYPH_FRAME_MS, 320)
   assert.equal(SHIMMER_CYCLE_MS, 3000)
   // the longest verb (about 22 characters) is fully swept well before the cycle restarts
   assert.ok(22 * SHIMMER_STEP_MS < SHIMMER_CYCLE_MS / 1.5)

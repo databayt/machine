@@ -31,7 +31,7 @@ export function summarize(names: readonly string[], max = 3): { head: string[]; 
 export const GLYPHS = ["·", "✢", "✳", "✶", "✻", "✽"] as const
 
 /** One glyph frame lasts this long: the CLI steps its spinner about five times a second. */
-export const GLYPH_FRAME_MS = 200
+export const GLYPH_FRAME_MS = 320
 
 /** One character of the shimmer lights this much after the one before it, and the whole sweep repeats every `SHIMMER_CYCLE_MS`. */
 export const SHIMMER_STEP_MS = 70

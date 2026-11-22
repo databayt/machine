@@ -97,28 +97,8 @@ export function ActivityRows({ done, live, isAr }: { done: string[]; live: strin
 }
 
 /**
- * The verb with Claude Code's per-character sweep: each letter brightens a beat after the one before it, once every
- * `SHIMMER_CYCLE_MS`. Arabic letters join, so splitting them would break the script: Arabic keeps one slow gradient band.
- * Reduced motion shows the plain colour (globals.css).
- */
-function ShimmerWord({ text, isAr }: { text: string; isAr: boolean }) {
-  if (isAr) return <span className="machine-claude-shimmer inline-block">{text}</span>
-  const chars = Array.from(text)
-  return (
-    <span className="inline-block" style={{ ["--cycle" as string]: `${SHIMMER_CYCLE_MS}ms` }}>
-      {chars.map((c, i) => (
-        <span key={i} className="machine-claude-char whitespace-pre" style={{ animationDelay: `${i * SHIMMER_STEP_MS}ms` }}>
-          {c}
-        </span>
-      ))}
-    </span>
-  )
-}
-
-/**
  * Claude Code's status line under a running turn: `✻ Weighing it up… (12s · ↓ 1.4k tokens · esc to interrupt)`.
- * The glyph cycles in terracotta, the verb is fixed for the turn and shimmers (a sweep that lights one character after
- * another), the seconds tick, Esc interrupts.
+ * The glyph cycles in terracotta, the verb is fixed for the turn in plain terracotta (no effect), the seconds tick, Esc interrupts.
  * `tokens` is the run's output so far; without it that part is left out.
  */
 export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: boolean; seed: string; tokens?: number | null; onStop?: () => void }) {
@@ -146,7 +126,7 @@ export function ClaudeStatus({ isAr, seed, tokens = null, onStop }: { isAr: bool
       <ClaudeGlyph className="text-[1.15em]" />
       <span className="sr-only">{t(copy.working)}</span>
       <span aria-hidden className="min-w-0 truncate">
-        <ShimmerWord text={word} isAr={isAr} />
+        <span className="text-claude">{word}</span>
         <span className="tabular-nums text-muted-foreground">
           {" ("}
           {statusDetail(seconds, tokens, isAr, t(copy.interrupt))}
