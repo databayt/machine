@@ -2,15 +2,16 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
-  ArrowLeftIcon,
   ArrowUpIcon,
-  ChevronRightIcon,
   ClapperboardIcon,
   FileIcon,
+  FileTextIcon,
+  FolderIcon,
   ImageIcon,
-  MonitorIcon,
-  PaperclipIcon,
+  LibraryIcon,
+  LinkIcon,
   LoaderIcon,
+  MusicIcon,
   PlusIcon,
   SparklesIcon,
   SquareIcon,
@@ -24,12 +25,14 @@ import {
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import type { Locale } from "@/components/local/config";
-import type { QuickAction } from "../pack/types";
 import { VoiceButton } from "../voice/content";
-import { pickLocalFiles } from "../media/actions";
+import { pickLocalFiles, pickLocalFolder } from "../media/actions";
+import type { PickKind } from "../media/kinds";
 import {
   type Attachment,
+  fromFolder,
   fromItem,
+  fromLink,
   fromPath,
   mergeAttachments,
   withReferences,
@@ -51,8 +54,8 @@ export interface Fill {
 const MAX_HEIGHT_PX = 168;
 
 /**
- * The chatgpt.com composer: one white pill with a soft shadow. `+` sits inside at the start (the quick
- * actions), the text grows to six lines, then the mic (dictation) and one dark round button at the end:
+ * The chatgpt.com composer: one white pill with a soft shadow. `+` sits inside at the start (the attach
+ * menu), the text grows to six lines, then the mic (dictation) and one dark round button at the end:
  * a send arrow (faded until there is text), or a stop square while a turn runs. Enter sends, Shift+Enter breaks a line.
  */
 export function Composer({
@@ -60,19 +63,16 @@ export function Composer({
   onSend,
   onStop,
   busy,
-  actions,
   autoFocus,
   initialText,
   repo,
   fill,
-  onPickAction,
   onRefine,
 }: {
   lang: Locale;
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
-  actions: QuickAction[];
   autoFocus?: boolean;
   /** Fills the box without sending (a starter from the menu). */
   initialText?: string;
@@ -80,8 +80,6 @@ export function Composer({
   repo?: string;
   /** An option's brief: replaces the text, "" clears it. */
   fill?: Fill | null;
-  /** A quick action from `+`: the parent fills its brief and its route. */
-  onPickAction?: (q: QuickAction) => void;
   /** Rewrites the text as a professional brief; null when it could not. */
   onRefine?: (text: string) => Promise<string | null>;
 }) {
@@ -89,8 +87,10 @@ export function Composer({
   const t = tr(isAr);
   const [text, setText] = useState(initialText ?? "");
   const [plus, setPlus] = useState(false);
-  /** The menu is two levels in one popover: the quick actions, and "Attach" (a panel swapped in place). */
-  const [view, setView] = useState<"root" | "attach">("root");
+  /** `+` is one flat attach menu; "Link" turns its row into an input in place. */
+  const [linking, setLinking] = useState(false);
+  const [link, setLink] = useState("");
+  const [linkError, setLinkError] = useState(false);
   const [library, setLibrary] = useState(false);
   const [attached, setAttached] = useState<Attachment[]>([]);
   const ref = useRef<HTMLTextAreaElement>(null);
@@ -163,12 +163,32 @@ export function Composer({
     beforeRefine.current = null;
     setAttached([]);
   };
-  const addFiles = async () => {
+  const add = (more: Attachment[]) =>
+    setAttached((have) => mergeAttachments(have, more));
+  const addFiles = async (kind: PickKind) => {
     setPlus(false);
-    const paths = await pickLocalFiles(t(copy.pickFiles)).catch(() => []);
-    if (paths.length)
-      setAttached((have) => mergeAttachments(have, paths.map(fromPath)));
+    const paths = await pickLocalFiles(t(copy.pickFiles), kind).catch(() => []);
+    if (paths.length) add(paths.map(fromPath));
   };
+  const addFolder = async () => {
+    setPlus(false);
+    const path = await pickLocalFolder(t(copy.pickFolder)).catch(() => null);
+    if (path) add([fromFolder(path)]);
+  };
+  const addLink = () => {
+    const a = fromLink(link);
+    if (!a) return setLinkError(true);
+    add([a]);
+    setLink("");
+    setPlus(false);
+  };
+  const pickers: { kind: PickKind; label: keyof typeof copy; Icon: typeof FileIcon }[] = [
+    { kind: "image", label: "attachImages", Icon: ImageIcon },
+    { kind: "video", label: "attachVideos", Icon: ClapperboardIcon },
+    { kind: "audio", label: "attachAudio", Icon: MusicIcon },
+    { kind: "document", label: "attachDocs", Icon: FileTextIcon },
+    { kind: "any", label: "attachAny", Icon: FileIcon },
+  ];
   const row =
     "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-start text-[15px] transition-colors hover:bg-muted disabled:opacity-50";
   const icon =
@@ -206,6 +226,12 @@ export function Composer({
                     <ClapperboardIcon className="size-5" aria-hidden />
                   ) : a.kind === "image" ? (
                     <ImageIcon className="size-5" aria-hidden />
+                  ) : a.kind === "audio" ? (
+                    <MusicIcon className="size-5" aria-hidden />
+                  ) : a.kind === "folder" ? (
+                    <FolderIcon className="size-5" aria-hidden />
+                  ) : a.kind === "link" ? (
+                    <LinkIcon className="size-5" aria-hidden />
                   ) : (
                     <FileIcon className="size-5" aria-hidden />
                   )}
@@ -232,14 +258,18 @@ export function Composer({
             open={plus}
             onOpenChange={(o) => {
               setPlus(o);
-              if (o) setView("root");
+              if (o) {
+                setLinking(false);
+                setLink("");
+                setLinkError(false);
+              }
             }}
           >
             <PopoverTrigger asChild>
               <button
                 type="button"
-                aria-label={t(copy.quick)}
-                title={t(copy.quick)}
+                aria-label={t(copy.attach)}
+                title={t(copy.attach)}
                 className={cn(
                   icon,
                   "text-foreground hover:bg-muted",
@@ -261,102 +291,93 @@ export function Composer({
               align="start"
               collisionPadding={16}
               dir={isAr ? "rtl" : "ltr"}
-              className="w-72 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5"
+              className="w-64 max-w-[calc(100vw-2rem)] rounded-2xl p-1.5"
             >
-              {view === "root" ? (
-                <>
-                  {actions.length > 0 && (
-                    <>
-                      <p className="px-3 pb-1 pt-2 text-sm font-semibold">
-                        {t(copy.quick)}
-                      </p>
-                      <ul>
-                        {actions.map((q) => (
-                          <li key={q.prompt}>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => {
-                                setPlus(false);
-                                if (onPickAction) onPickAction(q);
-                                else onSend(q.prompt);
-                              }}
-                              className={row}
-                            >
-                              {isAr ? q.label_ar : q.label_en}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                      <div
-                        className="mx-2 my-1 h-px bg-border/60"
-                        aria-hidden
-                      />
-                    </>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setView("attach")}
-                    className={row}
-                  >
-                    <PaperclipIcon
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <span className="flex-1">{t(copy.attach)}</span>
-                    <ChevronRightIcon
-                      className="size-4 text-muted-foreground rtl:rotate-180"
-                      aria-hidden
-                    />
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => setView("root")}
-                    className="flex w-full items-center gap-2 rounded-xl px-3 pb-1 pt-2 text-start text-sm font-semibold transition-colors hover:bg-muted"
-                  >
-                    <ArrowLeftIcon
-                      className="size-4 rtl:rotate-180"
-                      aria-hidden
-                    />
-                    {t(copy.attach)}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={!repo}
-                    onClick={() => {
-                      setPlus(false);
-                      setLibrary(true);
-                    }}
-                    className={row}
-                  >
-                    <ImageIcon
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <span>{t(copy.fromLibrary)}</span>
-                      {!repo && (
-                        <span className="text-xs text-muted-foreground">
-                          {t(copy.pickRepo)}
-                        </span>
-                      )}
+              <button
+                type="button"
+                disabled={!repo}
+                onClick={() => {
+                  setPlus(false);
+                  setLibrary(true);
+                }}
+                className={row}
+              >
+                <LibraryIcon className="size-4 text-muted-foreground" aria-hidden />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span>{t(copy.library)}</span>
+                  {!repo && (
+                    <span className="text-xs text-muted-foreground">
+                      {t(copy.pickRepo)}
                     </span>
-                  </button>
+                  )}
+                </span>
+              </button>
+              <div className="mx-2 my-1 h-px bg-border/60" aria-hidden />
+              {pickers.map(({ kind, label, Icon }) => (
+                <button
+                  key={kind}
+                  type="button"
+                  onClick={() => void addFiles(kind)}
+                  className={row}
+                >
+                  <Icon className="size-4 text-muted-foreground" aria-hidden />
+                  {t(copy[label])}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => void addFolder()}
+                className={row}
+              >
+                <FolderIcon className="size-4 text-muted-foreground" aria-hidden />
+                {t(copy.attachFolder)}
+              </button>
+              <div className="mx-2 my-1 h-px bg-border/60" aria-hidden />
+              {linking ? (
+                <div className="flex items-center gap-2 px-2 py-1.5">
+                  <LinkIcon className="ms-1 size-4 shrink-0 text-muted-foreground" aria-hidden />
+                  <input
+                    autoFocus
+                    value={link}
+                    onChange={(e) => {
+                      setLink(e.target.value);
+                      setLinkError(false);
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addLink();
+                      }
+                    }}
+                    dir="ltr"
+                    inputMode="url"
+                    placeholder={t(copy.linkPlaceholder)}
+                    aria-label={t(copy.linkPlaceholder)}
+                    aria-invalid={linkError}
+                    title={linkError ? t(copy.linkInvalid) : undefined}
+                    className={cn(
+                      "min-w-0 flex-1 bg-transparent py-1 text-[15px] outline-none placeholder:text-muted-foreground",
+                      linkError && "text-destructive",
+                    )}
+                  />
                   <button
                     type="button"
-                    onClick={() => void addFiles()}
-                    className={row}
+                    onClick={addLink}
+                    disabled={!link.trim()}
+                    className="rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background disabled:opacity-30"
                   >
-                    <MonitorIcon
-                      className="size-4 text-muted-foreground"
-                      aria-hidden
-                    />
-                    {t(copy.fromMac)}
+                    {t(copy.add)}
                   </button>
-                </>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setLinking(true)}
+                  className={row}
+                >
+                  <LinkIcon className="size-4 text-muted-foreground" aria-hidden />
+                  {t(copy.attachLink)}
+                </button>
               )}
             </PopoverContent>
           </Popover>

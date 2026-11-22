@@ -303,11 +303,9 @@ export default function ChatContent({
                   onSend={sendRouted}
                   onStop={() => jobId && void stop(jobId)}
                   busy={busy}
-                  actions={quick}
                   initialText={prompt}
                   fill={fill}
                   repo={ctx.repo}
-                  onPickAction={pickOption}
                   onRefine={routes.length ? refineText : undefined}
                   autoFocus
                 />
@@ -380,9 +378,7 @@ export default function ChatContent({
             onSend={sendRouted}
             onStop={() => jobId && void stop(jobId)}
             busy={busy}
-            actions={quick}
             repo={ctx.repo}
-            onPickAction={pickOption}
             onRefine={routes.length ? refineText : undefined}
             autoFocus
           />
