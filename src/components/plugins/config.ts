@@ -15,5 +15,6 @@ export const copy = {
   keywords: { en: "Say any of these and the prompt routes here", ar: "اذكر أياً منها فيتجه الطلب إلى هنا" },
   mcpNames: { en: "MCP names", ar: "أسماء MCP" },
   department: { en: "Department", ar: "القسم" },
+  needsDecision: { en: "Needs a decision", ar: "بانتظار القرار" },
   everyone: { en: "Everyone", ar: "للجميع" },
 } satisfies Record<string, Copy>

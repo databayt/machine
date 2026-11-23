@@ -29,6 +29,8 @@ export interface Connector {
   verified?: boolean
   /** The team uses it every week; shown first, under "Top". */
   top?: boolean
+  /** Listed, not installed, needs a decision. Never installable and never shown as installed; the card shows `price` instead. */
+  staged?: { price: Copy }
 }
 
 /** The eight departments, for the pills when the machine has no profile (the website, a browser). */
@@ -147,6 +149,99 @@ export const CONNECTORS: Connector[] = [
     mcp: ["premiere-pro"],
     keywords: ["premiere"],
     url: "https://github.com/hetpatel-11/Adobe_Premiere_Pro_MCP",
+  },
+  {
+    id: "hyperframes",
+    name: "HyperFrames",
+    kind: "plugin",
+    departments: ["video", "marketing"],
+    blurb: {
+      en: "Motion graphics, title cards and captions from code; media-use finds music, effects and stock images with free local tools",
+      ar: "رسوم متحركة وبطاقات عناوين وترجمة من الكود؛ وmedia-use يجلب الموسيقى والمؤثرات والصور بأدوات محلية مجانية",
+    },
+    mcp: ["hyperframes"],
+    keywords: ["hyperframes", "motion graphic", "title card", "captions", "media-use"],
+    url: "https://github.com/heygen-com/hyperframes",
+  },
+  {
+    id: "video-use",
+    name: "video-use",
+    // A user-level skill (~/.claude/skills/video-use, a link to ~/oss/video-use): no kind fits, so `plugin`.
+    kind: "plugin",
+    departments: ["video"],
+    blurb: { en: "Edit real footage by conversation: cut, grade, caption", ar: "مونتاج اللقطات الحقيقية بالمحادثة: قص وتلوين وترجمة" },
+    keywords: ["video-use", "rough cut", "cut the silences"],
+    url: "https://github.com/browser-use/video-use",
+  },
+  {
+    id: "elevenlabs",
+    name: "ElevenLabs",
+    kind: "connector",
+    departments: ["video", "image", "marketing"],
+    blurb: { en: "Voice in Arabic and English, dubbing, sound effects, music", ar: "صوت بالعربية والإنجليزية ودبلجة ومؤثرات وموسيقى" },
+    keywords: ["elevenlabs", "voiceover", "dubbing", "دبلجة"],
+    url: "https://elevenlabs.io/docs/eleven-api/resources/mcp-server",
+    staged: { price: { en: "Free plan is non-commercial · Starter $6 a month", ar: "الخطة المجانية غير تجارية · Starter بـ 6 دولارات شهرياً" } },
+  },
+  {
+    id: "fal",
+    name: "fal",
+    kind: "connector",
+    departments: ["video", "image", "marketing"],
+    blurb: { en: "Seedance, Kling, Veo and Flux under one account", ar: "Seedance وKling وVeo وFlux تحت حساب واحد" },
+    keywords: ["fal", "seedance", "kling", "flux"],
+    url: "https://fal.ai/docs/documentation/setting-up/mcp",
+    staged: { price: { en: "Pay per run", ar: "الدفع عن كل تشغيل" } },
+  },
+  {
+    id: "google-genmedia",
+    name: "Google GenMedia",
+    kind: "local",
+    departments: ["video", "image"],
+    blurb: { en: "Veo, Imagen, Lyria and Chirp 3 HD servers", ar: "خوادم Veo وImagen وLyria وChirp 3 HD" },
+    keywords: ["genmedia", "veo", "imagen", "lyria"],
+    url: "https://github.com/GoogleCloudPlatform/genmedia-creative-studio",
+    staged: { price: { en: "Needs a Google Cloud project with billing", ar: "يحتاج مشروع Google Cloud بفوترة" } },
+  },
+  {
+    id: "epidemic-sound",
+    name: "Epidemic Sound",
+    kind: "connector",
+    departments: ["video"],
+    blurb: { en: "Licensed music and sound effects", ar: "موسيقى ومؤثرات صوتية مرخصة" },
+    keywords: ["epidemic sound", "licensed music"],
+    url: "https://developers.epidemicsound.com/docs/mcp",
+    staged: { price: { en: "Needs a subscription", ar: "يحتاج اشتراكاً" } },
+  },
+  {
+    id: "runway",
+    name: "Runway",
+    kind: "plugin",
+    departments: ["video"],
+    blurb: { en: "Generated video", ar: "فيديو مولّد" },
+    keywords: ["runway"],
+    url: "https://github.com/runwayml/skills",
+    staged: { price: { en: "Credits", ar: "رصيد مدفوع" } },
+  },
+  {
+    id: "minimax",
+    name: "MiniMax",
+    kind: "local",
+    departments: ["video", "image"],
+    blurb: { en: "Voice, image and video", ar: "صوت وصورة وفيديو" },
+    keywords: ["minimax"],
+    url: "https://github.com/MiniMax-AI/MiniMax-MCP",
+    staged: { price: { en: "Pay per use", ar: "الدفع عند الاستخدام" } },
+  },
+  {
+    id: "davinci-resolve",
+    name: "DaVinci Resolve",
+    kind: "local",
+    departments: ["video"],
+    blurb: { en: "Grading and finishing", ar: "تدرّج لوني وإنهاء" },
+    keywords: ["davinci", "resolve", "grading"],
+    url: "https://github.com/samuelgursky/davinci-resolve-mcp",
+    staged: { price: { en: "Resolve Studio ($295 once); the free edition only through a bridge", ar: "Resolve Studio (295 دولاراً مرة واحدة)؛ النسخة المجانية عبر جسر فقط" } },
   },
   {
     id: "claude-design",
@@ -460,7 +555,7 @@ export const CONNECTORS: Connector[] = [
 
 /** Installed when any of its MCP names is in the list `claude mcp list` returned. */
 export function isInstalled(c: Connector, names: string[]): boolean {
-  if (!c.mcp) return false
+  if (c.staged || !c.mcp) return false
   const have = new Set(names.map((n) => n.toLowerCase()))
   return c.mcp.some((n) => have.has(n.toLowerCase()))
 }

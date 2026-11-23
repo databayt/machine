@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react"
 
 import type { Copy } from "../chat/config"
-import { Action, kindLabel, Logo, type Actions } from "./card"
+import { Action, kindLabel, Logo, stagedLine, type Actions } from "./card"
 import { copy } from "./config"
 import { DEPARTMENTS, type Connector } from "./registry"
 
@@ -21,10 +21,11 @@ export function Detail({ c, actions, t }: { c: Connector; actions: Actions; t: (
             {kindLabel(c, t)} · {depts}
           </p>
         </div>
-        <Action c={c} actions={actions} t={t} />
+        {!c.staged && <Action c={c} actions={actions} t={t} />}
       </div>
       <div className="bg-background flex flex-col gap-4 rounded-2xl p-4">
         <p className="text-sm leading-relaxed">{t(c.blurb)}</p>
+        {c.staged && <p className="text-muted-foreground text-sm">{stagedLine(c, t)}</p>}
         {c.keywords.length > 0 && (
           <div className="flex flex-col gap-2">
             <p className="text-muted-foreground text-xs">{t(copy.keywords)}</p>

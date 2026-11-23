@@ -53,6 +53,9 @@ export function Logo({ c, size = 40 }: { c: Item; size?: number }) {
   )
 }
 
+/** `Needs a decision · $6 a month`: the one muted line a staged card shows. */
+export const stagedLine = (c: Connector, t: T) => (c.staged ? `${t(copy.needsDecision)} · ${t(c.staged.price)}` : "")
+
 export const kindLabel = (c: Connector, t: T) => t(KINDS.find((k) => k.id === c.kind)!.label)
 
 export const iconButton =
@@ -115,7 +118,7 @@ export function Action({ c, actions, t, className }: { c: Connector; actions: Ac
 }
 
 /** The whole card links to the detail; the action sits above that layer. Logo, text and action are top-aligned. */
-export function Card({ c, href, action, t }: { c: Item; href: string; action?: React.ReactNode; t: T }) {
+export function Card({ c, href, action, note, t }: { c: Item; href: string; action?: React.ReactNode; note?: string; t: T }) {
   return (
     <div className="group bg-background hover:bg-background/60 relative flex min-w-0 items-start gap-3 rounded-2xl p-4 transition-colors">
       <Logo c={c} />
@@ -127,6 +130,7 @@ export function Card({ c, href, action, t }: { c: Item; href: string; action?: R
           <bdi>{c.name}</bdi>
         </span>
         <span className="text-muted-foreground truncate text-sm">{t(c.blurb)}</span>
+        {note && <span className="text-muted-foreground truncate text-xs">{note}</span>}
       </Link>
       {action}
     </div>
@@ -142,5 +146,8 @@ export function Grid({ children }: { children: React.ReactNode }) {
 
 /** The plugins' card: its action is `+` / `…`. */
 export function PluginCard({ c, lang, actions, t }: { c: Connector; lang: string; actions: Actions; t: T }) {
-  return <Card c={c} t={t} href={`/${lang}/plugins/?item=${encodeURIComponent(c.id)}`} action={<Action c={c} actions={actions} t={t} className={hoverAction} />} />
+  const href = `/${lang}/plugins/?item=${encodeURIComponent(c.id)}`
+  // Staged: listed, not installed. The price stands where the installed state would be; no add, no remove.
+  if (c.staged) return <Card c={c} t={t} href={href} note={stagedLine(c, t)} />
+  return <Card c={c} t={t} href={href} action={<Action c={c} actions={actions} t={t} className={hoverAction} />} />
 }
