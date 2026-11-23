@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils"
 import { tr } from "../chat/config"
 import { filmData, listFilms, type FilmData } from "./actions"
 import { copy } from "./config"
-import { type FilmSummary, type Light, defaultFilm, gateOf, lightOf, slotsFor, stageFormula } from "./pure"
+import { FORMAT_KEYS, SETTING_CHOICES, STYLE_KEYS, type FilmSummary, type Light, type VideoSettings, defaultFilm, defaultSettings, gateOf, lightOf, mergeSettings, settingsSlots, slotsFor, stageFormula } from "./pure"
 
 
 /**
@@ -27,6 +27,7 @@ export function ProductionStrip({
   open,
   onOpenChange,
   onAvailable,
+  onSettings,
 }: {
   isAr: boolean
   repo: string
@@ -41,6 +42,8 @@ export function ProductionStrip({
   onOpenChange: (open: boolean) => void
   /** Whether there is a film to show, so the composer shows its gear only then. */
   onAvailable: (available: boolean) => void
+  /** The film's Format/Style settings as formula slots, whenever they change. */
+  onSettings: (slots: Record<string, string> | null) => void
 }) {
   const t = tr(isAr)
   const [films, setFilms] = useState<FilmSummary[]>([])
@@ -84,6 +87,28 @@ export function ProductionStrip({
     window.addEventListener("keydown", onKey)
     return () => window.removeEventListener("keydown", onKey)
   }, [open, onOpenChange])
+  // Format and Style: saved per film on this computer, over the film's defaults.
+  const [settings, setSettings] = useState<VideoSettings | null>(null)
+  const filmVariants = current?.film.variants.join(",") ?? ""
+  useEffect(() => {
+    if (!id) return setSettings(null)
+    let saved: unknown = null
+    try {
+      saved = JSON.parse(localStorage.getItem(settingsKey(id)) ?? "null")
+    } catch {}
+    setSettings(mergeSettings(defaultSettings(filmVariants ? filmVariants.split(",") : []), saved))
+  }, [id, filmVariants])
+  useEffect(() => {
+    onSettings(settings ? settingsSlots(settings) : null)
+  }, [settings, onSettings])
+  const choose = (k: keyof VideoSettings, v: string) => {
+    if (!id || !settings) return
+    const next = { ...settings, [k]: v }
+    setSettings(next)
+    try {
+      localStorage.setItem(settingsKey(id), JSON.stringify(next))
+    } catch {}
+  }
   const available = films.length > 0 && !!id && !!current
   useEffect(() => {
     onAvailable(available)
@@ -104,7 +129,7 @@ export function ProductionStrip({
         >
           <Tabs value={tab} onValueChange={setTab} className="gap-3">
             <TabsList className="h-auto w-fit flex-wrap gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
-              {(["stages", "film"] as const).map((k) => (
+              {(["stages", "format", "style", "film"] as const).map((k) => (
                 <TabsTrigger
                   key={k}
                   value={k}
@@ -143,6 +168,37 @@ export function ProductionStrip({
               </Cards>
             </TabsContent>
 
+            {(["format", "style"] as const).map((tabId) => (
+              <TabsContent key={tabId} value={tabId} className="m-0">
+                {settings && (
+                  <div className="space-y-2.5 font-sans">
+                    {(tabId === "format" ? FORMAT_KEYS : STYLE_KEYS).map((k) => (
+                      <div key={k} className="flex items-center gap-3">
+                        <span className="w-20 shrink-0 text-xs text-muted-foreground">{t(copy[k])}</span>
+                        <div className="flex flex-wrap gap-1.5">
+                          {SETTING_CHOICES[k].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              aria-pressed={settings[k] === v}
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => choose(k, v)}
+                              className={cn(
+                                "rounded-full px-3 py-1 text-sm transition-colors duration-150",
+                                settings[k] === v ? "bg-foreground text-background" : "bg-muted text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {choiceLabel(k, v, t)}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </TabsContent>
+            ))}
+
             <TabsContent value="film" className="m-0">
               <Cards>
                 {films.map((f) => {
@@ -166,6 +222,17 @@ export function ProductionStrip({
 
     </div>
   )
+}
+
+const settingsKey = (film: string) => `kun.video.settings.${film}`
+
+/** A chip's text: lengths and voices read as words; the rest as they are. */
+function choiceLabel(k: keyof VideoSettings, v: string, t: (c: { en: string; ar: string }) => string): string {
+  if (k === "length" && v === "source") return t(copy.matchSource)
+  if (k === "fps") return `${v} fps`
+  if (k === "voice") return t(copy[v === "source" ? "voiceSource" : v === "stock" ? "voiceStock" : "none"])
+  if (k === "music" || k === "captions") return v === "none" || v === "off" ? t(copy.off) : v
+  return v
 }
 
 const LIGHT: Record<Light, string> = {

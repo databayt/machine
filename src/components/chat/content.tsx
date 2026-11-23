@@ -100,6 +100,11 @@ export default function ChatContent({
   }, []);
   /** A video attached through + → Videos, until the next send: formulas with a `source` slot take its path. */
   const sourceRef = useRef<string | null>(null);
+  /** The film's Format/Style settings as slots: every video formula is filled with them. */
+  const videoRef = useRef<Record<string, string> | null>(null);
+  const onSettings = useCallback((slots: Record<string, string> | null) => {
+    videoRef.current = slots;
+  }, []);
   /** The last fill: what it wrote, so an attached video can refill it while the box is untouched. */
   const lastFill = useRef<{ id: string; set: Record<string, string>; prompt: string } | null>(null);
   /** When the person tapped the formula the next send runs (ms), for the run's timing line. */
@@ -393,7 +398,7 @@ export default function ChatContent({
   /** One fill through the station, with the selected film and the attached video handed over as slots; remembers it. */
   const fillWith = async (dept: string, id: string, set: Record<string, string> = {}) => {
     tapRef.current = Date.now();
-    const slots = fillSlots(id, set, { project: filmRef.current, source: sourceRef.current });
+    const slots = fillSlots(id, set, { project: filmRef.current, source: sourceRef.current, video: videoRef.current });
     const f = await fillFormula(dept, id, ctx.repo || null, slots);
     lastFill.current = { id: f.id, set: slots, prompt: f.prompt };
     return f;
@@ -504,7 +509,7 @@ export default function ChatContent({
     const last = lastFill.current;
     if (!last || stationRef.current?.id !== last.id || draft.current !== last.prompt) return;
     try {
-      const f = await fillFormula(ctx.dept, last.id, ctx.repo || null, { ...last.set, source: path });
+      const f = await fillFormula(ctx.dept, last.id, ctx.repo || null, fillSlots(last.id, { ...last.set, source: path }, { video: videoRef.current }));
       if (f.prompt === last.prompt) return;
       lastFill.current = { id: f.id, set: { ...last.set, source: path }, prompt: f.prompt };
       setFill({ text: f.prompt, focus: false, n: ++fillN.current });
@@ -576,6 +581,7 @@ export default function ChatContent({
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
         onAvailable={setFilmAvailable}
+        onSettings={onSettings}
       />
     ) : null;
 

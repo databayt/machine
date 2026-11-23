@@ -385,8 +385,13 @@ const FILM_FORMULA = /^video\.(stage|order|gate)\.|^video\.film\.continue$/
  * The slots a fill gets: the caller's own, plus the selected film as `project` for a formula on an existing film, plus
  * the attached video as `source` (a formula without that slot ignores it). The caller's own values win.
  */
-export function fillSlots(id: string, set: Record<string, string> = {}, known: { project?: string | null; source?: string | null } = {}): Record<string, string> {
-  const out = { ...set }
+export function fillSlots(
+  id: string,
+  set: Record<string, string> = {},
+  known: { project?: string | null; source?: string | null; video?: Record<string, string> | null } = {},
+): Record<string, string> {
+  // The film's Format/Style settings go to every video formula; an explicit slot still wins.
+  const out = known.video && id.startsWith("video.") ? { ...known.video, ...set } : { ...set }
   if (known.project && !out.project && FILM_FORMULA.test(id)) out.project = known.project
   if (known.source && !out.source) out.source = known.source
   return out
@@ -445,4 +450,80 @@ export function groupOf(stage: string): GroupId {
 export function groupStages(film: Film, group: GroupId): Stage[] {
   const names = STAGE_GROUPS.find((g) => g.id === group)?.stages ?? []
   return names.map((n) => film.stages.find((s) => s.name === n)).filter((s): s is Stage => !!s)
+}
+
+// ---- video settings (the Format and Style tabs) -------------------------------------------------
+
+export interface VideoSettings {
+  ratio: string
+  length: string
+  resolution: string
+  fps: string
+  platform: string
+  look: string
+  voice: string
+  captions: string
+  music: string
+  version: string
+}
+
+/** Each setting's choices, in the order the chips show. The first is the default unless the film says otherwise. */
+export const SETTING_CHOICES = {
+  ratio: ["9:16", "4:5", "1:1", "16:9"],
+  length: ["source", "0:15", "0:30", "1:00", "2:00"],
+  resolution: ["1080p", "4K"],
+  fps: ["30", "60"],
+  platform: ["Facebook", "Instagram", "TikTok", "YouTube"],
+  look: ["mixed", "captures", "3D"],
+  voice: ["source", "stock", "none"],
+  captions: ["burned in", "off"],
+  music: ["brand bed", "none"],
+  version: ["sd-ar", "sa-ar", "ae-ar", "eg-ar", "sd-en", "sa-en", "rw-en"],
+} as const satisfies Record<keyof VideoSettings, readonly string[]>
+
+export const FORMAT_KEYS = ["ratio", "length", "resolution", "fps", "platform"] as const
+export const STYLE_KEYS = ["look", "voice", "captions", "music", "version"] as const
+
+/** The film's defaults: its first variant picks the version; everything else starts at the first choice. */
+export function defaultSettings(variants: readonly string[] = []): VideoSettings {
+  const v = variants.find((x) => (SETTING_CHOICES.version as readonly string[]).includes(x)) ?? "sd-ar"
+  return { ratio: "9:16", length: "source", resolution: "1080p", fps: "30", platform: "Facebook", look: "mixed", voice: "source", captions: "burned in", music: "brand bed", version: v }
+}
+
+/** Saved settings over the defaults; unknown keys and values outside the choices are dropped. */
+export function mergeSettings(base: VideoSettings, saved: unknown): VideoSettings {
+  if (!isObj(saved)) return base
+  const out = { ...base }
+  for (const k of Object.keys(SETTING_CHOICES) as (keyof VideoSettings)[]) {
+    const v = saved[k]
+    if (typeof v === "string" && (SETTING_CHOICES[k] as readonly string[]).includes(v)) out[k] = v
+  }
+  return out
+}
+
+const RATIO_FORMAT: Record<string, string> = {
+  "9:16": "vertical 9:16, mobile",
+  "4:5": "portrait 4:5, mobile",
+  "1:1": "square 1:1, mobile",
+  "16:9": "horizontal 16:9, desktop",
+}
+
+/** The settings as formula slots: format, length, platform, market, and one `settings` line for the rest. */
+export function settingsSlots(s: VideoSettings): Record<string, string> {
+  const [market] = s.version.split("-")
+  return {
+    format: RATIO_FORMAT[s.ratio] ?? s.ratio,
+    length: s.length === "source" ? "match the source video" : `about ${s.length}`,
+    platform: s.platform,
+    market,
+    settings: [
+      s.resolution,
+      `${s.fps} fps`,
+      `version ${s.version}`,
+      `look ${s.look}`,
+      `voice ${s.voice === "source" ? "source voiceover" : s.voice === "stock" ? "stock voice" : "none"}`,
+      `captions ${s.captions}`,
+      `music ${s.music}`,
+    ].join(" · "),
+  }
 }

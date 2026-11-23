@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { STAGE_GROUPS, groupOf, lightOf, collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
+import { STAGE_GROUPS, groupOf, lightOf, defaultSettings, mergeSettings, settingsSlots, collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
 
 // What `produce.mjs status <id> --json` prints today: a stage map of booleans, gates as null or { by, at }.
 const TODAY = {
@@ -187,4 +187,22 @@ test("a stage's light: green done, orange next, red failed, grey not started", (
   assert.equal(lightOf({ ...base, done: false, failed: false }, true), "orange")
   assert.equal(lightOf({ ...base, done: false, failed: true }, true), "red")
   assert.equal(lightOf({ ...base, done: false, failed: false }, false), "grey")
+})
+
+test("video settings: defaults from the film, saved values checked, slots for the formulas", () => {
+  const d = defaultSettings(["sa-ar", "sd-ar"])
+  assert.equal(d.version, "sa-ar")
+  assert.equal(d.ratio, "9:16")
+  const m = mergeSettings(d, { ratio: "4:5", fps: "120", junk: 1 })
+  assert.equal(m.ratio, "4:5")
+  assert.equal(m.fps, "30")
+  const slots = settingsSlots({ ...m, version: "sd-ar" })
+  assert.equal(slots.format, "portrait 4:5, mobile")
+  assert.equal(slots.length, "match the source video")
+  assert.equal(slots.market, "sd")
+  assert.match(slots.settings, /1080p · 30 fps · version sd-ar · look mixed · voice source voiceover/)
+  // video formulas get them, an explicit slot wins, other departments don't
+  assert.equal(fillSlots("video.stage.edit", { format: "x" }, { video: slots }).format, "x")
+  assert.equal(fillSlots("video.stage.edit", {}, { video: slots }).platform, "Facebook")
+  assert.equal(fillSlots("sales.offer", {}, { video: slots }).platform, undefined)
 })
