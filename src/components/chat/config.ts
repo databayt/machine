@@ -82,6 +82,13 @@ export const copy = {
   wizLabel: { en: "Questions from the run", ar: "أسئلة من التشغيل" },
   wizDeclined: { en: "Declined to answer, defaults used", ar: "تُجوهلت الأسئلة، واستُخدمت الافتراضات" },
   wizTitleFallback: { en: "chat", ar: "محادثة" },
+  discuss: { en: "Discuss", ar: "ناقش" },
+  lockSpec: { en: "Lock", ar: "ثبّت" },
+  stageLocked: { en: "locked", ar: "مثبّتة" },
+  stageOpen: { en: "open", ar: "مفتوحة" },
+  stageBy: { en: "by", ar: "بواسطة" },
+  specLine: { en: "Spec", ar: "المواصفة" },
+  specTool: { en: "tool", ar: "الأداة" },
   openTitle: { en: "Open this page in the Kun app", ar: "افتح هذه الصفحة في تطبيق كن" },
   openText: {
     en: "Chat, sessions and settings run on your computer, inside the app only.",

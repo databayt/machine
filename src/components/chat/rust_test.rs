@@ -661,3 +661,14 @@ fn fallback_off_is_the_normal_error_and_ask_stops_naming_the_ready_route() {
     let none = fallback_stop(FallbackPolicy::Ask, &why, &[], true).unwrap();
     assert!(none.contains("الإعدادات"));
 }
+
+#[test]
+fn a_given_title_replaces_the_prompt_title() {
+    assert_eq!(session_title("a long filled formula", Some("Intro film for owners")), "Intro film for owners");
+    // Blank or absent: the prompt names the session as before.
+    assert_eq!(session_title("اكتب عرض", Some("   ")), "اكتب عرض");
+    assert_eq!(session_title("اكتب عرض", None), "اكتب عرض");
+    // A given title is cut like any other.
+    let long = "y".repeat(80);
+    assert_eq!(session_title("p", Some(&long)).chars().count(), 61);
+}

@@ -29,6 +29,7 @@ export function Wizard({
   onSubmit,
   onCancel,
   onChat,
+  startOnChat = false,
 }: {
   questions: readonly AskQuestion[]
   isAr: boolean
@@ -38,9 +39,11 @@ export function Wizard({
   onCancel: () => void
   /** "Chat about this": the wizard closes and the composer takes the focus. */
   onChat: () => void
+  /** The highlight opens on "Chat about this" (a stage the agent owns: the choices are not the point). */
+  startOnChat?: boolean
 }) {
   const t = tr(isAr)
-  const [s, dispatch] = useReducer(reduce, questions, initState)
+  const [s, dispatch] = useReducer(reduce, questions, (qs: readonly AskQuestion[]) => initState(qs, startOnChat ? "chat" : undefined))
   const root = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const outcome = useRef({ onSubmit, onCancel, onChat })
@@ -263,7 +266,8 @@ function Row({
         <div className={cn("flex items-baseline gap-[1ch]", active && accent)}>
           {box && <span className="shrink-0 whitespace-pre">{box}</span>}
           <span className="shrink-0">{n}.</span>
-          {children ?? <span className="min-w-0 break-words">{label}{marked ? " ✔" : ""}</span>}
+          {/* `||`, not `??`: the type row passes `false` while it is not being typed in, and its label must still show. */}
+          {children || <span className="min-w-0 break-words">{label}{marked ? " ✔" : ""}</span>}
         </div>
         {description && <div className={cn("break-words text-foreground/75", box ? "ps-[7ch]" : "ps-[3ch]")}>{description}</div>}
       </div>

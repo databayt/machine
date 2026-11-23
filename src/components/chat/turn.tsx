@@ -60,6 +60,45 @@ export function AnswerBlock({ lines }: { lines: readonly { header: string; answe
   )
 }
 
+/**
+ * A request composed in the settings panel: ONE compact line with the sentence, which opens to the full prompt the
+ * run was sent (the `UserTurn` bubble) and folds back.
+ */
+export function RequestLine({ sentence, prompt, isAr }: { sentence: string; prompt: string; isAr: boolean }) {
+  const t = tr(isAr)
+  const [open, setOpen] = useState(false)
+  const toggle = (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      aria-expanded={open}
+      className="text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+    >
+      {open ? t(copy.showLess) : t(copy.showMore)}
+    </button>
+  )
+  if (open)
+    return (
+      <li className="flex justify-end">
+        <div className="max-w-[85%] rounded-2xl bg-foreground/5 px-4 py-3 text-[17px] leading-[1.45] text-foreground md:text-base">
+          <p dir="auto" className="whitespace-pre-wrap break-words">
+            {prompt}
+          </p>
+          <span className="mt-1 block">{toggle}</span>
+        </div>
+      </li>
+    )
+  return (
+    <li className="min-w-0 font-mono text-[13px] leading-6 text-foreground/75">
+      <p dir="auto" className="flex items-baseline gap-[1ch] text-start">
+        <span aria-hidden dir="ltr" className="w-[2ch] shrink-0 text-[color:var(--cli-dim)]">⎿</span>
+        <span className="min-w-0 break-words">{sentence}</span>
+        <span className="shrink-0 font-sans">{toggle}</span>
+      </p>
+    </li>
+  )
+}
+
 /** The wizard was cancelled: one quiet line. */
 export function DeclinedLine({ text }: { text: string }) {
   return (

@@ -29,18 +29,20 @@ export interface AskOptions {
    * tapped and when Send was pressed (ms since the epoch). Rust adds spawn, first event and done.
    */
   timing?: { formula?: string | null; tTap?: number | null; tSend?: number | null } | null
+  /** The chat's title in Sessions (a composed request is titled by its sentence, not by the long prompt). */
+  title?: string | null
 }
 
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null, timing = null }: AskOptions,
+  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null, timing = null, title = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, timing, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, timing, title, channel })
 }
 
 /**

@@ -54,6 +54,39 @@ export async function questions(
   }
 }
 
+/**
+ * The Video department's settings tabs and choices (`station.mjs settings`), with the film's locked choices as
+ * `current` when `project` is given. The raw JSON, never rejects: any failure (an older kun has no such command) is null.
+ */
+export async function stationSettings(department: string, repo: string | null, project: string | null): Promise<unknown> {
+  if (!isTauri()) return null
+  try {
+    return await invoke<unknown>("plugin:pack|station_settings", { department, repo, project })
+  } catch {
+    return null
+  }
+}
+
+/** The request the choices compose (`station.mjs compose`; `set` carries CHOICE keys). The raw JSON, null on any failure. */
+export async function stationCompose(department: string, repo: string | null, project: string | null, set: Record<string, string> | null): Promise<unknown> {
+  if (!isTauri()) return null
+  try {
+    return await invoke<unknown>("plugin:pack|station_compose", { department, repo, project, set })
+  } catch {
+    return null
+  }
+}
+
+/** One stage of a film (`station.mjs stage`): its summary, lock and standard questions. The raw JSON, null on any failure. */
+export async function stationStage(department: string, project: string, stage: string): Promise<unknown> {
+  if (!isTauri()) return null
+  try {
+    return await invoke<unknown>("plugin:pack|station_stage", { department, project, stage })
+  } catch {
+    return null
+  }
+}
+
 /** Typed text to a formula id; never rejects, no match is `{ id: null }`. */
 export async function matchText(department: string, text: string, repo: string | null): Promise<Match> {
   const none: Match = { id: null, confidence: 0, dept: null, set: {} }

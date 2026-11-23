@@ -6,7 +6,7 @@ import { ArrowDownIcon, InfoIcon, RotateCcwIcon } from "lucide-react";
 
 import type { Locale } from "@/components/local/config";
 import type { Event } from "../driver/types";
-import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, stationLog } from "../pack/actions";
+import { board as loadBoard, fill as fillFormula, formulas as loadFormulas, matchText, packInfo, stationLog, stationStage } from "../pack/actions";
 import type { Board, FormulaMeta, Match, PackInfo } from "../pack/types";
 import type { CatalogItem } from "../catalog/types";
 import { loadCatalog } from "../menu/data";
@@ -18,15 +18,21 @@ import { storedLang, swapLocale } from "../shell/lang";
 import { SubmitWork } from "../tasks/submit-work";
 import { speak } from "../voice/actions";
 import { acceptMessage, orderMessage, showAccept, workingRoute } from "./accept";
+import { hideBlocks, parseTurn, planFile, specFile } from "./block-pure";
 import { ask, refine, stop } from "./actions";
 import { ActivityRows, ClaudeStatus } from "./activity";
 import { splitNote } from "./activity-pure";
-import { type Answered, DECLINED_MESSAGE, answersMessage, hideBlock, isAnswersMessage, parseAnswers, parseAsk } from "./ask-pure";
+import { type Answered, DECLINED_MESSAGE, answersMessage, isAnswersMessage, parseAnswers } from "./ask-pure";
 import type { Message } from "./message";
 import { type Family, familyOf } from "./model-pure";
 import { Composer, type Fill } from "./composer";
 import { ProductionStrip } from "../production/content";
+import { filmData, lockStage, savePlan } from "../production/actions";
+import { PlanCard } from "../production/plan-card";
 import { fillSlots, stageFormula } from "../production/pure";
+import type { Composed } from "../production/settings-pure";
+import { SpecCard, StageTurn } from "./stage-turn";
+import { type StageView, parseStage, splitAnswers, stageFromStatus, stageSessionKey } from "./stage-pure";
 import { startsFolded } from "./clamp-pure";
 import { ContextLine, useWorkingContext } from "./context";
 import { copy, greeting, tr } from "./config";
@@ -35,7 +41,7 @@ import { type HomeOption, homeOptions, usableMatch } from "./options";
 import { parseRefined } from "./refine";
 import { Suggestions } from "./suggestions";
 import { useDeptHealth } from "../pack/health";
-import { AgentTurn, AnswerBlock, DeclinedLine, Prose, TurnActions, UserTurn } from "./turn";
+import { AgentTurn, AnswerBlock, DeclinedLine, Prose, RequestLine, TurnActions, UserTurn } from "./turn";
 import { Wizard } from "./wizard";
 import { useStickToBottom } from "./use-stick-to-bottom";
 
@@ -93,7 +99,19 @@ export default function ChatContent({
   const filmRef = useRef<string | null>(null);
   // The settings panel (the /social/publish gear): the film's stages, scenes and brand.
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [filmAvailable, setFilmAvailable] = useState(false)
+  /** What the panel's choices compose now (null: nothing), and the latest result kept for Accept and the Tab key. */
+  const [composed, setComposed] = useState<Composed | null>(null)
+  const composedRef = useRef<Composed | null>(null)
+  const onCompose = useCallback((c: Composed | null) => {
+    composedRef.current = c
+    setComposed(c)
+  }, [])
+  /** The strip re-reads the film when the chat locks a stage by script. */
+  const [refresh, setRefresh] = useState(0)
+  /** The stage whose discussion this chat is (a chat per film + stage), and whether it was opened without `station stage`. */
+  const stageChat = useRef<{ film: string; stage: string; fallback: boolean } | null>(null)
+  const rev = useRef(0)
+  const [lockError, setLockError] = useState<string | null>(null)
   const toggleSettings = useCallback(() => setSettingsOpen((o) => !o), [])
   const onFilm = useCallback((id: string | null) => {
     filmRef.current = id;
@@ -224,6 +242,15 @@ export default function ChatContent({
     setMessages((all) => all.map((m, i) => (i === all.length - 1 ? f(m) : m)));
   }, []);
 
+  /** A stage chat remembers its session, so the stage's discussion is its own chat next time. */
+  const rememberStageSession = useCallback((id: string) => {
+    const s = stageChat.current;
+    if (!s) return;
+    try {
+      localStorage.setItem(stageSessionKey(s.film, s.stage), id);
+    } catch {}
+  }, []);
+
   const onEvent = useCallback(
     (e: Event) => {
       // A tool still running when the next thing arrives has finished.
@@ -232,6 +259,7 @@ export default function ChatContent({
       switch (e.kind) {
         case "started":
           setSession(e.session);
+          rememberStageSession(e.session);
           break;
         case "text":
           patchLast((m) => ({
@@ -243,18 +271,25 @@ export default function ChatContent({
           patchLast((m) => ({ ...settle(m), live: e.name }));
           break;
         case "done":
-          if (e.session) setSession(e.session);
+          if (e.session) {
+            setSession(e.session);
+            rememberStageSession(e.session);
+          }
           if (speakRef.current && e.ok && e.result)
-            void speak(parseAsk(e.result).prose, isAr ? "ar" : "en").catch(() => {});
+            void speak(parseTurn(e.result).prose, isAr ? "ar" : "en").catch(() => {});
           patchLast((m) => {
             const failed = !e.ok && e.result !== "stopped";
-            // A finished turn that ends with a `kun-questions` block shows the wizard under its prose.
-            const { prose, questions } = failed ? { prose: m.text || e.result || "", questions: null } : parseAsk(m.text || e.result || "");
+            // A finished turn that ends with a block: questions show the wizard, a plan the plan card, a spec the spec card.
+            const { prose, questions, plan, spec } = failed
+              ? { prose: m.text || e.result || "", questions: null, plan: null, spec: null }
+              : parseTurn(m.text || e.result || "");
             return {
               ...settle(m),
               streaming: false,
               text: prose,
               asked: questions,
+              planBlock: plan,
+              spec,
               error: failed ? t(copy.runError) : undefined,
             };
           });
@@ -268,18 +303,36 @@ export default function ChatContent({
           break;
       }
     },
-    [patchLast, isAr, t],
+    [patchLast, isAr, t, rememberStageSession],
   );
 
   const send = useCallback(
-    async (prompt: string, base: Message[] = messages, route?: string | null, extra?: Pick<Message, "answers" | "declined">) => {
+    async (
+      prompt: string,
+      base: Message[] = messages,
+      route?: string | null,
+      extra?: Pick<Message, "answers" | "declined" | "card">,
+      opts?: {
+        /** Overrides the chat's session for this run (a stage chat resumes its own). */
+        session?: string | null;
+        /** The chat's title in Sessions. */
+        title?: string;
+        /** The formula the run comes from, stamped on the answer. */
+        formula?: string;
+        /** This run's model and effort (the state cannot be read back in the same tick). */
+        model?: Family | null;
+        effort?: string | null;
+      },
+    ) => {
       const text = prompt.trim();
       if (!text || busy) return;
       const timing = { formula: stationRef.current?.id ?? null, tTap: tapRef.current, tSend: Date.now() };
       tapRef.current = null;
       sourceRef.current = null;
       setFill(null);
-      const { model, effort } = runModel.current;
+      const { model: stateModel, effort: stateEffort } = runModel.current;
+      const model = opts?.model !== undefined ? opts.model : stateModel;
+      const effort = opts?.effort !== undefined ? opts.effort : stateEffort;
       setFormulaModel(null);
       setFormulaEffort(null);
       const id = crypto.randomUUID();
@@ -297,11 +350,13 @@ export default function ChatContent({
           route: route ?? null,
           plan: ranInPlan,
           record: ranInPlan ? (stationRef.current?.record ?? null) : null,
+          // A stage discussion's turns never offer Accept: they end with Lock.
+          formula: opts?.formula ?? (stageChat.current && !stageChat.current.fallback ? "video.spec.stage" : undefined),
         },
       ]);
       requestAnimationFrame(() => scrollToBottom());
       try {
-        await ask(text, { jobId: id, session, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null, model, effort, timing }, onEvent);
+        await ask(text, { jobId: id, session: opts?.session !== undefined ? opts.session : session, title: opts?.title ?? null, taskId: task ?? null, repo: ctx.repo || null, route: route ?? null, model, effort, timing }, onEvent);
       } catch (err) {
         patchLast((m) => ({ ...m, streaming: false, error: String(err) }));
       } finally {
@@ -319,10 +374,10 @@ export default function ChatContent({
 
   /** Runs the last prompt again, in place of the failed answer. */
   const retry = () => {
-    const i = messages.findLastIndex((m) => m.role === "user");
+    const i = messages.findLastIndex((m) => m.role === "user" && !m.local);
     if (i >= 0) {
       const u = messages[i]!;
-      void send(u.text, messages.slice(0, i), messages[i + 1]?.route ?? null, { answers: u.answers, declined: u.declined });
+      void send(u.text, messages.slice(0, i), messages[i + 1]?.route ?? null, { answers: u.answers, declined: u.declined, card: u.card });
     }
   };
 
@@ -331,6 +386,7 @@ export default function ChatContent({
     setMessages([]);
     setSession(null);
     setResumed(null);
+    stageChat.current = null;
     stationRef.current = null;
     sourceRef.current = null;
     lastFill.current = null;
@@ -377,10 +433,17 @@ export default function ChatContent({
     if (order) stationRef.current = null;
   };
   /** Accept: the plan becomes work. Only this switches to the working route. */
-  const accept = (record: string | null | undefined) => {
+  const accept = async (m: Message) => {
     if (!working) return;
     setRouteId(working.id);
-    void send(acceptMessage(record), undefined, working.id);
+    // The plan block and the panel's picks go to a file first; the accept message names it. An older Rust has no
+    // such command: the message is then today's.
+    const picks = composedRef.current?.picks ?? {};
+    const file =
+      m.planBlock || Object.keys(picks).length
+        ? await savePlan(JSON.stringify(planFile(m.planBlock, picks))).catch(() => null)
+        : null;
+    void send(acceptMessage(m.record, file), undefined, working.id);
   };
   /** Writes a filled prompt into the box, caret at the end, nothing sent; the route is set silently. */
   const writeFilled = (
@@ -423,6 +486,147 @@ export default function ChatContent({
   const dismissOption = (o: HomeOption) => {
     if (o.logId) void stationLog(ctx.dept, ctx.repo || null, o.logId, "dismiss");
   };
+  /**
+   * The panel's request, started: the filled formula is sent, the panel closes and the transcript shows one compact
+   * line with the sentence (the full prompt is behind it). A request never continues a stage chat.
+   */
+  const startComposed = async () => {
+    const c = composedRef.current;
+    if (!c?.formula || busy) return;
+    try {
+      // `new` is reserved for this fill: it keeps a new-film request off the stage formulas.
+      const f = await fillWith(ctx.dept, c.formula, c.set);
+      stationRef.current = { id: f.id, record: f.record };
+      void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
+      setSettingsOpen(false);
+      const sentence = (isAr ? c.sentence.ar : c.sentence.en) || f.id;
+      const fresh = stageChat.current !== null;
+      stageChat.current = null;
+      if (fresh) setSession(null);
+      await send(f.prompt, fresh ? [] : undefined, f.route ?? c.route, { card: { sentence } }, {
+        title: sentence,
+        formula: f.id,
+        model: familyOf(f.model),
+        effort: f.effort,
+        ...(fresh ? { session: null } : {}),
+      });
+    } catch {
+      // the station's script is unavailable: nothing is sent
+    }
+  };
+  /** Tab: the same fill goes into the box for editing (the panel closes); the person sends it. */
+  const draftComposed = async (): Promise<string | null> => {
+    const c = composedRef.current;
+    if (!c?.formula) return null;
+    try {
+      const f = await fillWith(ctx.dept, c.formula, c.set);
+      stationRef.current = { id: f.id, record: f.record };
+      setFormulaModel(f.model);
+      setFormulaEffort(f.effort);
+      if (f.route ?? c.route) setRouteId((f.route ?? c.route)!);
+      void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
+      setSettingsOpen(false);
+      return f.prompt;
+    } catch {
+      return null;
+    }
+  };
+
+  // ---- one stage of a film, in the chat (no model until the person acts) ----
+  const planRoute = routes.find((r) => r.mode === "plan")?.id ?? null;
+  const storedSession = (film: string, stage: string): string | null => {
+    try {
+      return localStorage.getItem(stageSessionKey(film, stage));
+    } catch {
+      return null;
+    }
+  };
+  /** The stage as a view: the station's, else one built from the film's status (an older kun). */
+  const stageView = async (film: string, stage: string): Promise<StageView | null> => {
+    const v = parseStage(await stationStage(ctx.dept, film, stage));
+    if (v) return v;
+    const d = await filmData(film);
+    return d ? stageFromStatus(d.film, stage) : null;
+  };
+  /** Brings a stage into the chat as a local turn. Another stage's (or any other) chat gives way to a new chat first. */
+  const openStage = async (film: string, stage: string) => {
+    if (busy) return;
+    const view = await stageView(film, stage);
+    if (!view) return;
+    const cur = stageChat.current;
+    const same = cur?.film === film && cur.stage === stage;
+    if (!same) {
+      setSession(storedSession(film, stage));
+      setResumed(null);
+      stationRef.current = null;
+      lastFill.current = null;
+    }
+    stageChat.current = { film, stage, fallback: !!view.fallback };
+    if (planRoute) setRouteId(planRoute);
+    setLockError(null);
+    const turn: Message = { role: "assistant", text: "", tools: [], live: null, local: true, stage: view };
+    setMessages((all) => [...(same ? all : []), turn]);
+    requestAnimationFrame(() => scrollToBottom());
+  };
+  /** The discussion: the video agent on the read-only route, formula `video.spec.stage` (an older kun: the stage's own formula). */
+  const askStage = async (film: string, stage: string, typed: string | null, fallback = false) => {
+    if (busy) return;
+    const id = fallback ? stageFormula(stage) : "video.spec.stage";
+    try {
+      const f = await fillWith(ctx.dept, id, fallback ? { project: film } : { project: film, stage });
+      const prompt = typed ? `${f.prompt}\n\n${typed}` : f.prompt;
+      stationRef.current = { id: f.id, record: f.record };
+      void stationLog(ctx.dept, ctx.repo || null, f.id, "pick");
+      const route = (fallback ? planRoute : (f.route ?? planRoute)) ?? null;
+      if (route) setRouteId(route);
+      stageChat.current = { film, stage, fallback };
+      const sentence = typed ?? `${stage} · ${t(copy.discuss)}`;
+      await send(prompt, undefined, route, { card: { sentence } }, {
+        session: storedSession(film, stage) ?? session,
+        title: `${film} · ${stage}`,
+        formula: f.id,
+        model: familyOf(f.model),
+        effort: f.effort,
+      });
+    } catch {
+      // the station's script is unavailable: nothing is sent
+    }
+  };
+  /** Redraws the stage turn at `index` from a fresh read, and tells the strip the ledger changed. */
+  const refreshStage = async (index: number, film: string, stage: string) => {
+    const view = await stageView(film, stage);
+    if (view) setMessages((all) => all.map((m, i) => (i === index ? { ...m, stage: view, text: String(++rev.current) } : m)));
+    setRefresh((n) => n + 1);
+  };
+  /** The wizard's answer: a pick re-locks the stage by script at once; typed text opens the discussion with it. */
+  const answerStage = async (index: number, view: StageView, items: Answered[]) => {
+    const { set, typed } = splitAnswers(items);
+    if (typed) return askStage(view.film, view.stage, typed, view.fallback);
+    if (Object.keys(set).length === 0) return;
+    try {
+      await lockStage(view.film, view.stage, { set });
+    } catch {
+      // a kun without `produce lock`: the stage turn stays as it was
+    }
+    await refreshStage(index, view.film, view.stage);
+  };
+  /** Lock: the discussion's spec is recorded in the ledger, then a fresh stage turn follows. */
+  const lockSpec = async (index: number, m: Message) => {
+    const spec = m.spec;
+    const film = stageChat.current?.film ?? filmRef.current;
+    if (!spec || !film) return;
+    setLockError(null);
+    try {
+      await lockStage(film, spec.stage, { spec: JSON.stringify(specFile(spec)) });
+    } catch (err) {
+      setLockError(String(err instanceof Error ? err.message : err));
+      return;
+    }
+    setMessages((all) => all.map((x, i) => (i === index ? { ...x, spec: null } : x)));
+    setRefresh((n) => n + 1);
+    await openStage(film, spec.stage);
+  };
+
   /**
    * A station match applied: the department switches silently when the text names another, the formula
    * is filled (no model), its route and record are kept, and the pick is logged. The prompt, or null.
@@ -491,16 +695,6 @@ export default function ChatContent({
     }
   };
   /**
-   * A row of the production strip: the formula fills the box through the same path as a station match (route, model,
-   * record and the pick log). A formula this checkout does not ship (kun adds some later) falls to the visual stage.
-   */
-  const tapFormula = async (id: string, set: Record<string, string>) => {
-    const known = formulaList.dept === ctx.dept && formulaList.list.some((f) => f.id === id);
-    const use = known || formulaList.dept !== ctx.dept ? id : stageFormula("visual");
-    const prompt = await applyMatch({ id: use, confidence: 1, dept: null, set });
-    if (prompt !== null) setFill({ text: prompt, focus: true, n: ++fillN.current });
-  };
-  /**
    * A video attached through + → Videos is the film's source: later fills carry it, and a formula already in the box
    * (untouched) is filled again with it, which only changes the box when the formula has a `source` slot.
    */
@@ -522,6 +716,9 @@ export default function ChatContent({
    * anything else, a filled formula and any reply in a running chat send.
    */
   const submitText = async (text: string) => {
+    // A first typed reply in a stage chat opens that stage's discussion (the agent has not been told the stage yet).
+    const sc = stageChat.current;
+    if (sc && !busy && !messages.some((m) => m.role === "assistant" && !m.local)) return void askStage(sc.film, sc.stage, text, sc.fallback);
     if (!busy && messages.length === 0 && !stationRef.current) {
       const m = await matchText(ctx.dept, text, ctx.repo || null);
       if (usableMatch(m)) {
@@ -573,17 +770,31 @@ export default function ChatContent({
         isAr={isAr}
         repo={ctx.repo}
         busy={busy}
-        onPick={(id, set) => {
+        onStage={(name) => {
           setSettingsOpen(false)
-          void tapFormula(id, set)
+          if (filmRef.current) void openStage(filmRef.current, name)
         }}
         onFilm={onFilm}
         open={settingsOpen}
         onOpenChange={setSettingsOpen}
-        onAvailable={setFilmAvailable}
         onSettings={onSettings}
+        onCompose={onCompose}
+        refresh={refresh}
       />
-    ) : null;
+    ) : null
+  /** The gear is always there in the Video department; with a composed request the round button sends it. */
+  const settingsProp =
+    ctx.dept === "video"
+      ? {
+          available: true,
+          open: settingsOpen,
+          onToggle: toggleSettings,
+          panel: strip,
+          composed: composed?.formula ? { sentence: (isAr ? composed.sentence.ar : composed.sentence.en) || composed.formula } : null,
+          onStart: () => void startComposed(),
+          onDraftComposed: draftComposed,
+        }
+      : undefined
 
   return (
     <div className="flex h-full flex-col overflow-x-clip">
@@ -609,7 +820,7 @@ export default function ChatContent({
               </div>
               <div className="w-full">
                 <Composer
-                  settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings, panel: strip } : undefined}
+                  settings={settingsProp}
                   lang={lang}
                   onSend={(text) => void submitText(text)}
                   onStop={() => jobId && void stop(jobId)}
@@ -649,7 +860,22 @@ export default function ChatContent({
                 if (m.role === "user" && m.declined) return <DeclinedLine key={i} text={t(copy.wizDeclined)} />;
                 if (m.role === "user" && (m.answers?.length || isAnswersMessage(m.text)))
                   return <AnswerBlock key={i} lines={m.answers?.length ? m.answers : parseAnswers(m.text)} />;
-                const note = splitNote(m.streaming ? hideBlock(m.text) : m.text);
+                if (m.role === "user" && m.card) return <RequestLine key={i} sentence={m.card.sentence} prompt={m.text} isAr={isAr} />;
+                if (m.role === "assistant" && m.stage) {
+                  const view = m.stage;
+                  return (
+                    <StageTurn
+                      key={`${i}.${m.text}`}
+                      view={view}
+                      active={i === messages.length - 1 && !busy}
+                      isAr={isAr}
+                      title={chatTitle}
+                      onAnswer={(items) => void answerStage(i, view, items)}
+                      onDiscuss={() => void askStage(view.film, view.stage, null, view.fallback)}
+                    />
+                  );
+                }
+                const note = splitNote(m.streaming ? hideBlocks(m.text) : m.text);
                 return m.role === "user" ? (
                   <UserTurn key={i} text={m.text} first={startsFolded(i)} isAr={isAr} />
                 ) : (
@@ -696,6 +922,16 @@ export default function ChatContent({
                       />
                     )}
                     {m.streaming && <ClaudeStatus isAr={isAr} seed={String(i)} onStop={() => jobId && void stop(jobId)} />}
+                    {m.planBlock && !m.streaming && <PlanCard plan={m.planBlock} isAr={isAr} />}
+                    {m.spec && !m.streaming && (
+                      <SpecCard
+                        spec={m.spec}
+                        isAr={isAr}
+                        canLock={i === messages.length - 1 && !busy}
+                        error={i === messages.length - 1 ? lockError : null}
+                        onLock={() => void lockSpec(i, m)}
+                      />
+                    )}
                     {!m.streaming && m.text && !m.error && (
                       <TurnActions text={m.text} isAr={isAr} />
                     )}
@@ -708,10 +944,11 @@ export default function ChatContent({
                       asking: !!m.asked,
                       failed: !!m.error,
                       hasWorkingRoute: !!working,
+                      lockInstead: !!m.spec || m.formula === "video.spec.stage",
                     }) && (
                       <button
                         type="button"
-                        onClick={() => accept(m.record)}
+                        onClick={() => void accept(m)}
                         className="inline-flex items-center rounded-full bg-foreground px-4 py-2 text-sm font-medium text-background transition-colors hover:bg-foreground/85"
                       >
                         {t(copy.acceptPlan)}
@@ -738,7 +975,7 @@ export default function ChatContent({
             </button>
           )}
           <Composer
-            settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings, panel: strip } : undefined}
+            settings={settingsProp}
             lang={lang}
             onSend={(text) => void submitText(text)}
             onStop={() => jobId && void stop(jobId)}

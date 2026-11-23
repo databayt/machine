@@ -317,6 +317,78 @@ pub fn questions_args(
     Ok(a)
 }
 
+/// The 14 stages of a film, in order.
+pub const STAGE_KEYS: [&str; 14] = [
+    "request", "research", "brief", "script", "storyboard", "assets", "visual", "audio", "edit", "render", "qa",
+    "approval", "cdn", "publish",
+];
+
+/// A film id: `hogwarts-intro-introduction-v001`.
+#[must_use]
+pub fn valid_film_id(s: &str) -> bool {
+    !s.is_empty()
+        && s.len() <= 96
+        && !s.starts_with(['.', '-'])
+        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+        && !s.contains("..")
+}
+
+fn project_args(project: Option<&str>) -> Result<Vec<String>, PackError> {
+    match project.filter(|p| !p.is_empty()) {
+        None => Ok(Vec::new()),
+        Some(p) if valid_film_id(p) => Ok(vec!["--project".to_owned(), p.to_owned()]),
+        Some(_) => Err(PackError::Station("film id is invalid".to_owned())),
+    }
+}
+
+/// The arguments of `settings`, after the script path.
+///
+/// # Errors
+/// On a bad department, repo or film id.
+pub fn settings_args(dept: &str, repo: Option<&str>, project: Option<&str>) -> Result<Vec<String>, PackError> {
+    let mut a = vec!["settings".to_owned()];
+    a.extend(common(dept, repo, "")?);
+    a.extend(project_args(project)?);
+    a.push("--json".to_owned());
+    Ok(a)
+}
+
+/// The arguments of `compose`, after the script path. The `set` keys are choice keys (`ratio`), and
+/// their values may hold spaces, `:` and `+` (`9:16`, `burned in`): the slot rule already allows them.
+///
+/// # Errors
+/// On a bad department, repo, film id or `set` entry.
+pub fn compose_args(
+    dept: &str,
+    repo: Option<&str>,
+    project: Option<&str>,
+    set: &BTreeMap<String, String>,
+) -> Result<Vec<String>, PackError> {
+    let mut a = vec!["compose".to_owned()];
+    a.extend(common(dept, repo, "")?);
+    a.extend(project_args(project)?);
+    a.extend(set_args(set)?);
+    a.push("--json".to_owned());
+    Ok(a)
+}
+
+/// The arguments of `stage`, after the script path.
+///
+/// # Errors
+/// On a bad department, film id or an unknown stage.
+pub fn stage_args(dept: &str, project: &str, stage: &str) -> Result<Vec<String>, PackError> {
+    if !STAGE_KEYS.contains(&stage) {
+        return Err(PackError::Station(format!("unknown stage `{stage}`")));
+    }
+    if !valid_film_id(project) {
+        return Err(PackError::Station("film id is invalid".to_owned()));
+    }
+    let mut a = vec!["stage".to_owned(), stage.to_owned()];
+    a.extend(common(dept, None, "")?);
+    a.extend(["--project".to_owned(), project.to_owned(), "--json".to_owned()]);
+    Ok(a)
+}
+
 /// The text the switch reads: trimmed, at most [`MAX_TEXT_CHARS`], and without leading dashes so it
 /// can never read as a flag. `None` when nothing is left.
 #[must_use]
@@ -509,6 +581,49 @@ pub async fn questions(
     let args = questions_args(dept, id, repo, set)?;
     let out = run_station(args, FILL_TIMEOUT).await.map_err(PackError::Station)?;
     parse_questions(&out)
+}
+
+/// A script answer that must be a JSON object; `{"error": "…"}` becomes an `Err`.
+fn object_of(out: &str) -> Result<Value, PackError> {
+    let v = json_of(out)
+        .filter(Value::is_object)
+        .ok_or_else(|| PackError::Station("the station printed something that is not JSON".to_owned()))?;
+    match v.get("error") {
+        Some(e) => Err(PackError::Station(e.as_str().map_or_else(|| e.to_string(), str::to_owned))),
+        None => Ok(v),
+    }
+}
+
+/// The department's Video settings menu as the script reads it, passed through.
+///
+/// # Errors
+/// A message when the arguments are bad, the script is old or missing, or it answered an error.
+pub async fn settings(dept: &str, repo: Option<&str>, project: Option<&str>) -> Result<Value, PackError> {
+    let args = settings_args(dept, repo, project)?;
+    object_of(&run_station(args, BOARD_TIMEOUT).await.map_err(PackError::Station)?)
+}
+
+/// A request composed from choices (no model), passed through.
+///
+/// # Errors
+/// As [`settings`].
+pub async fn compose(
+    dept: &str,
+    repo: Option<&str>,
+    project: Option<&str>,
+    set: &BTreeMap<String, String>,
+) -> Result<Value, PackError> {
+    let args = compose_args(dept, repo, project, set)?;
+    object_of(&run_station(args, FILL_TIMEOUT).await.map_err(PackError::Station)?)
+}
+
+/// One production stage of a film, passed through.
+///
+/// # Errors
+/// As [`settings`].
+pub async fn stage(dept: &str, project: &str, stage: &str) -> Result<Value, PackError> {
+    let args = stage_args(dept, project, stage)?;
+    object_of(&run_station(args, BOARD_TIMEOUT).await.map_err(PackError::Station)?)
 }
 
 /// Typed text to a formula. Never fails: a failure is "no match".

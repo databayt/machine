@@ -2,12 +2,18 @@
 // The protocol text lives in kun (`departments/_shared/ask.md`); this is its reader. Pure: no React, no IPC
 // (node --test src/components/chat/ask.test.ts).
 
+import { trailingBlock } from "./block-pure.ts"
+
 export interface AskOption {
   label: string
   description: string
+  /** The value a standard choice stands for (a stage's question, from `station stage`). */
+  value?: string
 }
 
 export interface AskQuestion {
+  /** The choice key this question sets (a stage's question). */
+  key?: string
   question: string
   /** The chip: 12 characters at most. */
   header: string
@@ -21,7 +27,6 @@ export const MIN_OPTIONS = 2
 export const MAX_OPTIONS = 4
 export const MAX_HEADER = 12
 
-const FENCE = "```"
 const OPEN = "```kun-questions"
 
 function clean(v: unknown): string {
@@ -47,9 +52,22 @@ function validQuestion(raw: unknown): AskQuestion | null {
     const { label, description } = o as Record<string, unknown>
     const l = clean(label)
     if (!l || typeof description !== "string") return null
-    options.push({ label: l, description: description.trim() })
+    const v = clean((o as Record<string, unknown>).value)
+    options.push(v ? { label: l, description: description.trim(), value: v } : { label: l, description: description.trim() })
   }
-  return { question, header, multiSelect: r.multiSelect === true, options }
+  const key = clean(r.key)
+  return { ...(key ? { key } : {}), question, header, multiSelect: r.multiSelect === true, options }
+}
+
+/** The valid questions of a block's parsed JSON (1 to 4; an invalid one is dropped, a fifth is ignored), or null. */
+export function parseQuestionsJson(json: unknown): AskQuestion[] | null {
+  const list = json && typeof json === "object" ? (json as { questions?: unknown }).questions : null
+  if (!Array.isArray(list)) return null
+  const questions = list
+    .map(validQuestion)
+    .filter((q): q is AskQuestion => q !== null)
+    .slice(0, MAX_QUESTIONS)
+  return questions.length ? questions : null
 }
 
 /**
@@ -59,30 +77,9 @@ function validQuestion(raw: unknown): AskQuestion | null {
  * whose JSON does not parse leaves the text exactly as it came (`questions: null`).
  */
 export function parseAsk(text: string): { prose: string; questions: AskQuestion[] | null } {
-  const same = { prose: text, questions: null }
-  const trimmed = text.trimEnd()
-  if (!trimmed.endsWith(FENCE)) return same
-  const start = trimmed.lastIndexOf(OPEN)
-  if (start < 0) return same
-  const bodyStart = trimmed.indexOf("\n", start)
-  const bodyEnd = trimmed.length - FENCE.length
-  if (bodyStart < 0 || bodyStart >= bodyEnd) return same
-  const body = trimmed.slice(bodyStart + 1, bodyEnd)
-  if (body.includes(FENCE)) return same
-  let json: unknown
-  try {
-    json = JSON.parse(body)
-  } catch {
-    return same
-  }
-  const list = json && typeof json === "object" ? (json as { questions?: unknown }).questions : null
-  const prose = trimmed.slice(0, start).trimEnd()
-  if (!Array.isArray(list)) return { prose, questions: null }
-  const questions = list
-    .map(validQuestion)
-    .filter((q): q is AskQuestion => q !== null)
-    .slice(0, MAX_QUESTIONS)
-  return { prose, questions: questions.length ? questions : null }
+  const b = trailingBlock(text, "kun-questions")
+  if (!b.found) return { prose: text, questions: null }
+  return { prose: b.prose, questions: parseQuestionsJson(b.json) }
 }
 
 /** While a turn streams: its text without a block that is still being written (or was just finished). */
@@ -96,6 +93,12 @@ export interface Answered {
   header: string
   question: string
   answer: string
+  /** The question's choice key, when it had one. */
+  key?: string
+  /** The chosen option's value, when it had one. */
+  value?: string
+  /** The answer was typed on "Type something." */
+  typed?: true
 }
 
 export const ANSWERS_PREFIX = "User has answered your questions:"

@@ -16,6 +16,8 @@ export interface Stage {
   variants: { done: number; total: number } | null
   /** The stage or one of its variants failed (a QA fail): the red light. */
   failed: boolean
+  /** The stage has a lock in the film's ledger (`status --json -> locks`). */
+  locked: boolean
 }
 
 /** A stage's light: green done, orange next, red failed, grey not started. */
@@ -173,6 +175,8 @@ export function parseStatus(raw: unknown): Film | null {
   const brand = str(raw.brand) ?? ""
   const cells = stageCells(raw.stages)
   const grid = variantGrid(raw.variantGrid ?? raw.grid ?? raw.variants)
+  const locks = isObj(raw.locks) ? raw.locks : {}
+  const listed = new Map<string, Obj>(Array.isArray(raw.stage_list) ? raw.stage_list.filter(isObj).flatMap((s) => (str(s.name) ?? str(s.stage) ? [[(str(s.name) ?? str(s.stage))!, s] as [string, Obj]] : [])) : [])
   const stages: Stage[] = []
   const known = [...STAGES, ...[...cells.keys()].filter((k) => !(STAGES as readonly string[]).includes(k))]
   for (const name of known) {
@@ -185,7 +189,8 @@ export function parseStatus(raw: unknown): Film | null {
     }
     const failedVariant = [...grid.cells.values()].some((m) => m.get(name) === "failed")
     const failed = str(o?.status) === "failed" || cell === "failed" || failedVariant
-    stages.push({ n: stages.length + 1, name, done: isDone(cell), file: str(o?.file), at: str(o?.at), variants, failed })
+    const locked = !!locks[name] || listed.get(name)?.locked === true || o?.locked === true
+    stages.push({ n: stages.length + 1, name, done: isDone(cell), file: str(o?.file), at: str(o?.at), variants, failed, locked })
   }
   const nextName = str(raw.next)
   const next = (nextName ? stages.find((s) => s.name === nextName) : null) ?? stages.find((s) => !s.done) ?? null
@@ -379,7 +384,7 @@ export function slotsFor(film: string, scene?: Pick<Scene, "id" | "flow"> | null
 }
 
 /** Formulas that work on an existing film: they take the selected film as `project`. `video.film.plan` starts a new one and does not. */
-const FILM_FORMULA = /^video\.(stage|order|gate)\.|^video\.film\.continue$/
+const FILM_FORMULA = /^video\.(stage|order|gate)\.|^video\.film\.(continue|run)$|^video\.spec\.stage$/
 
 /**
  * The slots a fill gets: the caller's own, plus the selected film as `project` for a formula on an existing film, plus

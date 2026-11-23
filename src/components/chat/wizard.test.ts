@@ -98,3 +98,19 @@ test("Tab and the arrows switch questions (mirrored in Arabic) and wrap", () => 
   assert.equal(tabDelta("ArrowLeft", true), 1)
   assert.equal(tabDelta("x", false), 0)
 })
+
+test("a question's key and an option's value come back with the answer; typed text is flagged", () => {
+  const keyed: AskQuestion = { key: "look", question: "Which look?", header: "Look", multiSelect: false, options: [{ label: "Real screens + 3D", description: "", value: "mixed" }, { label: "Real screens", description: "", value: "captures" }] }
+  const picked = run(initState([keyed]), { type: "digit", n: 2 })
+  assert.deepEqual(collect(picked), [{ header: "Look", question: "Which look?", answer: "Real screens", key: "look", value: "captures" }])
+  const typed = run(initState([keyed]), { type: "digit", n: 3 }, { type: "type", text: "make it darker" }, { type: "enter" })
+  assert.deepEqual(collect(typed), [{ header: "Look", question: "Which look?", answer: "make it darker", key: "look", typed: true }])
+  // a question without a key or values collects exactly as before
+  assert.deepEqual(collect(run(initState([single]), { type: "digit", n: 1 })), [{ header: "Audience", question: "Who is it for?", answer: "Owners" }])
+})
+
+test("the first highlight can open on Chat about this", () => {
+  assert.equal(initState([single], "chat").cursor, 4)
+  assert.equal(run(initState([single], "chat"), { type: "enter" }).done, "chat")
+  assert.equal(initState([single]).cursor, 0)
+})

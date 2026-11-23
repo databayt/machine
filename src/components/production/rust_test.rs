@@ -109,3 +109,81 @@ fn exist_marks_files_under_home_only() {
     let got = exist_in(&[there.display().to_string(), home.path().join("nope.png").display().to_string(), "/etc/hosts".to_owned()], home.path());
     assert_eq!(got, [true, false, false]);
 }
+
+fn sets(pairs: &[(&str, &str)]) -> BTreeMap<String, String> {
+    pairs.iter().map(|(k, v)| ((*k).to_owned(), (*v).to_owned())).collect()
+}
+
+#[test]
+fn lock_args_build_both_forms() {
+    let none = BTreeMap::new();
+    assert_eq!(
+        lock_args("f-1", None, true, &none, None, "abdout").unwrap(),
+        ["lock", "f-1", "--all", "--by", "abdout", "--no-sync", "--json"]
+    );
+    assert_eq!(
+        lock_args("f-1", Some("visual"), false, &sets(&[("look", "mixed"), ("threed", "blender 5")]), None, "abdout").unwrap(),
+        ["lock", "f-1", "visual", "--set", "look=mixed", "--set", "threed=blender 5", "--by", "abdout", "--no-sync", "--json"]
+    );
+    let f = Path::new("/tmp/s.json");
+    assert_eq!(
+        lock_args("f-1", Some("edit"), false, &none, Some(f), "abdout").unwrap(),
+        ["lock", "f-1", "edit", "--spec", "/tmp/s.json", "--by", "abdout", "--no-sync", "--json"]
+    );
+}
+
+#[test]
+fn lock_args_refuse_bad_input() {
+    let none = BTreeMap::new();
+    assert!(lock_args("f-1", Some("edit"), true, &none, None, "abdout").is_err());
+    assert!(lock_args("f-1", None, false, &none, None, "abdout").is_err());
+    assert!(lock_args("f-1", Some("editing"), false, &none, None, "abdout").is_err());
+    assert!(lock_args("f-1", Some("edit"), false, &sets(&[("Look", "x")]), None, "abdout").is_err());
+    assert!(lock_args("f-1", Some("edit"), false, &sets(&[("look", "a\nb")]), None, "abdout").is_err());
+    assert!(lock_args("f-1", Some("edit"), false, &sets(&[("look", "")]), None, "abdout").is_err());
+    assert!(lock_args("f-1", Some("edit"), false, &sets(&[("look", &"x".repeat(301))]), None, "abdout").is_err());
+    assert!(lock_args("f-1", None, true, &none, Some(Path::new("/tmp/s.json")), "abdout").is_err());
+    assert!(lock_args("../x", None, true, &none, None, "abdout").is_err());
+    assert!(lock_args("f-1", None, true, &none, None, "Bad Login").is_err());
+    assert!(lock_args("f-1", None, true, &none, None, "").is_err());
+}
+
+#[test]
+fn spec_and_plan_text_are_checked() {
+    assert!(check_spec(r#"{"stage":"visual","decisions":{"look":"mixed"}}"#, "visual").is_ok());
+    assert!(check_spec(r#"{"stage":"audio"}"#, "visual").is_err());
+    assert!(check_spec(r#"{"decisions":{}}"#, "visual").is_err());
+    assert!(check_spec("[1]", "visual").is_err());
+    assert!(check_spec("not json", "visual").is_err());
+    let big = format!(r#"{{"stage":"visual","notes":"{}"}}"#, "x".repeat(65 * 1024));
+    assert!(check_spec(&big, "visual").is_err());
+
+    assert!(check_plan(r#"{"picks":{"kind":"intro"}}"#).is_ok());
+    assert!(check_plan("[]").is_err());
+    assert!(check_plan("nope").is_err());
+    let big = format!(r#"{{"notes":"{}"}}"#, "x".repeat(257 * 1024));
+    assert!(check_plan(&big).is_err());
+}
+
+#[test]
+fn saved_paths_sit_under_the_given_folder() {
+    let dir = Path::new("/home/x/.kun/machine/video/plans");
+    let p = plan_path(dir, 1_700_000_000_123);
+    assert!(p.starts_with(dir));
+    assert_eq!(p.file_name().unwrap(), "1700000000123.json");
+    let s = spec_path(Path::new("/d"), "f-1", "visual", 5);
+    assert_eq!(s, Path::new("/d/f-1-visual-5.json"));
+}
+
+#[test]
+fn the_kun_checkout_is_tried_first_for_lock() {
+    let home = tempfile::tempdir().unwrap();
+    let kun = tempfile::tempdir().unwrap();
+    for root in [home.path(), kun.path()] {
+        let f = root.join(".claude/skills").join(SCRIPT);
+        fs::create_dir_all(f.parent().unwrap()).unwrap();
+        fs::write(f, "").unwrap();
+    }
+    assert!(script_path_kun_first(home.path(), kun.path()).unwrap().starts_with(kun.path()));
+    assert!(script_path(home.path(), kun.path()).unwrap().starts_with(home.path()));
+}

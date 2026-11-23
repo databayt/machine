@@ -47,11 +47,12 @@ export const rowCount = (q: AskQuestion): number => q.options.length + 2
 export const typeRow = (q: AskQuestion): number => q.options.length
 export const chatRow = (q: AskQuestion): number => q.options.length + 1
 
-export function initState(questions: readonly AskQuestion[]): WState {
+/** `cursor` opens the highlight elsewhere than the first option (a stage the agent owns starts on "Chat about this"). */
+export function initState(questions: readonly AskQuestion[], cursor?: "chat"): WState {
   return {
     questions,
     tab: 0,
-    cursor: 0,
+    cursor: cursor === "chat" && questions[0] ? chatRow(questions[0]) : 0,
     picks: questions.map(() => null),
     checked: questions.map((q) => q.options.map(() => false)),
     typed: questions.map(() => ""),
@@ -82,7 +83,15 @@ export function collect(s: WState): Answered[] {
   const out: Answered[] = []
   s.questions.forEach((q, i) => {
     const answer = answerOf(s, i)
-    if (answer !== null) out.push({ header: q.header, question: q.question, answer })
+    if (answer === null) return
+    const item: Answered = { header: q.header, question: q.question, answer }
+    if (q.key) item.key = q.key
+    const p = s.picks[i]
+    if (!q.multiSelect && p !== null && p !== undefined) {
+      const v = q.options[p]!.value
+      if (v) item.value = v
+    } else if (s.typed[i]!.trim() && !q.multiSelect) item.typed = true
+    out.push(item)
   })
   return out
 }

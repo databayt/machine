@@ -67,3 +67,19 @@ export async function filesExist(paths: string[]): Promise<boolean[]> {
     return paths.map(() => true)
   }
 }
+
+/**
+ * Records a stage's decisions in the film's ledger by script (`produce lock`, no model): `set` are choice values,
+ * `spec` the text of a `kun-spec` block, `all` locks the whole line. Rejects with the message (an older kun has no
+ * `lock`, and the caller falls back).
+ */
+export async function lockStage(id: string, stage: string | null, opts: { set?: Record<string, string> | null; spec?: string | null; all?: boolean } = {}): Promise<unknown> {
+  if (!isTauri()) throw new Error("not in the machine app")
+  return invoke<unknown>("plugin:production|production_lock", { id, stage, all: !!opts.all, set: opts.set ?? null, spec: opts.spec ?? null })
+}
+
+/** Saves the accepted plan (JSON text) to a file the accept message can name; resolves with its absolute path. */
+export async function savePlan(plan: string): Promise<string> {
+  if (!isTauri()) throw new Error("not in the machine app")
+  return invoke<string>("plugin:production|production_save_plan", { plan })
+}

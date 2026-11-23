@@ -131,6 +131,12 @@ fn title_from(prompt: &str) -> String {
     }
 }
 
+/// The session title: `title` when it is not blank (the UI sends a short sentence for a long
+/// filled formula), else the prompt's first characters.
+fn session_title(prompt: &str, title: Option<&str>) -> String {
+    title.filter(|t| !t.trim().is_empty()).map_or_else(|| title_from(prompt), title_from)
+}
+
 /// The flags that give a run its world: every repo of the profile that is on disk, then the
 /// generated settings file. Only claude takes them.
 fn job_extras(kind: DriverKind, repos: &[String], ws: &Workspace) -> Vec<String> {
@@ -409,6 +415,7 @@ async fn ask(
     model: Option<String>,
     effort: Option<String>,
     timing: Option<RunTiming>,
+    title: Option<String>,
     channel: Channel<Event>,
 ) -> Result<(), ChatError> {
     let timing = timing.unwrap_or_default();
@@ -434,7 +441,7 @@ async fn ask(
     let first = sticky.unwrap_or(configured);
     let setup = inputs.setup(first).await?;
     clock.setup = Some(station::now_ms());
-    let title = title_from(&prompt);
+    let title = session_title(&prompt, title.as_deref());
     let ctx = RunCtx { title, department: inputs.department.clone(), repo: inputs.repo.clone(), kind };
     let arabic = is_arabic(&prompt);
     let (tx, mut rx) = oneshot::channel();

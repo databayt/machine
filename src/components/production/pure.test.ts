@@ -166,6 +166,8 @@ test("a fill gets the film for film formulas only, and the attached video when t
   assert.deepEqual(fillSlots("video.order.capture", { scene: "s1" }, known), { scene: "s1", project: "f-1", source: "/v/promo.mp4" })
   assert.deepEqual(fillSlots("video.film.continue", {}, { project: "f-1" }), { project: "f-1" })
   // a new film is not pinned to the open one
+  assert.deepEqual(fillSlots("video.film.run", {}, { project: "f-1" }), { project: "f-1" })
+  assert.deepEqual(fillSlots("video.spec.stage", { stage: "visual" }, { project: "f-1" }), { stage: "visual", project: "f-1" })
   assert.deepEqual(fillSlots("video.film.plan", {}, known), { source: "/v/promo.mp4" })
   assert.deepEqual(fillSlots("video.film.plan", {}, { project: "f-1" }), {})
   // the caller's own values win
@@ -182,7 +184,7 @@ test("stages fall into four groups; the next stage picks the tab", () => {
 })
 
 test("a stage's light: green done, orange next, red failed, grey not started", () => {
-  const base = { n: 1, name: "qa", file: null, at: null, variants: null }
+  const base = { n: 1, name: "qa", file: null, at: null, variants: null, locked: false }
   assert.equal(lightOf({ ...base, done: true, failed: false }, false), "green")
   assert.equal(lightOf({ ...base, done: false, failed: false }, true), "orange")
   assert.equal(lightOf({ ...base, done: false, failed: true }, true), "red")
@@ -205,4 +207,13 @@ test("video settings: defaults from the film, saved values checked, slots for th
   assert.equal(fillSlots("video.stage.edit", { format: "x" }, { video: slots }).format, "x")
   assert.equal(fillSlots("video.stage.edit", {}, { video: slots }).platform, "Facebook")
   assert.equal(fillSlots("sales.offer", {}, { video: slots }).platform, undefined)
+})
+
+test("a stage is locked when the status's locks (or its stage_list entry) say so", () => {
+  const f = parseStatus({ ...TODAY, locks: { script: { by: "abdout", at: "x" } }, stage_list: [{ name: "visual", locked: true }] })!
+  const by = (n: string) => f.stages.find((s) => s.name === n)!.locked
+  assert.equal(by("script"), true)
+  assert.equal(by("visual"), true)
+  assert.equal(by("audio"), false)
+  assert.equal(parseStatus(TODAY)!.stages.every((s) => !s.locked), true, "an older kun has no locks")
 })

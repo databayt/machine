@@ -1020,6 +1020,29 @@ async fn match_text(department: String, text: String, repo: Option<String>) -> s
     station::match_text(&department, &text, repo.as_deref()).await
 }
 
+/// `station_settings` — the Video settings menu as data, read by the script (no model).
+#[tauri::command]
+async fn station_settings(department: String, repo: Option<String>, project: Option<String>) -> Result<Value, PackError> {
+    station::settings(&department, repo.as_deref(), project.as_deref()).await
+}
+
+/// `station_compose` — a request composed from tab choices, read by the script (no model).
+#[tauri::command]
+async fn station_compose(
+    department: String,
+    repo: Option<String>,
+    project: Option<String>,
+    set: Option<BTreeMap<String, String>>,
+) -> Result<Value, PackError> {
+    station::compose(&department, repo.as_deref(), project.as_deref(), &set.unwrap_or_default()).await
+}
+
+/// `station_stage` — one production stage of a film, read by the script (no model).
+#[tauri::command]
+async fn station_stage(department: String, project: String, stage: String) -> Result<Value, PackError> {
+    station::stage(&department, &project, &stage).await
+}
+
 /// One formula for the slash menu: its words and icon, no body.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, TS)]
 #[ts(export, export_to = "pack/types.ts")]
@@ -1181,6 +1204,9 @@ pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
             fill,
             questions,
             match_text,
+            station_settings,
+            station_compose,
+            station_stage,
             formulas,
             station_log
         ])

@@ -46,5 +46,11 @@ export const copy = {
   variants: { en: "variants", ar: "نسخ" },
   gate: { en: "gate", ar: "بوابة" },
   next: { en: "next", ar: "التالي" },
+  newFilm: { en: "New film", ar: "فيلم جديد" },
+  newFilmHint: { en: "from the tabs", ar: "من الخيارات" },
+  locked: { en: "Locked", ar: "مثبّتة" },
+  planCostLabel: { en: "cost", ar: "التكلفة" },
+  planGate: { en: "gate", ar: "بوابة" },
+  planLabel: { en: "Plan", ar: "الخطة" },
   tapHint: { en: "Tap a row to fill the box with its formula.", ar: "اضغط على صف لتعبئة الصندوق بصيغته." },
 } satisfies Record<string, Copy>

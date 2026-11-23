@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { ACCEPT_FILM, ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, orderMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
+import { ACCEPT_FILM, acceptFilmPlan, ACCEPT_ISSUE, ACCEPT_STEP, acceptMessage, orderMessage, showAccept, turnRoute, workingRoute } from "./accept.ts"
 
 test("a film plan creates the production, its film issue and a work order per piece handed over", () => {
   const m = acceptMessage("film")
@@ -52,6 +52,7 @@ test("Accept shows only under the last finished plan turn, and only when there i
     { failed: true },
     { hasWorkingRoute: false },
     { asking: true },
+    { lockInstead: true },
   ])
     assert.equal(showAccept({ ...ok, ...off }), false, JSON.stringify(off))
 })
@@ -62,4 +63,18 @@ test("a filled work order is sent as a request to create the issue, with its tex
   assert.ok(m.includes("`produce order <film ID> video.order.blender --to <login> --set …`"))
   assert.ok(m.includes("do not do the work yourself"))
   assert.ok(m.endsWith("---\n\n## Task\nBuild the classroom scene"))
+})
+
+test("with a saved plan file the film plan locks the line from it", () => {
+  const m = acceptMessage("film", "/Users/x/.kun/machine/video/plans/1.json")
+  assert.equal(m, acceptFilmPlan("/Users/x/.kun/machine/video/plans/1.json"))
+  for (const part of ["`produce init …`", "`produce lock <ID> --all --plan /Users/x/.kun/machine/video/plans/1.json`", "`produce issue <ID> --create`", "`produce order <ID> <formula> --to <login> --create`", "stop at the next gate"])
+    assert.ok(m.includes(part), part)
+})
+
+test("without a file (an older Rust) every record keeps today's message", () => {
+  assert.equal(acceptMessage("film", null), ACCEPT_FILM)
+  assert.equal(acceptMessage("film"), ACCEPT_FILM)
+  assert.equal(acceptMessage("issue", "/x.json"), ACCEPT_ISSUE, "only a film plan uses the file")
+  assert.equal(acceptMessage("none", "/x.json"), ACCEPT_STEP)
 })

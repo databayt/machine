@@ -14,7 +14,7 @@
 //! 1.5 MB at most).
 
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::Write as _,
     fs,
     path::{Path, PathBuf},
@@ -37,6 +37,10 @@ use crate::pack::{self, health};
 const SCRIPT: &str = "produce/scripts/produce.mjs";
 const LIST_TIMEOUT: Duration = Duration::from_secs(10);
 const STATUS_TIMEOUT: Duration = Duration::from_secs(10);
+const LOCK_TIMEOUT: Duration = Duration::from_secs(20);
+/// The biggest spec (one `kun-spec` block) and plan (all 14 stages) the app writes to disk.
+const MAX_SPEC_BYTES: usize = 64 * 1024;
+const MAX_PLAN_BYTES: usize = 256 * 1024;
 /// The biggest thumbnail sent over IPC.
 const MAX_THUMB_BYTES: u64 = 1_500_000;
 
@@ -54,15 +58,7 @@ impl Serialize for ProductionError {
     }
 }
 
-/// A film id: `hogwarts-intro-introduction-v001`.
-#[must_use]
-pub fn valid_film_id(s: &str) -> bool {
-    !s.is_empty()
-        && s.len() <= 96
-        && !s.starts_with(['.', '-'])
-        && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
-        && !s.contains("..")
-}
+pub use crate::pack::station::{STAGE_KEYS, valid_film_id};
 
 /// The arguments of `list`, after the script path.
 ///
@@ -107,10 +103,23 @@ fn script_path(home: &Path, kun: &Path) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// The produce script with kun's checkout first: a freshly updated kun can be ahead of the installed copy.
+fn script_path_kun_first(home: &Path, kun: &Path) -> Option<PathBuf> {
+    [kun.join(".claude/skills"), home.join(".claude/skills")]
+        .into_iter()
+        .map(|d| d.join(SCRIPT))
+        .find(|p| p.is_file())
+}
+
 async fn run_produce(extra: Vec<String>, timeout: Duration) -> Result<String, ProductionError> {
+    run_produce_with(extra, timeout, false).await
+}
+
+async fn run_produce_with(extra: Vec<String>, timeout: Duration, kun_first: bool) -> Result<String, ProductionError> {
     let kun = pack::kun_dir().map_err(|e| ProductionError::Run(e.to_string()))?;
     let home = dirs::home_dir().ok_or_else(|| ProductionError::Run("could not find the home folder".to_owned()))?;
-    let script = script_path(&home, &kun).ok_or_else(|| ProductionError::Run("the produce skill is not installed".to_owned()))?;
+    let found = if kun_first { script_path_kun_first(&home, &kun) } else { script_path(&home, &kun) };
+    let script = found.ok_or_else(|| ProductionError::Run("the produce skill is not installed".to_owned()))?;
     let mut argv = vec!["node".to_owned(), script.display().to_string()];
     argv.extend(extra);
     let checked = health::safe_argv(&argv, &home, &kun).map_err(ProductionError::Run)?;
@@ -140,6 +149,156 @@ async fn run_produce(extra: Vec<String>, timeout: Duration) -> Result<String, Pr
         return Err(ProductionError::Run(format!("produce failed: {}", line.trim())));
     }
     Ok(stdout)
+}
+
+/// A set key: `[a-z_]{1,32}`.
+fn valid_set_key(k: &str) -> bool {
+    !k.is_empty() && k.len() <= 32 && k.chars().all(|c| c.is_ascii_lowercase() || c == '_')
+}
+
+/// A set value: 1 to 300 characters, no control characters.
+fn valid_set_value(v: &str) -> bool {
+    let n = v.chars().count();
+    (1..=300).contains(&n) && !v.chars().any(char::is_control)
+}
+
+/// The arguments of `lock`, after the script path: one stage or `--all`, never both, never neither.
+///
+/// # Errors
+/// On a bad film id, stage, set entry, login, or a spec file together with `--all`.
+pub fn lock_args(
+    id: &str,
+    stage: Option<&str>,
+    all: bool,
+    set: &BTreeMap<String, String>,
+    spec_file: Option<&Path>,
+    login: &str,
+) -> Result<Vec<String>, ProductionError> {
+    let bad = |m: &str| ProductionError::Bad(m.to_owned());
+    if !valid_film_id(id) {
+        return Err(bad("film id is invalid"));
+    }
+    if !crate::profile::valid_login(login) {
+        return Err(bad("the login is invalid"));
+    }
+    let mut a = vec!["lock".to_owned(), id.to_owned()];
+    match (all, stage) {
+        (true, None) => a.push("--all".to_owned()),
+        (false, Some(s)) if STAGE_KEYS.contains(&s) => a.push(s.to_owned()),
+        (false, Some(s)) => return Err(ProductionError::Bad(format!("unknown stage `{s}`"))),
+        _ => return Err(bad("lock one stage or all of them, not both and not neither")),
+    }
+    for (k, v) in set {
+        if !valid_set_key(k) || !valid_set_value(v) {
+            return Err(ProductionError::Bad(format!("setting `{k}` is invalid")));
+        }
+        a.extend(["--set".to_owned(), format!("{k}={v}")]);
+    }
+    if let Some(f) = spec_file {
+        if all {
+            return Err(bad("a spec file goes with one stage, not with all"));
+        }
+        a.extend(["--spec".to_owned(), f.display().to_string()]);
+    }
+    a.extend(["--by".to_owned(), login.to_owned(), "--no-sync".to_owned(), "--json".to_owned()]);
+    Ok(a)
+}
+
+/// A spec text: a JSON object of at most 64 KB whose `stage` is the one being locked.
+///
+/// # Errors
+/// When the text is too big, not an object, or names another stage.
+pub fn check_spec(text: &str, stage: &str) -> Result<Value, ProductionError> {
+    if text.len() > MAX_SPEC_BYTES {
+        return Err(ProductionError::Bad("the spec is too big".to_owned()));
+    }
+    let v: Value = serde_json::from_str(text).map_err(|_| ProductionError::Bad("the spec is not JSON".to_owned()))?;
+    if !v.is_object() {
+        return Err(ProductionError::Bad("the spec is not a JSON object".to_owned()));
+    }
+    if v.get("stage").and_then(Value::as_str) != Some(stage) {
+        return Err(ProductionError::Bad("the spec names another stage".to_owned()));
+    }
+    Ok(v)
+}
+
+/// A plan text: a JSON object of at most 256 KB.
+///
+/// # Errors
+/// When the text is too big or not an object.
+pub fn check_plan(text: &str) -> Result<Value, ProductionError> {
+    if text.len() > MAX_PLAN_BYTES {
+        return Err(ProductionError::Bad("the plan is too big".to_owned()));
+    }
+    let v: Value = serde_json::from_str(text).map_err(|_| ProductionError::Bad("the plan is not JSON".to_owned()))?;
+    if !v.is_object() {
+        return Err(ProductionError::Bad("the plan is not a JSON object".to_owned()));
+    }
+    Ok(v)
+}
+
+/// Where a saved plan goes: `<dir>/<ms>.json`.
+#[must_use]
+pub fn plan_path(dir: &Path, ms: u128) -> PathBuf {
+    dir.join(format!("{ms}.json"))
+}
+
+/// Where a spec goes before it is handed to `lock --spec`: `<dir>/<id>-<stage>-<ms>.json`.
+#[must_use]
+pub fn spec_path(dir: &Path, id: &str, stage: &str, ms: u128) -> PathBuf {
+    dir.join(format!("{id}-{stage}-{ms}.json"))
+}
+
+fn now_ms() -> u128 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_millis())
+}
+
+/// Writes `text` under `<machine dir>/video/<sub>/`, creating the folder.
+fn write_video_file(sub: &str, name: impl FnOnce(&Path) -> PathBuf, text: &str) -> Result<PathBuf, ProductionError> {
+    let dir = pack::machine_dir().map_err(|e| ProductionError::Run(e.to_string()))?.join("video").join(sub);
+    fs::create_dir_all(&dir).map_err(|e| ProductionError::Run(format!("could not create {}: {e}", dir.display())))?;
+    let path = name(&dir);
+    fs::write(&path, text).map_err(|e| ProductionError::Run(format!("could not write {}: {e}", path.display())))?;
+    Ok(path)
+}
+
+/// `production_lock` — records a stage spec (or every stage) in the film's ledger; no model.
+#[tauri::command]
+async fn production_lock(
+    id: String,
+    stage: Option<String>,
+    all: bool,
+    set: Option<BTreeMap<String, String>>,
+    spec: Option<String>,
+) -> Result<Value, ProductionError> {
+    let login = crate::settings::load().map(|s| s.login).unwrap_or_default();
+    let set = set.unwrap_or_default();
+    // Validate everything before anything is written.
+    lock_args(&id, stage.as_deref(), all, &set, None, &login)?;
+    let spec_file = match (&spec, stage.as_deref()) {
+        (Some(text), Some(st)) => {
+            let v = check_spec(text, st)?;
+            let pretty = serde_json::to_string_pretty(&v).map_err(|e| ProductionError::Bad(e.to_string()))?;
+            Some(write_video_file("specs", |d| spec_path(d, &id, st, now_ms()), &pretty)?)
+        }
+        (Some(_), None) => return Err(ProductionError::Bad("a spec goes with one stage, not with all".to_owned())),
+        _ => None,
+    };
+    let args = lock_args(&id, stage.as_deref(), all, &set, spec_file.as_deref(), &login)?;
+    let out = run_produce_with(args, LOCK_TIMEOUT, true).await?;
+    json_of(&out).filter(Value::is_object).ok_or_else(|| ProductionError::Run("produce printed something that is not JSON".to_owned()))
+}
+
+/// `production_save_plan` — an accepted plan (JSON text) to `<machine dir>/video/plans/<ms>.json`; returns the path.
+#[tauri::command]
+#[allow(clippy::needless_pass_by_value)]
+fn production_save_plan(plan: String) -> Result<String, ProductionError> {
+    let v = check_plan(&plan)?;
+    let pretty = serde_json::to_string_pretty(&v).map_err(|e| ProductionError::Bad(e.to_string()))?;
+    let path = write_video_file("plans", |d| plan_path(d, now_ms()), &pretty)?;
+    Ok(path.display().to_string())
 }
 
 /// Where the films live: `PRODUCE_HOME`, else `~/media/_projects`.
@@ -344,7 +503,7 @@ fn production_exist(paths: Vec<String>) -> Vec<bool> {
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("production")
-        .invoke_handler(tauri::generate_handler![production_list, production_status, production_brand, production_thumb, production_exist])
+        .invoke_handler(tauri::generate_handler![production_list, production_status, production_brand, production_thumb, production_exist, production_lock, production_save_plan])
         .build()
 }
 

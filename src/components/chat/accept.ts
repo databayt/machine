@@ -7,6 +7,13 @@
 export const ACCEPT_FILM =
   "The plan above is accepted: it is the prompt for the next phase. Create the production if it does not exist yet (`produce init`), then its film issue: `produce issue <ID> --create`. For each piece the plan gives to another person, create its work order: `produce order <ID> <formula> --to <login> --create`. Reply with the links, then stop at the next gate."
 
+/**
+ * The accept message once the plan is saved to a file (`production_save_plan`): the production is created from the
+ * plan's film fields and the line is locked from the file in one go, then the film issue and the work orders follow.
+ */
+export const acceptFilmPlan = (file: string): string =>
+  `The plan above is accepted: it is the prompt for the next phase. Create the production if it does not exist yet (\`produce init …\` from the plan's film fields), then lock the line: \`produce lock <ID> --all --plan ${file}\`. Then create its film issue: \`produce issue <ID> --create\`, and for each piece the plan gives to another person its work order: \`produce order <ID> <formula> --to <login> --create\`. Reply with the links, then stop at the next gate.`
+
 /** A work order (`record: "issue"`): the request becomes one issue for one person. */
 export const ACCEPT_ISSUE =
   "The plan above is accepted: it is the prompt for the next phase. Create the work order as an issue now and reply with its link. Then stop."
@@ -22,8 +29,8 @@ export const orderMessage = (text: string, formulaId: string): string =>
 export const ACCEPT_STEP = "The plan above is accepted: it is the prompt for the next phase. Execute it now, starting with its first step, and stop at the next gate."
 
 /** The message Accept sends, by the `record` of the formula that opened the plan. */
-export const acceptMessage = (record: string | null | undefined): string =>
-  record === "film" ? ACCEPT_FILM : record === "issue" ? ACCEPT_ISSUE : ACCEPT_STEP
+export const acceptMessage = (record: string | null | undefined, file?: string | null): string =>
+  record === "film" && file ? acceptFilmPlan(file) : record === "film" ? ACCEPT_FILM : record === "issue" ? ACCEPT_ISSUE : ACCEPT_STEP
 
 /** The route a turn runs on: the one asked for, else the one chosen on screen. */
 export const turnRoute = (asked: string | null | undefined, chosen: string | null | undefined): string | null =>
@@ -45,6 +52,8 @@ export function showAccept(opts: {
   hasWorkingRoute: boolean
   /** The turn ended with questions: the plan is not written yet. */
   asking?: boolean
+  /** A stage discussion ends with Lock, never Accept. */
+  lockInstead?: boolean
 }): boolean {
-  return !opts.asking && opts.ranInPlan && opts.last && !opts.busy && !opts.streaming && opts.hasText && !opts.failed && opts.hasWorkingRoute
+  return !opts.lockInstead && !opts.asking && opts.ranInPlan && opts.last && !opts.busy && !opts.streaming && opts.hasText && !opts.failed && opts.hasWorkingRoute
 }

@@ -86,7 +86,18 @@ export function Composer({
 }: {
   lang: Locale;
   /** The /social/publish pattern: a gear beside send that opens the settings panel above the box (the film). */
-  settings?: { available: boolean; open: boolean; onToggle: () => void; panel?: React.ReactNode };
+  settings?: {
+    available: boolean;
+    open: boolean;
+    onToggle: () => void;
+    panel?: React.ReactNode;
+    /** The panel's choices compose a request: its sentence shows above the box and the round button sends it. */
+    composed?: { sentence: string } | null;
+    /** The round button: starts the composed request (it is sent, the panel closes). */
+    onStart?: () => void;
+    /** Tab: the composed request's filled prompt (the panel closes), to drop into the box for editing; null when it could not be filled. */
+    onDraftComposed?: () => Promise<string | null>;
+  };
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
@@ -298,6 +309,12 @@ export function Composer({
   const refineRef = useRef(refine);
   refineRef.current = refine;
   const hasText = !!text.trim();
+  /** The open panel composes a request and the box is empty: the chip line shows and the round button sends it. */
+  const composedShown = settings?.open && settings.composed && !hasText && !busy ? settings.composed : null;
+  const draftComposed = async () => {
+    const out = await settings?.onDraftComposed?.().catch(() => null);
+    if (out) writeFilled(out);
+  };
   const submit = () => {
     if (busy || !hasText) return;
     onSend(withReferences(text, attached));
@@ -337,6 +354,26 @@ export function Composer({
           onPick={(e) => void pickSlash(e)}
           onHover={setSlashIdx}
         />
+      )}
+      {composedShown && (
+        <button
+          type="button"
+          tabIndex={-1}
+          onMouseDown={(e) => {
+            e.preventDefault();
+            void draftComposed();
+          }}
+          aria-label={t(copy.chipLabel)}
+          dir={isAr ? "rtl" : "ltr"}
+          className="absolute bottom-full start-5 mb-1.5 flex max-w-[calc(100%-2.5rem)] items-center gap-1.5 text-xs text-muted-foreground/80"
+        >
+          <span aria-hidden>⇥</span>
+          <span>{t(copy.chipTab)}</span>
+          <span aria-hidden>·</span>
+          <span className="truncate" dir="auto">
+            {composedShown.sentence}
+          </span>
+        </button>
       )}
       {chipShown && (
         <button
@@ -513,6 +550,11 @@ export function Composer({
                     return;
                   }
                 }
+                if (composedShown && e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                  e.preventDefault();
+                  void draftComposed();
+                  return;
+                }
                 if (chipShown && e.key === "Tab" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
                   e.preventDefault();
                   void acceptChip(chipShown);
@@ -556,7 +598,7 @@ export function Composer({
             </span>
           )}
 
-          {settings?.available && !busy && hasText && (
+          {settings?.available && !busy && (hasText || composedShown) && (
             <button
               type="button"
               onMouseDown={(e) => e.preventDefault()}
@@ -582,6 +624,16 @@ export function Composer({
               className={cn(icon, "bg-foreground text-background")}
             >
               <SquareIcon className="size-3.5 fill-current" aria-hidden />
+            </button>
+          ) : composedShown ? (
+            <button
+              type="button"
+              onClick={settings?.onStart}
+              aria-label={t(copy.send)}
+              title={t(copy.send)}
+              className={cn(icon, "bg-foreground text-background hover:bg-foreground/85")}
+            >
+              <ArrowUpIcon className="size-5" strokeWidth={2.5} aria-hidden />
             </button>
           ) : settings?.available && !hasText ? (
             <button

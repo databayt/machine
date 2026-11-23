@@ -318,3 +318,50 @@ fn iso_with_milliseconds_pads_them() {
     assert_eq!(iso_utc_ms(0), "1970-01-01T00:00:00.000Z");
     assert_eq!(iso_utc_ms(1_005), "1970-01-01T00:00:01.005Z");
 }
+
+#[test]
+fn settings_compose_stage_args_are_exact() {
+    assert_eq!(settings_args("video", None, None).unwrap(), ["settings", "--dept", "video", "--json"]);
+    assert_eq!(
+        settings_args("video", Some("hogwarts"), Some("f-1")).unwrap(),
+        ["settings", "--dept", "video", "--repo", "hogwarts", "--project", "f-1", "--json"]
+    );
+    // An empty project is no project.
+    assert_eq!(settings_args("video", Some(""), Some("")).unwrap(), ["settings", "--dept", "video", "--json"]);
+    assert_eq!(
+        compose_args("video", Some("mkan"), Some("f-1"), &set(&[("ratio", "9:16"), ("captions", "burned in"), ("length", "2:00 + b")])).unwrap(),
+        [
+            "compose", "--dept", "video", "--repo", "mkan", "--project", "f-1", "--set", "captions=burned in",
+            "--set", "length=2:00 + b", "--set", "ratio=9:16", "--json"
+        ]
+    );
+    assert_eq!(
+        stage_args("video", "f-1", "visual").unwrap(),
+        ["stage", "visual", "--dept", "video", "--project", "f-1", "--json"]
+    );
+}
+
+#[test]
+fn settings_compose_stage_args_refuse_bad_input() {
+    let none = BTreeMap::new();
+    assert!(matches!(settings_args("../x", None, None), Err(PackError::BadName)));
+    assert!(matches!(compose_args("a b", None, None, &none), Err(PackError::BadName)));
+    assert!(matches!(stage_args("../x", "f-1", "edit"), Err(PackError::BadName)));
+    assert!(settings_args("video", None, Some("../x")).is_err());
+    assert!(compose_args("video", None, Some("-rf"), &none).is_err());
+    assert!(stage_args("video", "a b", "edit").is_err());
+    assert!(stage_args("video", "", "edit").is_err());
+    assert!(stage_args("video", "f-1", "publishing").is_err());
+    assert!(stage_args("video", "f-1", "--json").is_err());
+    assert!(compose_args("video", None, None, &set(&[("Bad Key", "x")])).is_err());
+    assert!(compose_args("video", None, None, &set(&[("ratio", "a\nb")])).is_err());
+    assert_eq!(STAGE_KEYS.len(), 14);
+}
+
+#[test]
+fn a_station_error_object_becomes_an_error() {
+    assert!(matches!(object_of(r#"{"error":"no settings"}"#), Err(PackError::Station(m)) if m == "no settings"));
+    assert_eq!(object_of("noise\n{\"dept\":\"video\"}").unwrap()["dept"], "video");
+    assert!(object_of("[1]").is_err());
+    assert!(object_of("nothing").is_err());
+}
