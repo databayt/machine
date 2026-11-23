@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { tr } from "../chat/config"
 import { type FilmData, brandOf, filesExist, filmData, listFilms, thumbOf } from "./actions"
 import { copy } from "./config"
-import { type Brand, type FilmSummary, type Scene, type SceneKind, collapsed, defaultFilm, filesFor, gateOf, orderFormula, parseScenes, slotsFor, stageFormula } from "./pure"
+import { type Brand, type FilmSummary, type Scene, type SceneKind, defaultFilm, filesFor, gateOf, orderFormula, parseScenes, slotsFor, stageFormula } from "./pure"
 
 const accent = "text-[color:var(--cli-accent)]"
 const dim = "text-[color:var(--cli-dim)]"
@@ -96,7 +96,6 @@ export function ProductionStrip({
   if (films.length === 0 || !id || !current) return null
 
   const film = current.film
-  const c = collapsed(film)
   const lang = film.lang ?? (isAr ? "ar" : "en")
   const pick = (formula: string, scene?: Scene) => onPick(formula, slotsFor(film.id, scene))
 
@@ -108,32 +107,26 @@ export function ProductionStrip({
           aria-label={t(copy.label)}
           className="mx-1 mt-2 max-h-[min(50vh,24rem)] overflow-y-auto border-t border-border/60 px-2 pb-1 pt-3"
         >
-      <div className={cn("mb-2 flex items-center gap-2 px-1.5", dim)}>
-        <div className="flex min-w-0 flex-1 items-baseline gap-2">
-          <span className="shrink-0 text-foreground/80">{film.slug}</span>
-          <span aria-hidden>·</span>
-          <span aria-hidden className="shrink-0 tracking-[-0.08em]">
-            {c.dots.map((d, i) => (
-              <span key={i} className={d ? accent : undefined}>{d ? "●" : "○"}</span>
-            ))}
-          </span>
-          {c.next && <span className={cn("shrink-0", accent)}>{c.next}</span>}
-          {c.gates.length > 0 && <span aria-hidden>·</span>}
-          <span className="min-w-0 truncate">
-            {c.gates.map((g, i) => (
-              <span key={g.name} className={g.signed ? "text-foreground/80" : undefined}>
-                {i > 0 && " "}
-                {g.name} {g.signed ? "✔" : "○"}
-              </span>
-            ))}
-          </span>
-        </div>
-        {films.length > 1 && (
+          <Tabs value={tab} onValueChange={setTab} className="gap-2">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+              <TabsList className="h-auto w-fit gap-x-4 rounded-none bg-transparent p-0">
+                {(["stages", "scenes", "brand"] as const).map((k) => (
+                  <TabsTrigger
+                    key={k}
+                    value={k}
+                    onMouseDown={(e) => e.preventDefault()}
+                    className="h-auto flex-none cursor-pointer rounded-none border-0 bg-transparent px-0 py-1 font-sans text-sm font-normal text-muted-foreground/70 shadow-none transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                  >
+                    {t(copy[k])}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+              {films.length > 1 && (
           <select
             value={id}
             onChange={(e) => setId(e.target.value)}
             aria-label={t(copy.film)}
-            className="max-w-[40%] shrink-0 truncate rounded bg-transparent px-1 text-[12px] outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-[color:var(--cli-accent)]"
+            className="ms-auto max-w-[40%] shrink-0 truncate rounded bg-transparent py-1 font-sans text-sm text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
           >
             {films.map((f) => (
               <option key={f.id} value={f.id}>
@@ -142,23 +135,7 @@ export function ProductionStrip({
             ))}
           </select>
         )}
-      </div>
-          <Tabs value={tab} onValueChange={setTab} className="gap-2">
-            <TabsList className="h-auto w-fit gap-3 rounded-none bg-transparent p-0">
-              {(["stages", "scenes", "brand"] as const).map((k) => (
-                <TabsTrigger
-                  key={k}
-                  value={k}
-                  className={cn(
-                    "h-6 flex-none rounded-none border-0 border-b border-transparent bg-transparent px-0 font-mono text-[12px] font-normal shadow-none",
-                    dim,
-                    "data-[state=active]:bg-transparent data-[state=active]:shadow-none data-[state=active]:text-[color:var(--cli-accent)] data-[state=active]:border-[color:var(--cli-accent)]",
-                  )}
-                >
-                  {t(copy[k])}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            </div>
 
             <TabsContent value="stages" className="m-0">
               <ol className="list-none space-y-px">
