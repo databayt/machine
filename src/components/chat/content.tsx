@@ -627,6 +627,7 @@ export default function ChatContent({
                   <SubmitWork lang={lang} task={task} draft={() => draft.current} onDone={afterSubmit} onAskSummary={askSummary} />
                 )}
               </div>
+              {!settingsOpen && (
               <Suggestions
                 options={options}
                 isAr={isAr}
@@ -634,6 +635,7 @@ export default function ChatContent({
                 onDismiss={dismissOption}
                 disabled={busy}
               />
+              )}
             </div>
           ) : (
             <ol className="mx-auto w-full max-w-3xl list-none space-y-7 px-6 pb-8 pt-20 lg:px-10 lg:pt-24">
