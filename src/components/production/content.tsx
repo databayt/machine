@@ -108,7 +108,11 @@ export function ProductionStrip({
                 <TabsTrigger
                   key={k}
                   value={k}
-                  onMouseDown={(e) => e.preventDefault()}
+                  // Keep focus in the box: Radix switches on mousedown and skips a prevented event, so switch here.
+                  onMouseDown={(e) => {
+                    e.preventDefault()
+                    setTab(k)
+                  }}
                   className="h-auto flex-none cursor-pointer rounded-none border-0 bg-transparent px-0 py-1 font-sans text-sm font-normal text-muted-foreground/70 shadow-none transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 >
                   {t(copy[k])}
