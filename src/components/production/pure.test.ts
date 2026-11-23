@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
+import { STAGE_GROUPS, groupOf, collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
 
 // What `produce.mjs status <id> --json` prints today: a stage map of booleans, gates as null or { by, at }.
 const TODAY = {
@@ -171,4 +171,12 @@ test("a fill gets the film for film formulas only, and the attached video when t
   // the caller's own values win
   assert.deepEqual(fillSlots("video.stage.qa", { project: "other", source: "/x.mp4" }, known), { project: "other", source: "/x.mp4" })
   assert.deepEqual(fillSlots("video.stage.qa"), {})
+})
+
+test("stages fall into four groups; the next stage picks the tab", () => {
+  assert.equal(groupOf("request"), "idea")
+  assert.equal(groupOf("storyboard"), "story")
+  assert.equal(groupOf("visual"), "make")
+  assert.equal(groupOf("publish"), "ship")
+  assert.equal(STAGE_GROUPS.flatMap((g) => g.stages).length, 14)
 })

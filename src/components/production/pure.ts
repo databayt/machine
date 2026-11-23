@@ -411,3 +411,26 @@ export function parseBrand(raw: unknown): Brand | null {
   const palette = isObj(raw.palette) ? Object.entries(raw.palette).flatMap(([name, v]) => (str(v)?.startsWith("#") ? [{ name, hex: v as string }] : [])) : []
   return { identity, logo: str(raw.logoData), fonts, palette, voice: str(raw.voice) }
 }
+
+// ---- stage groups -------------------------------------------------------------------------------
+
+/** The 14 stages in four groups, the panel's tabs: idea → story → make → ship. */
+export const STAGE_GROUPS = [
+  { id: "idea", stages: ["request", "research", "brief"] },
+  { id: "story", stages: ["script", "storyboard"] },
+  { id: "make", stages: ["assets", "visual", "audio", "edit"] },
+  { id: "ship", stages: ["render", "qa", "approval", "cdn", "publish"] },
+] as const
+
+export type GroupId = (typeof STAGE_GROUPS)[number]["id"]
+
+/** The group a stage belongs to; an unknown stage falls in "make". */
+export function groupOf(stage: string): GroupId {
+  return STAGE_GROUPS.find((g) => (g.stages as readonly string[]).includes(stage))?.id ?? "make"
+}
+
+/** A group's stages from the film, in order; stages the film doesn't have are left out. */
+export function groupStages(film: Film, group: GroupId): Stage[] {
+  const names = STAGE_GROUPS.find((g) => g.id === group)?.stages ?? []
+  return names.map((n) => film.stages.find((s) => s.name === n)).filter((s): s is Stage => !!s)
+}

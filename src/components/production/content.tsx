@@ -1,17 +1,16 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
-import { BoxIcon, CameraIcon, CheckIcon, CircleAlertIcon, CircleIcon, ClapperboardIcon, FileIcon, ImageIcon, ShapesIcon } from "lucide-react"
+import { useEffect, useState } from "react"
+import { CheckIcon, CircleIcon } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { tr } from "../chat/config"
-import { type FilmData, brandOf, filesExist, filmData, listFilms, thumbOf } from "./actions"
+import { filmData, listFilms, type FilmData } from "./actions"
 import { copy } from "./config"
-import { type Brand, type FilmSummary, type Scene, type SceneKind, defaultFilm, filesFor, gateOf, orderFormula, parseScenes, slotsFor, stageFormula } from "./pure"
+import { STAGE_GROUPS, type FilmSummary, defaultFilm, gateOf, groupOf, groupStages, slotsFor, stageFormula } from "./pure"
 
 const accent = "text-[color:var(--cli-accent)]"
-const dim = "text-[color:var(--cli-dim)]"
 
 /**
  * The production line above the chat box. Collapsed it is one quiet line: `▸ intro-cinematic · ●●●●●●○○○○○○○○ 07 visual
@@ -49,7 +48,7 @@ export function ProductionStrip({
   const [films, setFilms] = useState<FilmSummary[]>([])
   const [id, setId] = useState<string | null>(null)
   const [data, setData] = useState<FilmData | null>(null)
-  const [tab, setTab] = useState("stages")
+  const [tab, setTab] = useState<string>("make")
 
   // The films of the repo: read on mount, when the repo changes and when a run ends.
   useEffect(() => {
@@ -92,97 +91,79 @@ export function ProductionStrip({
     onAvailable(available)
     if (!available) onOpenChange(false)
   }, [available, onAvailable, onOpenChange])
-  const scenes = useMemo(() => (current ? parseScenes(current.shotList, current.manifest, isAr ? "ar" : "en") : []), [current, isAr])
+  const nextStage = current?.film.next?.name ?? null
+  useEffect(() => {
+    if (nextStage) setTab((cur) => (cur === "film" ? cur : groupOf(nextStage)))
+  }, [nextStage])
   if (films.length === 0 || !id || !current) return null
 
   const film = current.film
-  const lang = film.lang ?? (isAr ? "ar" : "en")
-  const pick = (formula: string, scene?: Scene) => onPick(formula, slotsFor(film.id, scene))
+  const pick = (formula: string) => onPick(formula, slotsFor(film.id))
 
   return (
-    <div dir="ltr" className="relative font-mono text-[12px] leading-5">
+    <div dir="ltr" className="relative leading-5">
 
         <div
           role="region"
           aria-label={t(copy.label)}
           className="mx-1 mt-2 max-h-[min(50vh,24rem)] overflow-y-auto border-t border-border/60 px-2 pb-1 pt-3"
         >
-          <Tabs value={tab} onValueChange={setTab} className="gap-2">
-            <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
-              <TabsList className="h-auto w-fit gap-x-4 rounded-none bg-transparent p-0">
-                {(["stages", "scenes", "brand"] as const).map((k) => (
-                  <TabsTrigger
-                    key={k}
-                    value={k}
-                    onMouseDown={(e) => e.preventDefault()}
-                    className="h-auto flex-none cursor-pointer rounded-none border-0 bg-transparent px-0 py-1 font-sans text-sm font-normal text-muted-foreground/70 shadow-none transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
-                  >
-                    {t(copy[k])}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-              {films.length > 1 && (
-          <select
-            value={id}
-            onChange={(e) => setId(e.target.value)}
-            aria-label={t(copy.film)}
-            className="ms-auto max-w-[40%] shrink-0 truncate rounded bg-transparent py-1 font-sans text-sm text-muted-foreground/70 outline-none hover:text-foreground focus-visible:ring-1 focus-visible:ring-ring"
-          >
-            {films.map((f) => (
-              <option key={f.id} value={f.id}>
-                {f.slug} {f.version}
-              </option>
-            ))}
-          </select>
-        )}
-            </div>
+          <Tabs value={tab} onValueChange={setTab} className="gap-3">
+            <TabsList className="h-auto w-fit flex-wrap gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
+              {[...STAGE_GROUPS.map((g) => g.id), "film"].map((k) => (
+                <TabsTrigger
+                  key={k}
+                  value={k}
+                  onMouseDown={(e) => e.preventDefault()}
+                  className="h-auto flex-none cursor-pointer rounded-none border-0 bg-transparent px-0 py-1 font-sans text-sm font-normal text-muted-foreground/70 shadow-none transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                >
+                  {t(copy[k as keyof typeof copy])}
+                </TabsTrigger>
+              ))}
+            </TabsList>
 
-            <TabsContent value="stages" className="m-0">
-              <ol className="list-none space-y-px">
-                {film.stages.map((s) => {
-                  const gate = gateOf(film, s.name)
-                  const isNext = film.next?.name === s.name
+            {STAGE_GROUPS.map((g) => (
+              <TabsContent key={g.id} value={g.id} className="m-0">
+                <Cards>
+                  {groupStages(film, g.id).map((s) => {
+                    const gate = gateOf(film, s.name)
+                    const isNext = film.next?.name === s.name
+                    return (
+                      <Card key={s.name} active={isNext} onClick={() => pick(stageFormula(s.name))}>
+                        <span className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+                          <span className="tabular-nums">{String(s.n).padStart(2, "0")}</span>
+                          {s.done ? <CheckIcon className="size-3.5 text-foreground" aria-hidden /> : isNext ? <span className={accent}>{t(copy.next)}</span> : <CircleIcon className="size-3" aria-hidden />}
+                        </span>
+                        <span className="text-sm font-medium capitalize text-foreground">{s.name}</span>
+                        <span className="mt-auto text-xs text-muted-foreground">
+                          {s.variants ? `${s.variants.done}/${s.variants.total} ${t(copy.variants)}` : s.done ? t(copy.done) : t(copy.todo)}
+                          {gate && ` · ${gate.name} ${gate.signed ? "✔" : "○"}`}
+                        </span>
+                      </Card>
+                    )
+                  })}
+                </Cards>
+              </TabsContent>
+            ))}
+
+            <TabsContent value="film" className="m-0">
+              <Cards>
+                {films.map((f) => {
+                  const on = f.id === id
+                  const done = on ? film.stages.filter((s) => s.done).length : null
                   return (
-                    <li key={s.name}>
-                      <button
-                        type="button"
-                        onClick={() => pick(stageFormula(s.name))}
-                        className={cn("flex w-full items-baseline gap-2 rounded px-1.5 py-0.5 text-start transition-colors hover:bg-foreground/5", isNext && accent)}
-                      >
-                        <span aria-hidden className="w-3 shrink-0">{s.done ? <CheckIcon className="size-3 translate-y-0.5" /> : isNext ? "▸" : <CircleIcon className={cn("size-2.5 translate-y-0.5", dim)} />}</span>
-                        <span className={cn("w-5 shrink-0 tabular-nums", !isNext && dim)}>{String(s.n).padStart(2, "0")}</span>
-                        <span className={cn("w-24 shrink-0", !isNext && !s.done && dim)}>{s.name}</span>
-                        <span className={cn("min-w-0 flex-1 truncate", dim)}>{s.file ?? ""}</span>
-                        {s.variants && (
-                          <span className={cn("shrink-0 tabular-nums", dim)}>
-                            {s.variants.done}/{s.variants.total} {t(copy.variants)}
-                          </span>
-                        )}
-                        {gate && (
-                          <span className={cn("shrink-0", gate.signed ? "text-foreground" : dim)}>
-                            {gate.name} {gate.signed ? "✔" : "○"}
-                          </span>
-                        )}
-                      </button>
-                    </li>
+                    <Card key={f.id} active={on} onClick={() => setId(f.id)}>
+                      <span className="font-mono text-[11px] text-muted-foreground">{f.version}</span>
+                      <span className="truncate text-sm font-medium text-foreground">{f.slug}</span>
+                      <span className="mt-auto text-xs text-muted-foreground">
+                        {on && done !== null ? `${done}/${film.stages.length} · ${film.next ? film.next.name : t(copy.done)}` : f.next ?? ""}
+                      </span>
+                    </Card>
                   )
                 })}
-              </ol>
-            </TabsContent>
-
-            <TabsContent value="scenes" className="m-0">
-              {scenes.length === 0 ? (
-                <p className={dim}>{t(copy.noScenes)}</p>
-              ) : (
-                <ScenesList scenes={scenes} lang={lang} isAr={isAr} onPick={(s) => pick(orderFormula(s.kind), s)} />
-              )}
-            </TabsContent>
-
-            <TabsContent value="brand" className="m-0">
-              {tab === "brand" && <BrandView identity={film.identity} isAr={isAr} />}
+              </Cards>
             </TabsContent>
           </Tabs>
-          <p className={cn("mt-2", dim)}>{t(copy.tapHint)}</p>
         </div>
 
 
@@ -190,145 +171,23 @@ export function ProductionStrip({
   )
 }
 
-const KIND_ICON: Record<SceneKind, typeof FileIcon> = {
-  capture: CameraIcon,
-  "3d": BoxIcon,
-  image: ImageIcon,
-  video: ClapperboardIcon,
-  graphic: ShapesIcon,
-  other: FileIcon,
+/** A horizontal row of cards that scrolls sideways, as on /social/publish. */
+function Cards({ children }: { children: React.ReactNode }) {
+  return <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 font-sans [scrollbar-width:none]">{children}</div>
 }
 
-/** The scenes: a thumbnail of the first image, the kind icon, the line, and what is missing. */
-function ScenesList({ scenes, lang, isAr, onPick }: { scenes: Scene[]; lang: string; isAr: boolean; onPick: (s: Scene) => void }) {
-  const t = tr(isAr)
-  const paths = useMemo(() => scenes.flatMap((s) => filesFor(s, lang).map((f) => f.path)), [scenes, lang])
-  const [exists, setExists] = useState<Map<string, boolean>>(new Map())
-  useEffect(() => {
-    let live = true
-    void filesExist(paths).then((ok) => live && setExists(new Map(paths.map((p, i) => [p, ok[i] ?? true]))))
-    return () => {
-      live = false
-    }
-  }, [paths])
-
+function Card({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <ol className="list-none space-y-px">
-      {scenes.map((s) => {
-        const files = filesFor(s, lang)
-        const gone = files.filter((f) => exists.get(f.path) === false)
-        const none = files.length === 0
-        const Icon = KIND_ICON[s.kind]
-        const image = files.find((f) => f.kind === "image" && exists.get(f.path) !== false)
-        return (
-          <li key={s.id}>
-            <button type="button" onClick={() => onPick(s)} className="flex w-full items-center gap-2 rounded px-1.5 py-1 text-start transition-colors hover:bg-foreground/5">
-              <Thumb path={image?.path ?? null} />
-              <Icon aria-hidden className={cn("size-3.5 shrink-0", dim)} />
-              <span className="w-28 shrink-0 truncate">{s.id}</span>
-              <span className={cn("w-7 shrink-0 tabular-nums", dim)}>{s.seconds !== null ? `${s.seconds}s` : ""}</span>
-              <span dir="auto" className={cn("min-w-0 flex-1 truncate font-sans text-[12px]", dim)}>
-                {s.line || s.visual}
-              </span>
-              {none || gone.length > 0 ? (
-                <span className="flex shrink-0 items-center gap-1 text-destructive">
-                  <CircleAlertIcon aria-hidden className="size-3" />
-                  {none ? t(copy.missing) : `${gone.length}/${files.length} ${t(copy.missing)}`}
-                </span>
-              ) : (
-                <span className={cn("shrink-0 tabular-nums", dim)}>{files.length}</span>
-              )}
-            </button>
-          </li>
-        )
-      })}
-    </ol>
-  )
-}
-
-/** A 9:16 thumbnail, read through the one checked command; an empty frame while it loads or when there is no image. */
-function Thumb({ path }: { path: string | null }) {
-  const [src, setSrc] = useState<string | null>(null)
-  useEffect(() => {
-    let live = true
-    setSrc(null)
-    if (path) void thumbOf(path).then((s) => live && setSrc(s))
-    return () => {
-      live = false
-    }
-  }, [path])
-  return (
-    <span aria-hidden className="flex h-10 w-[22px] shrink-0 items-center justify-center overflow-hidden rounded-[3px] bg-foreground/5">
-      {src && (
-        // eslint-disable-next-line @next/next/no-img-element -- a data URL from the checked Rust command
-        <img src={src} alt="" className="size-full object-cover" />
+    <button
+      type="button"
+      onMouseDown={(e) => e.preventDefault()}
+      onClick={onClick}
+      className={cn(
+        "flex h-24 w-36 shrink-0 snap-start flex-col gap-1 rounded-2xl border p-3 text-start transition-colors duration-150",
+        active ? "border-foreground/40 bg-foreground/[0.03]" : "border-border/70 hover:border-foreground/30",
       )}
-    </span>
+    >
+      {children}
+    </button>
   )
-}
-
-/** The brand: logo, font names in their own face, colour swatches, voice. Read once per identity. */
-function BrandView({ identity, isAr }: { identity: string; isAr: boolean }) {
-  const t = tr(isAr)
-  const [brand, setBrand] = useState<Brand | null | undefined>(undefined)
-  useEffect(() => {
-    let live = true
-    void brandOf(identity).then((b) => live && setBrand(b))
-    return () => {
-      live = false
-    }
-  }, [identity])
-  if (brand === undefined) return <p className={dim}>{t(copy.loading)}</p>
-  if (!brand) return <p className={dim}>{t(copy.noBrand)}</p>
-  const row = "flex items-start gap-3"
-  const label = cn("w-14 shrink-0", dim)
-  return (
-    <div className="space-y-2">
-      <div className={row}>
-        <span className={label}>{t(copy.logo)}</span>
-        {brand.logo ? (
-          // eslint-disable-next-line @next/next/no-img-element -- a data URL from the checked Rust command
-          <img src={brand.logo} alt={brand.identity} className="h-10 w-auto max-w-40 rounded bg-foreground/5 object-contain p-1" />
-        ) : (
-          <span>{brand.identity}</span>
-        )}
-      </div>
-      <div className={row}>
-        <span className={label}>{t(copy.fonts)}</span>
-        <ul className="list-none space-y-0.5">
-          {brand.fonts.map((f) => (
-            <li key={f.role} className="flex items-baseline gap-2">
-              <span className="text-[14px]" style={{ fontFamily: fontStack(f.name) }}>{f.name}</span>
-              <span className={dim}>{f.role}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      <div className={row}>
-        <span className={label}>{t(copy.palette)}</span>
-        <ul className="flex list-none flex-wrap gap-x-3 gap-y-1">
-          {brand.palette.map((p) => (
-            <li key={p.name} className="flex items-center gap-1.5">
-              <span aria-hidden className="size-4 rounded border border-foreground/20" style={{ backgroundColor: p.hex }} />
-              <span>{p.hex}</span>
-              <span className={dim}>{p.name}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-      {brand.voice && (
-        <div className={row}>
-          <span className={label}>{t(copy.voice)}</span>
-          <span>{brand.voice}</span>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/** The face a font name is shown in: the app's own Thmanyah faces for those names, else the name itself. */
-function fontStack(name: string): string {
-  if (/thmanyah serif/i.test(name)) return "'thmanyah serif display', serif"
-  if (/thmanyah/i.test(name)) return "'thmanyah sans', sans-serif"
-  return `'${name}', var(--font-sans)`
 }
