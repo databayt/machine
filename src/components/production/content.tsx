@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { CheckIcon, CircleIcon } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils"
 import { tr } from "../chat/config"
 import { filmData, listFilms, type FilmData } from "./actions"
 import { copy } from "./config"
-import { STAGE_GROUPS, type FilmSummary, defaultFilm, gateOf, groupOf, groupStages, slotsFor, stageFormula } from "./pure"
+import { STAGE_GROUPS, type FilmSummary, defaultFilm, gateOf, groupStages, slotsFor, stageFormula } from "./pure"
 
 const accent = "text-[color:var(--cli-accent)]"
 
@@ -48,7 +48,7 @@ export function ProductionStrip({
   const [films, setFilms] = useState<FilmSummary[]>([])
   const [id, setId] = useState<string | null>(null)
   const [data, setData] = useState<FilmData | null>(null)
-  const [tab, setTab] = useState<string>("make")
+  const [tab, setTab] = useState<string>("stages")
 
   // The films of the repo: read on mount, when the repo changes and when a run ends.
   useEffect(() => {
@@ -91,10 +91,6 @@ export function ProductionStrip({
     onAvailable(available)
     if (!available) onOpenChange(false)
   }, [available, onAvailable, onOpenChange])
-  const nextStage = current?.film.next?.name ?? null
-  useEffect(() => {
-    if (nextStage) setTab((cur) => (cur === "film" ? cur : groupOf(nextStage)))
-  }, [nextStage])
   if (films.length === 0 || !id || !current) return null
 
   const film = current.film
@@ -110,41 +106,46 @@ export function ProductionStrip({
         >
           <Tabs value={tab} onValueChange={setTab} className="gap-3">
             <TabsList className="h-auto w-fit flex-wrap gap-x-4 gap-y-1 rounded-none bg-transparent p-0">
-              {[...STAGE_GROUPS.map((g) => g.id), "film"].map((k) => (
+              {(["stages", "film"] as const).map((k) => (
                 <TabsTrigger
                   key={k}
                   value={k}
                   onMouseDown={(e) => e.preventDefault()}
                   className="h-auto flex-none cursor-pointer rounded-none border-0 bg-transparent px-0 py-1 font-sans text-sm font-normal text-muted-foreground/70 shadow-none transition-colors duration-150 hover:text-foreground data-[state=active]:bg-transparent data-[state=active]:font-medium data-[state=active]:text-foreground data-[state=active]:shadow-none"
                 >
-                  {t(copy[k as keyof typeof copy])}
+                  {t(copy[k])}
                 </TabsTrigger>
               ))}
             </TabsList>
 
-            {STAGE_GROUPS.map((g) => (
-              <TabsContent key={g.id} value={g.id} className="m-0">
-                <Cards>
-                  {groupStages(film, g.id).map((s) => {
-                    const gate = gateOf(film, s.name)
-                    const isNext = film.next?.name === s.name
-                    return (
-                      <Card key={s.name} active={isNext} onClick={() => pick(stageFormula(s.name))}>
-                        <span className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
-                          <span className="tabular-nums">{String(s.n).padStart(2, "0")}</span>
-                          {s.done ? <CheckIcon className="size-3.5 text-foreground" aria-hidden /> : isNext ? <span className={accent}>{t(copy.next)}</span> : <CircleIcon className="size-3" aria-hidden />}
-                        </span>
-                        <span className="text-sm font-medium capitalize text-foreground">{s.name}</span>
-                        <span className="mt-auto text-xs text-muted-foreground">
-                          {s.variants ? `${s.variants.done}/${s.variants.total} ${t(copy.variants)}` : s.done ? t(copy.done) : t(copy.todo)}
-                          {gate && ` · ${gate.name} ${gate.signed ? "✔" : "○"}`}
-                        </span>
-                      </Card>
-                    )
-                  })}
-                </Cards>
-              </TabsContent>
-            ))}
+            <TabsContent value="stages" className="m-0">
+              <Cards>
+                {STAGE_GROUPS.map((g) => (
+                  <div key={g.id} className="flex shrink-0 flex-col gap-1.5">
+                    <span className="px-1 text-xs text-muted-foreground">{t(copy[g.id])}</span>
+                    <div className="flex gap-2">
+                      {groupStages(film, g.id).map((s) => {
+                        const gate = gateOf(film, s.name)
+                        const isNext = film.next?.name === s.name
+                        return (
+                          <Card key={s.name} active={isNext} onClick={() => pick(stageFormula(s.name))}>
+                            <span className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+                              <span className="tabular-nums">{String(s.n).padStart(2, "0")}</span>
+                              {s.done ? <CheckIcon className="size-3.5 text-foreground" aria-hidden /> : isNext ? <span className={accent}>{t(copy.next)}</span> : <CircleIcon className="size-3" aria-hidden />}
+                            </span>
+                            <span className="text-sm font-medium capitalize text-foreground">{s.name}</span>
+                            <span className="mt-auto text-xs text-muted-foreground">
+                              {s.variants ? `${s.variants.done}/${s.variants.total} ${t(copy.variants)}` : s.done ? t(copy.done) : t(copy.todo)}
+                              {gate && ` · ${gate.name} ${gate.signed ? "✔" : "○"}`}
+                            </span>
+                          </Card>
+                        )
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </Cards>
+            </TabsContent>
 
             <TabsContent value="film" className="m-0">
               <Cards>
@@ -177,8 +178,14 @@ function Cards({ children }: { children: React.ReactNode }) {
 }
 
 function Card({ active, onClick, children }: { active?: boolean; onClick: () => void; children: React.ReactNode }) {
+  // The next stage scrolls into view in the row.
+  const ref = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (active) ref.current?.scrollIntoView({ inline: "center", block: "nearest" })
+  }, [active])
   return (
     <button
+      ref={ref}
       type="button"
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
