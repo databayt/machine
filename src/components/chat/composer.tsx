@@ -86,7 +86,7 @@ export function Composer({
 }: {
   lang: Locale;
   /** The /social/publish pattern: a gear beside send that opens the settings panel above the box (the film). */
-  settings?: { available: boolean; open: boolean; onToggle: () => void };
+  settings?: { available: boolean; open: boolean; onToggle: () => void; panel?: React.ReactNode };
   onSend: (text: string) => void;
   onStop: () => void;
   busy: boolean;
@@ -610,6 +610,16 @@ export function Composer({
             </button>
           )}
         </div>
+        {settings?.panel && (
+          <div
+            aria-hidden={!settings.open}
+            inert={!settings.open}
+            className="grid transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none"
+            style={{ gridTemplateRows: settings.open ? "1fr" : "0fr", opacity: settings.open ? 1 : 0 }}
+          >
+            <div className="min-h-0 overflow-hidden">{settings.panel}</div>
+          </div>
+        )}
       </form>
       </div>
     </>

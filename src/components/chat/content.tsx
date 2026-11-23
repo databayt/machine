@@ -602,9 +602,8 @@ export default function ChatContent({
                 )}
               </div>
               <div className="w-full">
-                {strip}
                 <Composer
-                  settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings } : undefined}
+                  settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings, panel: strip } : undefined}
                   lang={lang}
                   onSend={(text) => void submitText(text)}
                   onStop={() => jobId && void stop(jobId)}
@@ -730,9 +729,8 @@ export default function ChatContent({
               <ArrowDownIcon className="size-5" aria-hidden />
             </button>
           )}
-          {strip}
           <Composer
-            settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings } : undefined}
+            settings={ctx.dept === "video" ? { available: filmAvailable, open: settingsOpen, onToggle: toggleSettings, panel: strip } : undefined}
             lang={lang}
             onSend={(text) => void submitText(text)}
             onStop={() => jobId && void stop(jobId)}

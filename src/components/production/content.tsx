@@ -102,11 +102,11 @@ export function ProductionStrip({
 
   return (
     <div dir="ltr" className="relative font-mono text-[12px] leading-5">
-      {open && (
+
         <div
           role="region"
           aria-label={t(copy.label)}
-          className="absolute inset-x-0 bottom-full z-30 mb-1 max-h-[min(60vh,28rem)] overflow-y-auto rounded-xl border border-[color:var(--cli-dim)]/40 bg-background p-3 shadow-[0_2px_14px_rgba(0,0,0,0.12)]"
+          className="mx-1 mt-2 max-h-[min(50vh,24rem)] overflow-y-auto border-t border-border/60 px-2 pb-1 pt-3"
         >
       <div className={cn("mb-2 flex items-center gap-2 px-1.5", dim)}>
         <div className="flex min-w-0 flex-1 items-baseline gap-2">
@@ -207,7 +207,7 @@ export function ProductionStrip({
           </Tabs>
           <p className={cn("mt-2", dim)}>{t(copy.tapHint)}</p>
         </div>
-      )}
+
 
     </div>
   )
