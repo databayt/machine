@@ -2,7 +2,7 @@
 import assert from "node:assert/strict"
 import { test } from "node:test"
 
-import { STAGE_GROUPS, groupOf, collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
+import { STAGE_GROUPS, groupOf, lightOf, collapsed, fillSlots, gateOf, collapsedText, defaultFilm, fileKind, filesFor, fontName, orderFormula, parseBrand, parseList, parseScenes, parseStatus, sceneKind, slotsFor, slugOf, stageFormula, withSource } from "./pure.ts"
 
 // What `produce.mjs status <id> --json` prints today: a stage map of booleans, gates as null or { by, at }.
 const TODAY = {
@@ -179,4 +179,12 @@ test("stages fall into four groups; the next stage picks the tab", () => {
   assert.equal(groupOf("visual"), "make")
   assert.equal(groupOf("publish"), "ship")
   assert.equal(STAGE_GROUPS.flatMap((g) => g.stages).length, 14)
+})
+
+test("a stage's light: green done, orange next, red failed, grey not started", () => {
+  const base = { n: 1, name: "qa", file: null, at: null, variants: null }
+  assert.equal(lightOf({ ...base, done: true, failed: false }, false), "green")
+  assert.equal(lightOf({ ...base, done: false, failed: false }, true), "orange")
+  assert.equal(lightOf({ ...base, done: false, failed: true }, true), "red")
+  assert.equal(lightOf({ ...base, done: false, failed: false }, false), "grey")
 })

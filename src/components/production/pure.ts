@@ -14,6 +14,16 @@ export interface Stage {
   at: string | null
   /** Variants that have this stage done, when the status carries a variant grid. */
   variants: { done: number; total: number } | null
+  /** The stage or one of its variants failed (a QA fail): the red light. */
+  failed: boolean
+}
+
+/** A stage's light: green done, orange next, red failed, grey not started. */
+export type Light = "green" | "orange" | "red" | "grey"
+export function lightOf(stage: Stage, isNext: boolean): Light {
+  if (stage.failed) return "red"
+  if (stage.done) return "green"
+  return isNext ? "orange" : "grey"
 }
 
 export interface Gate {
@@ -173,7 +183,9 @@ export function parseStatus(raw: unknown): Film | null {
       const have = [...grid.cells.values()].filter((m) => m.has(name))
       if (have.length > 0) variants = { done: have.filter((m) => isDone(m.get(name))).length, total: grid.ids.length }
     }
-    stages.push({ n: stages.length + 1, name, done: isDone(cell), file: str(o?.file), at: str(o?.at), variants })
+    const failedVariant = [...grid.cells.values()].some((m) => m.get(name) === "failed")
+    const failed = str(o?.status) === "failed" || cell === "failed" || failedVariant
+    stages.push({ n: stages.length + 1, name, done: isDone(cell), file: str(o?.file), at: str(o?.at), variants, failed })
   }
   const nextName = str(raw.next)
   const next = (nextName ? stages.find((s) => s.name === nextName) : null) ?? stages.find((s) => !s.done) ?? null

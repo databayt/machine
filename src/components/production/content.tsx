@@ -1,16 +1,14 @@
 "use client"
 
 import { useEffect, useRef, useState } from "react"
-import { CheckIcon, CircleIcon } from "lucide-react"
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import { tr } from "../chat/config"
 import { filmData, listFilms, type FilmData } from "./actions"
 import { copy } from "./config"
-import { STAGE_GROUPS, type FilmSummary, defaultFilm, gateOf, groupStages, slotsFor, stageFormula } from "./pure"
+import { type FilmSummary, type Light, defaultFilm, gateOf, lightOf, slotsFor, stageFormula } from "./pure"
 
-const accent = "text-[color:var(--cli-accent)]"
 
 /**
  * The production line above the chat box. Collapsed it is one quiet line: `▸ intro-cinematic · ●●●●●●○○○○○○○○ 07 visual
@@ -120,30 +118,24 @@ export function ProductionStrip({
 
             <TabsContent value="stages" className="m-0">
               <Cards>
-                {STAGE_GROUPS.map((g) => (
-                  <div key={g.id} className="flex shrink-0 flex-col gap-1.5">
-                    <span className="px-1 text-xs text-muted-foreground">{t(copy[g.id])}</span>
-                    <div className="flex gap-2">
-                      {groupStages(film, g.id).map((s) => {
-                        const gate = gateOf(film, s.name)
-                        const isNext = film.next?.name === s.name
-                        return (
-                          <Card key={s.name} active={isNext} onClick={() => pick(stageFormula(s.name))}>
-                            <span className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
-                              <span className="tabular-nums">{String(s.n).padStart(2, "0")}</span>
-                              {s.done ? <CheckIcon className="size-3.5 text-foreground" aria-hidden /> : isNext ? <span className={accent}>{t(copy.next)}</span> : <CircleIcon className="size-3" aria-hidden />}
-                            </span>
-                            <span className="text-sm font-medium capitalize text-foreground">{s.name}</span>
-                            <span className="mt-auto text-xs text-muted-foreground">
-                              {s.variants ? `${s.variants.done}/${s.variants.total} ${t(copy.variants)}` : s.done ? t(copy.done) : t(copy.todo)}
-                              {gate && ` · ${gate.name} ${gate.signed ? "✔" : "○"}`}
-                            </span>
-                          </Card>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
+                {film.stages.map((s) => {
+                  const gate = gateOf(film, s.name)
+                  const isNext = film.next?.name === s.name
+                  const light = lightOf(s, isNext)
+                  return (
+                    <Card key={s.name} active={isNext} onClick={() => pick(stageFormula(s.name))}>
+                      <span className="flex items-center justify-between font-mono text-[11px] text-muted-foreground">
+                        <span className="tabular-nums">{String(s.n).padStart(2, "0")}</span>
+                        <span role="img" aria-label={t(copy[light])} className={cn("size-2 rounded-full", LIGHT[light])} />
+                      </span>
+                      <span className="text-sm font-medium capitalize text-foreground">{s.name}</span>
+                      <span className="mt-auto text-xs text-muted-foreground">
+                        {s.variants ? `${s.variants.done}/${s.variants.total} ${t(copy.variants)}` : s.done ? t(copy.done) : t(copy.todo)}
+                        {gate && ` · ${gate.name} ${gate.signed ? "✔" : "○"}`}
+                      </span>
+                    </Card>
+                  )
+                })}
               </Cards>
             </TabsContent>
 
@@ -172,6 +164,13 @@ export function ProductionStrip({
   )
 }
 
+const LIGHT: Record<Light, string> = {
+  green: "bg-emerald-500",
+  orange: "bg-orange-500",
+  red: "bg-red-500",
+  grey: "bg-foreground/20",
+}
+
 /** A horizontal row of cards that scrolls sideways, as on /social/publish. */
 function Cards({ children }: { children: React.ReactNode }) {
   return <div className="-mx-1 flex snap-x gap-2 overflow-x-auto px-1 pb-1 font-sans [scrollbar-width:none]">{children}</div>
@@ -190,8 +189,8 @@ function Card({ active, onClick, children }: { active?: boolean; onClick: () => 
       onMouseDown={(e) => e.preventDefault()}
       onClick={onClick}
       className={cn(
-        "flex h-24 w-36 shrink-0 snap-start flex-col gap-1 rounded-2xl border p-3 text-start transition-colors duration-150",
-        active ? "border-foreground/40 bg-foreground/[0.03]" : "border-border/70 hover:border-foreground/30",
+        "flex h-24 w-36 shrink-0 snap-start flex-col gap-1 rounded-2xl bg-muted p-3 text-start transition-colors duration-150 hover:bg-foreground/[0.07]",
+        active && "bg-foreground/[0.08]",
       )}
     >
       {children}
