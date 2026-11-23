@@ -31,6 +31,8 @@ export interface Connector {
   top?: boolean
   /** Listed, not installed, needs a decision. Never installable and never shown as installed; the card shows `price` instead. */
   staged?: { price: Copy }
+  /** The tool id `video-tools.mjs setup <id>` takes, when it differs from `id` (paid tools only). */
+  setup?: string
 }
 
 /** The eight departments, for the pills when the machine has no profile (the website, a browser). */
@@ -195,6 +197,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "google-genmedia",
+    setup: "veo-api",
     name: "Google GenMedia",
     kind: "local",
     departments: ["video", "image"],
@@ -205,6 +208,7 @@ export const CONNECTORS: Connector[] = [
   },
   {
     id: "epidemic-sound",
+    setup: "epidemic",
     name: "Epidemic Sound",
     kind: "connector",
     departments: ["video"],

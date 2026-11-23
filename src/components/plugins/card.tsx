@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 
 import type { Copy } from "../chat/config"
+import { promptHref } from "../menu/config"
 import { copy } from "./config"
 import { KINDS, type Connector } from "./registry"
 
@@ -53,8 +54,15 @@ export function Logo({ c, size = 40 }: { c: Item; size?: number }) {
   )
 }
 
-/** `Needs a decision · $6 a month`: the one muted line a staged card shows. */
+/** `Paid, optional · $6 a month`: the one muted line a paid card shows. Free tools stay the default. */
 export const stagedLine = (c: Connector, t: T) => (c.staged ? `${t(copy.needsDecision)} · ${t(c.staged.price)}` : "")
+
+/**
+ * The quick fix for a paid tool, as an English prompt the chat carries to the agent: subscribe in the person's own
+ * name (the `behalf` skill), then store the key and register it with kun's script. Paying is each person's choice.
+ */
+export const setupPrompt = (c: Connector): string =>
+  `Set up ${c.name} for me, paid on my own account. Open its pricing page, subscribe on my behalf with the behalf skill (ask me before any payment), then run \`node ~/kun/.claude/scripts/video-tools.mjs setup ${c.setup ?? c.id}\` and give it the API key it needs (never print the key). Finish with \`video-tools.mjs status ${c.setup ?? c.id}\`.`
 
 export const kindLabel = (c: Connector, t: T) => t(KINDS.find((k) => k.id === c.kind)!.label)
 
@@ -148,6 +156,18 @@ export function Grid({ children }: { children: React.ReactNode }) {
 export function PluginCard({ c, lang, actions, t }: { c: Connector; lang: string; actions: Actions; t: T }) {
   const href = `/${lang}/plugins/?item=${encodeURIComponent(c.id)}`
   // Staged: listed, not installed. The price stands where the installed state would be; no add, no remove.
-  if (c.staged) return <Card c={c} t={t} href={href} note={stagedLine(c, t)} />
+  if (c.staged) return <Card c={c} t={t} href={href} note={stagedLine(c, t)} action={<SetUp c={c} lang={lang} t={t} className={hoverAction} />} />
   return <Card c={c} t={t} href={href} action={<Action c={c} actions={actions} t={t} className={hoverAction} />} />
+}
+
+/** A paid card's one action: Set up opens the chat with the quick fix in the box (nothing runs until Send). */
+export function SetUp({ c, lang, t, className }: { c: Connector; lang: string; t: T; className?: string }) {
+  return (
+    <a
+      href={promptHref(lang, setupPrompt(c))}
+      className={cn("bg-foreground text-background hover:bg-foreground/85 rounded-full px-3 py-1 text-xs font-medium transition-colors", className)}
+    >
+      {t(copy.setUp)}
+    </a>
+  )
 }

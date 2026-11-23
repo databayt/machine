@@ -78,7 +78,7 @@ export default function Plugins({ lang }: { lang: Locale }) {
     if (c)
       return (
         <PageShell title={c.name}>
-          <Detail c={c} actions={actions} t={t} />
+          <Detail c={c} actions={actions} t={t} lang={lang} />
         </PageShell>
       )
     const s = appSteps(steps, removed).find((x) => x.id === id)
