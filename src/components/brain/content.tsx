@@ -14,8 +14,9 @@ import { OpenInMachine, useInMachine } from "../shell/content"
 import { loadSettings, saveSettings } from "../settings/actions"
 import type { FallbackPolicy, ModelPolicy } from "../settings/types"
 import { PageShell } from "../shell/page"
-import { INSTALL_STEP, KEY_NAME, brainApply, brainStatus } from "./actions"
+import { INSTALL_STEP, KEY_NAME, brainApply, brainMintKey, brainStatus } from "./actions"
 import { copy } from "./config"
+import { Providers } from "./providers"
 import type { Brain, BrainView, RouteStatus } from "./types"
 
 const CARDS: { id: Brain; name: Copy; blurb: Copy; logo?: string; links: { href: string; label: Copy }[] }[] = [
@@ -51,6 +52,8 @@ export default function BrainContent({ lang }: { lang: Locale }) {
   const inApp = useInMachine()
   const [view, setView] = useState<BrainView | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  // The Providers drill-down swaps in for the route cards; nothing stacks below them.
+  const [screen, setScreen] = useState<"routes" | "providers">("routes")
 
   const reload = useCallback(async () => {
     const v = await brainStatus()
@@ -67,6 +70,8 @@ export default function BrainContent({ lang }: { lang: Locale }) {
     <PageShell title={t(copy.title)}>
       {!inApp ? (
         <OpenInMachine lang={lang} />
+      ) : screen === "providers" ? (
+        <Providers lang={lang} t={t} onBack={() => { setScreen("routes"); void reload() }} />
       ) : (
         <>
           <p className="text-muted-foreground max-w-xl text-sm">{t(copy.intro)}</p>
@@ -83,6 +88,7 @@ export default function BrainContent({ lang }: { lang: Locale }) {
                   current={view?.current === c.id}
                   t={t}
                   onChanged={reload}
+                  onProviders={c.id === "omniroute" ? () => setScreen("providers") : undefined}
                   onApply={async () => {
                     setMessage(null)
                     try {
@@ -117,6 +123,7 @@ function RouteCard({
   t,
   onApply,
   onChanged,
+  onProviders,
 }: {
   card: (typeof CARDS)[number]
   status: RouteStatus | undefined
@@ -124,14 +131,16 @@ function RouteCard({
   t: (c: Copy) => string
   onApply: () => Promise<void>
   onChanged: () => Promise<void>
+  /** Only the OmniRoute card has it: opens the Providers screen. */
+  onProviders?: () => void
 }) {
   const free = card.id !== "claude"
   const [key, setKey] = useState("")
-  const [busy, setBusy] = useState<"key" | "install" | "use" | null>(null)
+  const [busy, setBusy] = useState<"key" | "install" | "use" | "mint" | null>(null)
   const [error, setError] = useState<string | null>(null)
   const name = t(card.name)
 
-  async function run(kind: "key" | "install" | "use", job: () => Promise<void>) {
+  async function run(kind: "key" | "install" | "use" | "mint", job: () => Promise<void>) {
     setBusy(kind)
     setError(null)
     try {
@@ -156,6 +165,13 @@ function RouteCard({
       if (card.id === "claude") return
       const out = await readinessFix(INSTALL_STEP[card.id])
       if (!out.ok) throw new Error(out.message ?? "install failed")
+      await onChanged()
+    })
+
+  // OmniRoute's own key is made by kun's script, not pasted: one tap runs `omni.mjs mint-key`.
+  const mint = () =>
+    run("mint", async () => {
+      await brainMintKey()
       await onChanged()
     })
 
@@ -189,7 +205,14 @@ function RouteCard({
               </button>
             )}
           </Status>
-          <Status ok={status.key_set}>{status.key_set ? t(copy.keySet) : t(copy.keyMissing)}</Status>
+          <Status ok={status.key_set}>
+            {status.key_set ? t(copy.keySet) : t(copy.keyMissing)}
+            {card.id === "omniroute" && !status.key_set && (
+              <button type="button" onClick={() => void mint()} disabled={busy !== null} className="text-primary ms-2 font-medium disabled:opacity-50">
+                {busy === "mint" ? t(copy.creatingKey) : t(copy.createKey)}
+              </button>
+            )}
+          </Status>
           <Status ok={status.proxy_up}>{status.proxy_up ? t(copy.proxyUp) : t(copy.proxyDown)}</Status>
         </ul>
       )}
@@ -228,6 +251,12 @@ function RouteCard({
             </a>
           ))}
         </div>
+      )}
+
+      {onProviders && (
+        <button type="button" onClick={onProviders} className={cn(pill, "bg-muted hover:bg-muted/70 self-start")}>
+          {t(copy.providers)}
+        </button>
       )}
 
       {free && <p className="text-muted-foreground text-xs">{t(copy.privacy)}</p>}

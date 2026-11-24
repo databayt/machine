@@ -59,6 +59,7 @@ fn plan_runs_kun_first_and_the_catalog_last_and_skips_dirty_repos() {
         workspace_ready: false,
         disk_free_bytes: Some(MIN_FREE_BYTES),
         kun_behind: Some(1),
+        pool: None,
     };
     assert_eq!(
         health::plan(&facts),
@@ -382,4 +383,26 @@ fn a_failing_auto_step_is_planned_and_executed_through_the_host() {
     let failing = FakeHost { steps: vec!["x".into()], fail: vec!["step:x".into()], ..FakeHost::default() };
     let report = health::run_cycle(&failing, "now");
     assert!(!report.items.iter().find(|i| i.key == "step:x").unwrap().ok);
+}
+
+#[test]
+fn the_pool_item_carries_its_light_and_only_red_is_not_ok() {
+    use crate::brain::pool::{PoolHealth, PoolLevel};
+    let item_for = |level, detail: &str| {
+        let facts = Facts { pool: Some(PoolHealth { level, ok: level != PoolLevel::Red, detail: detail.into() }), ..Facts::default() };
+        health::report_items(&facts, &Vec::new()).into_iter().find(|i| i.key == "pool").unwrap()
+    };
+    let green = item_for(PoolLevel::Green, "fine");
+    assert!(green.ok && green.level.as_deref() == Some("green"));
+    let yellow = item_for(PoolLevel::Yellow, "groq exhausted");
+    assert!(yellow.ok && yellow.level.as_deref() == Some("yellow") && yellow.detail == "groq exhausted");
+    let red = item_for(PoolLevel::Red, "down");
+    assert!(!red.ok && red.level.as_deref() == Some("red"));
+    // A red light that is still ok (no keys yet, or not installed) must not paint the machine red.
+    let facts = Facts { pool: Some(PoolHealth { level: PoolLevel::Red, ok: true, detail: "no provider is ready".into() }), ..Facts::default() };
+    let soft = health::report_items(&facts, &Vec::new()).into_iter().find(|i| i.key == "pool").unwrap();
+    assert!(soft.ok && soft.level.as_deref() == Some("red"));
+    // A host with no pool reports no item at all, and other items carry no light.
+    let none = health::report_items(&Facts::default(), &Vec::new());
+    assert!(none.iter().all(|i| i.key != "pool" && i.level.is_none()));
 }

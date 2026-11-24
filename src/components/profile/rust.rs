@@ -512,7 +512,12 @@ pub fn store_secret(
     }
     store
         .set(&account(resolved, name), value)
-        .map_err(ProfileError::Store)
+        .map_err(ProfileError::Store)?;
+    // kun's scripts read the bare name, so a model-route key is written there too.
+    if BUILTIN_SECRETS.contains(&name) {
+        store.set(name, value).map_err(ProfileError::Store)?;
+    }
+    Ok(())
 }
 
 /// Whether a secret the profile lists is stored. Never returns the value.

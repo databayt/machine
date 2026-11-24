@@ -115,7 +115,7 @@ export default function HealthContent({ lang }: { lang: Locale }) {
           <ul className="divide-y divide-border text-sm">
             {report.items.map((i) => (
               <li key={i.key} className="flex items-start gap-3 py-2">
-                <span className={i.ok ? "text-emerald-600" : "text-destructive"} aria-hidden>{i.ok ? "✓" : "✗"}</span>
+                <span className={i.level === "yellow" ? "text-amber-600" : i.ok ? "text-emerald-600" : "text-destructive"} aria-hidden>{i.level === "yellow" ? "•" : i.ok ? "✓" : "✗"}</span>
                 <span className="min-w-0"><span className="font-medium" dir="ltr">{i.key}</span> <span className="text-xs text-muted-foreground" dir="ltr">{i.detail}</span></span>
               </li>
             ))}

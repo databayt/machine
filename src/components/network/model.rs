@@ -14,6 +14,10 @@ pub struct HealthItem {
     pub detail: String,
     /// True when the machine fixed it itself on this check.
     pub healed: bool,
+    /// A three-state light (`green`, `yellow`, `red`) for the items that have one (`pool`);
+    /// absent for the rest, which are `ok` or not.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub level: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, TS)]

@@ -2,13 +2,17 @@
 //!
 //! Claude on the person's own sign-in is the default. Three opt-in free routes point the same CLI
 //! at a local Anthropic-compatible proxy: NVIDIA and `OpenRouter` through Free Claude Code (`fcc-server`,
-//! :8082, configured by `~/.fcc/.env`), and `OmniRoute` (`omniroute serve --headless`, :20128), which
-//! stacks every free tier. The app starts a proxy when nothing answers, adopts one that does, and
-//! stops only one it started when it quits (see [`supervise`]).
+//! :8082, configured by `~/.fcc/.env`), and `OmniRoute` (:20128), the token pool: kun's launchd
+//! service with its own model classes (`kun-code`, `kun-fast`, ...), each an ordered chain of free
+//! models. The app starts a proxy when nothing answers, adopts one that does, and stops only one it
+//! started when it quits (see [`supervise`]); kun's `OmniRoute` service is never ours to stop.
+//! Providers (which keys feed the pool) are in [`providers`], the ledger they read in [`pool`].
 //!
 //! Keys live in the OS credential store; the UI only learns "set / not set". A chosen route that is
 //! not ready fails the run with one line naming the missing step; it never falls back to Claude.
 
+pub mod pool;
+pub mod providers;
 pub mod supervise;
 
 use std::{
@@ -32,6 +36,7 @@ use crate::{
     profile::{self, OsStore, ProfileError, Resolved, SecretStore},
     settings::{self, SettingsError},
 };
+use providers::{ProvidersView, TestResult};
 use supervise::{Spec, SuperviseError, SUPERVISOR};
 
 /// Which model a run uses.
@@ -63,6 +68,11 @@ pub const OMNIROUTE_PORT: u16 = 20128;
 const FCC_PLACEHOLDER_TOKEN: &str = "freecc";
 const NVIDIA_MODEL: &str = "nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b";
 const OPENROUTER_MODEL: &str = "open_router/openrouter/free";
+/// `OmniRoute`'s own `auto` also routes to the keyless reverse-engineered providers it pre-registers.
+/// `kun-code` is kun's ranked chain over only the providers the person connected.
+const OMNIROUTE_MODEL: &str = "kun-code";
+/// The small / background class: Claude Code's haiku and subagent models.
+const OMNIROUTE_FAST_MODEL: &str = "kun-fast";
 /// How long a freshly started proxy gets to answer.
 const START_WAIT: Duration = Duration::from_secs(20);
 
@@ -85,14 +95,14 @@ impl Brain {
         }
     }
 
-    /// The model shown in the UI and written as `MODEL` (empty for Claude and for `OmniRoute`'s `auto`).
+    /// The model shown in the UI and written as `MODEL` (empty for Claude).
     #[must_use]
     pub fn model(self) -> &'static str {
         match self {
             Brain::Claude => "",
             Brain::Nvidia => NVIDIA_MODEL,
             Brain::OpenRouter => OPENROUTER_MODEL,
-            Brain::OmniRoute => "auto",
+            Brain::OmniRoute => OMNIROUTE_MODEL,
         }
     }
 
@@ -149,10 +159,20 @@ impl Proxy {
         }
     }
 
+    /// Only used when kun's service script is missing and the app starts `omniroute` itself.
     fn args(self) -> Vec<String> {
         match self {
             Proxy::Fcc => Vec::new(),
             Proxy::OmniRoute => vec!["serve".into(), "--headless".into()],
+        }
+    }
+
+    /// Where the child runs. `OmniRoute` reads a `.env` from its working folder, so a bare start
+    /// belongs in `~/.omniroute` (kun's service uses it), never in whatever folder the app was in.
+    fn cwd(self) -> Option<PathBuf> {
+        match self {
+            Proxy::Fcc => None,
+            Proxy::OmniRoute => dirs::home_dir().map(|h| h.join(".omniroute")),
         }
     }
 
@@ -168,6 +188,7 @@ impl Proxy {
             name: self.name().to_owned(),
             program,
             args: self.args(),
+            cwd: self.cwd(),
             env: vec![("PATH".into(), path_with_tools())],
             log: state_dir().join(format!("brain-{}.log", self.name())),
             port: self.port(),
@@ -201,6 +222,9 @@ pub enum BrainError {
     NoHome,
     #[error("{0}")]
     Io(#[from] io::Error),
+    /// A Providers action failed; the text is one readable line.
+    #[error("{0}")]
+    Pool(String),
     #[error(transparent)]
     Profile(#[from] ProfileError),
     #[error(transparent)]
@@ -324,8 +348,9 @@ pub fn apply_fcc_env(path: &Path, brain: Brain, key: &str) -> io::Result<bool> {
 // ---------------------------------------------------------------- the run's environment
 
 /// The environment a run gets from a route: where Claude Code talks and as whom. Pure.
-/// `OmniRoute` needs its own key as the token and `ANTHROPIC_MODEL=auto`; Free Claude Code takes a
-/// placeholder token. Claude adds nothing.
+/// `OmniRoute` needs its own key as the token, `ANTHROPIC_MODEL=kun-code` for the main model and
+/// `kun-fast` for the small and subagent models; Free Claude Code takes a placeholder token.
+/// Claude adds nothing.
 #[must_use]
 pub fn route_env(brain: Brain, omniroute_key: Option<&str>) -> Vec<(String, String)> {
     let Some(proxy) = brain.proxy() else {
@@ -336,7 +361,9 @@ pub fn route_env(brain: Brain, omniroute_key: Option<&str>) -> Vec<(String, Stri
         Proxy::Fcc => env.push(("ANTHROPIC_AUTH_TOKEN".into(), FCC_PLACEHOLDER_TOKEN.into())),
         Proxy::OmniRoute => {
             env.push(("ANTHROPIC_AUTH_TOKEN".into(), omniroute_key.unwrap_or_default().to_owned()));
-            env.push(("ANTHROPIC_MODEL".into(), "auto".into()));
+            env.push(("ANTHROPIC_MODEL".into(), OMNIROUTE_MODEL.into()));
+            env.push(("ANTHROPIC_DEFAULT_HAIKU_MODEL".into(), OMNIROUTE_FAST_MODEL.into()));
+            env.push(("CLAUDE_CODE_SUBAGENT_MODEL".into(), OMNIROUTE_FAST_MODEL.into()));
         }
     }
     env
@@ -352,15 +379,65 @@ pub fn merge_env(env: Vec<(String, String)>, route: Vec<(String, String)>) -> Ve
     }
     let mut out: Vec<_> = env
         .into_iter()
-        .filter(|(k, _)| !k.starts_with("ANTHROPIC_") && k != "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
+        .filter(|(k, _)| {
+            !k.starts_with("ANTHROPIC_") && k != "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC" && k != "CLAUDE_CODE_SUBAGENT_MODEL"
+        })
         .collect();
     out.extend(route);
     out
 }
 
+/// The key of a route. Machine stores it under the profile's own name; kun's scripts (`omni.mjs
+/// mint-key`, a key pasted in Providers) store the bare name, so that one counts too.
+fn read_key(store: &impl SecretStore, resolved: &Resolved, name: &str) -> Result<Option<String>, ProfileError> {
+    if let Some(v) = profile::read_secret(store, resolved, name)? {
+        return Ok(Some(v));
+    }
+    Ok(store.get(name).map_err(ProfileError::Store)?.filter(|v| !v.trim().is_empty()))
+}
+
+/// Whether a route's key is saved, under either name. Never returns the value.
+fn key_present(store: &impl SecretStore, resolved: &Resolved, name: &str) -> bool {
+    profile::secret_present(store, resolved, name).unwrap_or(false) || store.get(name).ok().flatten().is_some_and(|v| !v.trim().is_empty())
+}
+
+/// Brings `OmniRoute` up when nothing answers. kun's service script wins when it is there: it binds
+/// loopback, requires an API key and keeps its secrets (a bare `omniroute serve` outside
+/// `~/.omniroute` binds 0.0.0.0 with no key), and the service is adopted, never stopped by the app.
+/// Without the script the app starts `omniroute` itself, from `~/.omniroute`, and owns that child.
+fn ensure_omniroute() -> Result<(), BrainError> {
+    let proxy = Proxy::OmniRoute;
+    let err = |detail: String| BrainError::Proxy { title: proxy.title(), detail };
+    let probe = proxy.spec(PathBuf::new());
+    if probe.is_up(Duration::from_millis(400)) {
+        return Ok(());
+    }
+    let kun = crate::engine::kun_dir();
+    if providers::scripts_present(&kun) {
+        providers::install_gateway(&providers::KunRunner { kun }).map_err(err)?;
+        let deadline = std::time::Instant::now() + START_WAIT;
+        while !probe.is_up(Duration::from_millis(400)) {
+            if std::time::Instant::now() >= deadline {
+                return Err(err("it did not answer after install".to_owned()));
+            }
+            std::thread::sleep(Duration::from_millis(300));
+        }
+        return Ok(());
+    }
+    let program = find_binary(proxy.binary(), &search_dirs()).ok_or(BrainError::NotInstalled(proxy.title()))?;
+    if let Some(dir) = proxy.cwd() {
+        fs::create_dir_all(dir)?;
+    }
+    SUPERVISOR
+        .ensure(&proxy.spec(program), START_WAIT)
+        .map(|_| ())
+        .map_err(|e: SuperviseError| err(e.to_string()))
+}
+
 /// Makes a free route ready for a run and returns its environment additions: checks the proxy is
 /// installed and the key saved, points Free Claude Code at the route, and starts or adopts the
-/// proxy. Blocking (up to about 20 s when the proxy has to start). Claude returns nothing.
+/// proxy. Blocking (up to about 20 s when the proxy has to start, longer when kun's service is
+/// installed). Claude returns nothing.
 ///
 /// # Errors
 /// One clear [`BrainError`] naming the missing step.
@@ -372,16 +449,21 @@ pub fn prepare(
     let (Some(proxy), Some(name)) = (brain.proxy(), brain.secret_name()) else {
         return Ok(Vec::new());
     };
+    if proxy == Proxy::OmniRoute {
+        let key = read_key(store, resolved, name)?.ok_or(BrainError::NoKey(brain.label()))?;
+        ensure_omniroute()?;
+        return Ok(route_env(brain, Some(key.as_str())));
+    }
     let program = find_binary(proxy.binary(), &search_dirs()).ok_or(BrainError::NotInstalled(proxy.title()))?;
     let key = profile::read_secret(store, resolved, name)?.ok_or(BrainError::NoKey(brain.label()))?;
-    if proxy == Proxy::Fcc && apply_fcc_env(&fcc_env_path()?, brain, &key)? {
+    if apply_fcc_env(&fcc_env_path()?, brain, &key)? {
         // A server we started read the old file: restart it. (One we merely adopted is left alone.)
         SUPERVISOR.stop(proxy.name());
     }
     SUPERVISOR
         .ensure(&proxy.spec(program), START_WAIT)
         .map_err(|e: SuperviseError| BrainError::Proxy { title: proxy.title(), detail: e.to_string() })?;
-    Ok(route_env(brain, (proxy == Proxy::OmniRoute).then_some(key.as_str())))
+    Ok(route_env(brain, None))
 }
 
 // ---------------------------------------------------------------- status and commands
@@ -426,7 +508,7 @@ pub fn view(store: &impl SecretStore) -> Result<BrainView, BrainError> {
                 None => find_binary("claude", &dirs).is_some(),
             };
             let key_set = match route.secret_name() {
-                Some(n) => profile::secret_present(store, &resolved, n).unwrap_or(false),
+                Some(n) => key_present(store, &resolved, n),
                 None => true,
             };
             let proxy_up = proxy.is_none_or(|p| p.spec(PathBuf::new()).is_up(probe));
@@ -451,7 +533,7 @@ pub fn apply(route: Brain, store: &impl SecretStore) -> Result<BrainView, BrainE
     if let (Some(proxy), Some(name)) = (route.proxy(), route.secret_name()) {
         let resolved = profile::current()?;
         find_binary(proxy.binary(), &search_dirs()).ok_or(BrainError::NotInstalled(proxy.title()))?;
-        let key = profile::read_secret(store, &resolved, name)?.ok_or(BrainError::NoKey(route.label()))?;
+        let key = read_key(store, &resolved, name)?.ok_or(BrainError::NoKey(route.label()))?;
         if proxy == Proxy::Fcc && apply_fcc_env(&fcc_env_path()?, route, &key)? {
             SUPERVISOR.stop(proxy.name());
         }
@@ -468,13 +550,31 @@ pub fn apply(route: Brain, store: &impl SecretStore) -> Result<BrainView, BrainE
 /// then NVIDIA, then `OpenRouter`.
 pub const FALLBACK_ORDER: [Brain; 3] = [Brain::OmniRoute, Brain::Nvidia, Brain::OpenRouter];
 
-/// The free routes that are ready (program installed and key saved), in [`FALLBACK_ORDER`]. Pure.
+/// The free routes that are ready. A route is ready when its program is installed and its key
+/// saved. When the pool is usable (`pool_usable`: the ledger says it is ready and the gateway
+/// answers) `OmniRoute` is first and ready on its key alone, since kun's service, not an
+/// app-started child, is what answers. When it is not usable `OmniRoute` goes last, after NVIDIA
+/// and `OpenRouter`, so a pool that cannot serve is the final resort. Pure.
 #[must_use]
-pub fn ready_fallbacks(routes: &[RouteStatus]) -> Vec<Brain> {
-    FALLBACK_ORDER
-        .into_iter()
-        .filter(|b| routes.iter().any(|r| r.route == *b && r.installed && r.key_set))
-        .collect()
+pub fn ready_fallbacks(routes: &[RouteStatus], pool_usable: bool) -> Vec<Brain> {
+    let ready = |b: Brain, need_program: bool| routes.iter().any(|r| r.route == b && (r.installed || !need_program) && r.key_set);
+    if pool_usable {
+        let first = ready(Brain::OmniRoute, false).then_some(Brain::OmniRoute);
+        first.into_iter().chain(FALLBACK_ORDER.into_iter().filter(|b| Some(*b) != first && ready(*b, true))).collect()
+    } else {
+        let (omni, rest): (Vec<Brain>, Vec<Brain>) =
+            FALLBACK_ORDER.into_iter().filter(|b| ready(*b, true)).partition(|b| *b == Brain::OmniRoute);
+        rest.into_iter().chain(omni).collect()
+    }
+}
+
+/// Whether the token pool can serve a run right now: `harvest.json` says it is ready and the
+/// gateway answers a probe. Blocking (one loopback probe).
+#[must_use]
+pub fn pool_usable() -> bool {
+    let answers = Proxy::OmniRoute.spec(PathBuf::new()).is_up(Duration::from_millis(300));
+    let loaded = pool::load_harvest(&pool::harvest_path());
+    pool::usable(loaded.as_ref().map(|(h, _)| h), answers)
 }
 
 /// Sessions that fell back this app run: session id to the free route it is on. Memory only; a new
@@ -516,10 +616,107 @@ async fn brain_apply(route: Brain) -> Result<BrainView, BrainError> {
         .map_err(|e| BrainError::Io(io::Error::other(e.to_string())))?
 }
 
+/// Runs blocking work off the async runtime.
+async fn blocking<T: Send + 'static>(job: impl FnOnce() -> Result<T, BrainError> + Send + 'static) -> Result<T, BrainError> {
+    tokio::task::spawn_blocking(job)
+        .await
+        .map_err(|e| BrainError::Io(io::Error::other(e.to_string())))?
+}
+
+fn pool_err(e: String) -> BrainError {
+    BrainError::Pool(e)
+}
+
+fn gateway_answers() -> bool {
+    Proxy::OmniRoute.spec(PathBuf::new()).is_up(Duration::from_millis(300))
+}
+
+/// The Providers screen: kun's catalog merged with its ledger, plus what answers on the gateway now.
+fn providers_now() -> ProvidersView {
+    let kun = crate::engine::kun_dir();
+    let loaded = pool::load_harvest(&pool::harvest_path());
+    let scripts = providers::scripts_present(&kun) && find_binary("node", &search_dirs()).is_some();
+    match pool::load_catalog(&kun) {
+        Ok(catalog) => providers::build_view(&catalog, loaded.as_ref().map(|(h, _)| h), loaded.as_ref().and_then(|(_, a)| *a), gateway_answers(), scripts),
+        Err(e) => ProvidersView { error: Some(e), ..providers::build_view(&[], None, None, gateway_answers(), scripts) },
+    }
+}
+
+/// `providers_status` — every provider in kun's catalog with what the ledger knows of it.
+#[tauri::command]
+async fn providers_status() -> Result<ProvidersView, BrainError> {
+    blocking(|| Ok(providers_now())).await
+}
+
+/// `providers_save` — stores a pasted key (and account id) in the credential store, connects the
+/// provider to the gateway, rebuilds the combos and refreshes the ledger. The key never comes back.
+#[tauri::command]
+async fn providers_save(id: String, key: String, account: Option<String>) -> Result<ProvidersView, BrainError> {
+    blocking(move || {
+        let kun = crate::engine::kun_dir();
+        let catalog = pool::load_catalog(&kun).map_err(pool_err)?;
+        providers::save(&OsStore, &providers::KunRunner { kun }, &catalog, &id, &key, account.as_deref()).map_err(pool_err)?;
+        Ok(providers_now())
+    })
+    .await
+}
+
+/// `providers_test` — one upstream test of a connected provider: ok and its latency.
+#[tauri::command]
+async fn providers_test(id: String) -> Result<TestResult, BrainError> {
+    blocking(move || {
+        let loaded = pool::load_harvest(&pool::harvest_path());
+        providers::test(&providers::KunRunner { kun: crate::engine::kun_dir() }, loaded.as_ref().map(|(h, _)| h), &id).map_err(pool_err)
+    })
+    .await
+}
+
+/// `providers_open` — opens a provider's sign-up page (the address comes from kun's catalog, never from JS).
+#[tauri::command]
+async fn providers_open(id: String) -> Result<(), BrainError> {
+    blocking(move || {
+        let catalog = pool::load_catalog(&crate::engine::kun_dir()).map_err(pool_err)?;
+        let url = catalog.iter().find(|p| p.id == id).and_then(|p| p.signup.clone()).ok_or_else(|| pool_err("that provider has no sign-up page".to_owned()))?;
+        providers::open_url(&url).map_err(pool_err)
+    })
+    .await
+}
+
+/// `providers_setup` — the gateway service, every enabled provider with a key, the combos, the ledger.
+#[tauri::command]
+async fn providers_setup() -> Result<ProvidersView, BrainError> {
+    blocking(|| {
+        providers::setup(&providers::KunRunner { kun: crate::engine::kun_dir() }).map_err(pool_err)?;
+        Ok(providers_now())
+    })
+    .await
+}
+
+/// `brain_mint_key` — creates the gateway key `OmniRoute` runs need (`omni.mjs mint-key`), then
+/// returns the refreshed Model page.
+#[tauri::command]
+async fn brain_mint_key() -> Result<BrainView, BrainError> {
+    blocking(|| {
+        providers::mint_key(&providers::KunRunner { kun: crate::engine::kun_dir() }, gateway_answers()).map_err(pool_err)?;
+        view(&OsStore)
+    })
+    .await
+}
+
 #[must_use]
 pub fn plugin<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("brain")
-        .invoke_handler(tauri::generate_handler![brain_status, brain_apply, brain_fallback_state])
+        .invoke_handler(tauri::generate_handler![
+            brain_status,
+            brain_apply,
+            brain_fallback_state,
+            brain_mint_key,
+            providers_status,
+            providers_save,
+            providers_test,
+            providers_open,
+            providers_setup
+        ])
         .on_event(|_app, event| {
             if matches!(event, tauri::RunEvent::Exit) {
                 SUPERVISOR.stop_all();

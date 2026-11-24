@@ -673,7 +673,7 @@ async fn run_job(
 
 /// Routes that are installed with a key, in fallback order. Blocking work off the async thread.
 async fn ready_routes() -> Vec<Brain> {
-    tokio::task::spawn_blocking(|| brain::view(&OsStore).map(|v| brain::ready_fallbacks(&v.routes)).unwrap_or_default())
+    tokio::task::spawn_blocking(|| brain::view(&OsStore).map(|v| brain::ready_fallbacks(&v.routes, brain::pool_usable())).unwrap_or_default())
         .await
         .unwrap_or_default()
 }

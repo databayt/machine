@@ -25,6 +25,8 @@ pub struct Facts {
     pub kun_behind: Option<u32>,
     /// Failing readiness steps with an `auto` fix, under the 3-per-day attempt cap.
     pub failing_steps: Vec<String>,
+    /// The token pool's light; `None` where this host has no pool to report.
+    pub pool: Option<crate::brain::pool::PoolHealth>,
 }
 
 /// One safe fix.
@@ -49,6 +51,7 @@ pub fn gather(host: &impl Host) -> Facts {
         disk_free_bytes: host.disk_free_bytes(),
         kun_behind: host.kun_behind(),
         failing_steps: host.failing_steps(),
+        pool: host.pool(),
     }
 }
 
@@ -93,6 +96,7 @@ fn item(key: &str, ok: bool, detail: impl Into<String>, healed: bool) -> HealthI
         ok,
         detail,
         healed,
+        level: None,
     }
 }
 
@@ -175,6 +179,14 @@ pub fn report_items(facts: &Facts, outcomes: &Outcomes) -> Vec<HealthItem> {
                 false,
             )
         });
+    }
+
+    if let Some(p) = &facts.pool {
+        // `ok` is the heartbeat's verdict (false only for an installed, stopped gateway); the
+        // light for the local page rides on `level`.
+        let mut it = item("pool", p.ok, p.detail.clone(), false);
+        it.level = Some(p.level.word().to_owned());
+        items.push(it);
     }
 
     for id in &facts.failing_steps {

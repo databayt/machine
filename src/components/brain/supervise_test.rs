@@ -7,6 +7,7 @@ fn spec(port: u16, program: &str, args: &[&str], log: PathBuf) -> Spec {
         name: "t".into(),
         program: program.into(),
         args: args.iter().map(|s| (*s).to_owned()).collect(),
+        cwd: None,
         env: Vec::new(),
         log,
         port,

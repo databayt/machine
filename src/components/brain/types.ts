@@ -10,6 +10,55 @@ export type Brain = "claude" | "nvidia" | "openrouter" | "omniroute";
  */
 export type BrainView = { current: Brain, routes: Array<RouteStatus>, };
 
+export type ComboRow = { name: string, ready: boolean, members: number, };
+
+/**
+ * A row of the Providers screen is one of these.
+ */
+export type ProviderMode = "pool" | "direct" | "paid" | "plan";
+
+export type ProviderRow = { id: string, name: string, tier: string, mode: ProviderMode, enabled: boolean, 
+/**
+ * The ledger's status word, or `unknown` before the first harvest.
+ */
+status: string, signup: string | null, 
+/**
+ * A key is saved and the provider is connected to the gateway (never the key itself).
+ */
+key_set: boolean, 
+/**
+ * This provider also takes an account id (Cloudflare).
+ */
+needs_account: boolean, 
+/**
+ * There is a gateway connection to test.
+ */
+can_test: boolean, requests: number | null, success_pct: number | null, avg_ms: number | null, quota: QuotaView | null, note: string | null, 
+/**
+ * Paid rows: the approval line.
+ */
+decide: string | null, };
+
+export type ProvidersView = { 
+/**
+ * `ok`, `down` or `missing`: what answers on the gateway's port now.
+ */
+gateway: string, pool_ready: boolean, updated: string | null, 
+/**
+ * The ledger is older than two hours (or its age is unknown).
+ */
+stale: boolean, 
+/**
+ * kun's pool scripts and Node.js are here, so the actions can run.
+ */
+scripts_ready: boolean, rows: Array<ProviderRow>, combos: Array<ComboRow>, 
+/**
+ * Why there are no rows (no catalog), when that is the case.
+ */
+error: string | null, };
+
+export type QuotaView = { used: number | null, limit: number | null, remaining: number | null, unit: string | null, resets_at: string | null, };
+
 /**
  * One route as the Model page shows it.
  */
@@ -26,3 +75,5 @@ key_set: boolean,
  * Something answers on the route's proxy port now.
  */
 proxy_up: boolean, model: string, };
+
+export type TestResult = { ok: boolean, latency_ms: number | null, message: string | null, };

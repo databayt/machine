@@ -23,7 +23,12 @@ key: string, ok: boolean, detail: string,
 /**
  * True when the machine fixed it itself on this check.
  */
-healed: boolean, };
+healed: boolean, 
+/**
+ * A three-state light (`green`, `yellow`, `red`) for the items that have one (`pool`);
+ * absent for the rest, which are `ok` or not.
+ */
+level?: string | null, };
 
 export type HealthReport = { checkedAt: string, items: Array<HealthItem>, };
 

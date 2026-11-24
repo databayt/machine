@@ -23,6 +23,8 @@ pub struct Spec {
     pub name: String,
     pub program: PathBuf,
     pub args: Vec<String>,
+    /// The folder the child starts in (`None` keeps the app's).
+    pub cwd: Option<PathBuf>,
     /// Added to the child's environment.
     pub env: Vec<(String, String)>,
     /// stdout and stderr land here (created with its folder, appended to).
@@ -193,6 +195,9 @@ fn spawn(spec: &Spec) -> Result<Child, String> {
     let log = open_log(&spec.log).map_err(|e| e.to_string())?;
     let err = log.try_clone().map_err(|e| e.to_string())?;
     let mut cmd = Command::new(&spec.program);
+    if let Some(dir) = &spec.cwd {
+        cmd.current_dir(dir);
+    }
     cmd.args(&spec.args)
         .envs(spec.env.iter().map(|(k, v)| (k, v)))
         .stdin(Stdio::null())

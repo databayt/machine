@@ -46,6 +46,10 @@ pub trait Host: Send + Sync {
     fn failing_steps(&self) -> Vec<String> {
         Vec::new()
     }
+    /// The token pool's light, from `~/.claude/state/harvest.json`; `None` where there is no pool.
+    fn pool(&self) -> Option<crate::brain::pool::PoolHealth> {
+        None
+    }
     /// Fixes one readiness step through kun's provision script.
     /// # Errors
     /// When the step is still failing or the runner could not run.
@@ -312,6 +316,10 @@ impl Host for RealHost {
 
     fn heal_step(&self, id: &str) -> Result<(), String> {
         crate::readiness::heal_step(id)
+    }
+
+    fn pool(&self) -> Option<crate::brain::pool::PoolHealth> {
+        Some(crate::brain::pool::current_health())
     }
 
     fn gate(&self) -> crate::readiness::GateView {
