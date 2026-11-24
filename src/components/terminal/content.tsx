@@ -1,7 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { PlusIcon, XIcon } from "lucide-react"
+import { Maximize2Icon, Minimize2Icon, PlusIcon, XIcon } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 import type { Locale } from "@/components/local/config"
@@ -29,6 +29,40 @@ interface Tab {
   lane: TerminalLane
 }
 
+/** Light theme. Every ANSI colour is set, not just the background: the defaults (yellow, white,
+ *  bright cyan…) are made for dark and vanish on white, and the agents colour a lot. */
+const LIGHT = {
+  background: "#ffffff",
+  foreground: "#1f2328",
+  cursor: "#1f2328",
+  cursorAccent: "#ffffff",
+  selectionBackground: "#0969da33",
+  black: "#24292f",
+  red: "#cf222e",
+  green: "#116329",
+  yellow: "#7d4e00",
+  blue: "#0969da",
+  magenta: "#8250df",
+  cyan: "#1b7c83",
+  white: "#6e7781",
+  brightBlack: "#57606a",
+  brightRed: "#a40e26",
+  brightGreen: "#1a7f37",
+  brightYellow: "#633c01",
+  brightBlue: "#218bff",
+  brightMagenta: "#a475f9",
+  brightCyan: "#3192aa",
+  brightWhite: "#8c959f",
+}
+
+/** Native full screen for the app window; a no-op where Tauri says no. */
+async function nativeFullscreen(on: boolean) {
+  try {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window")
+    await getCurrentWindow().setFullscreen(on)
+  } catch {}
+}
+
 let counter = 0
 const newId = () => `w${Date.now().toString(36)}${(counter++).toString(36)}`
 
@@ -48,7 +82,7 @@ function TerminalView({ tab, active, ended }: { tab: Tab; active: boolean; ended
         cursorBlink: true,
         fontSize: 13,
         fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace',
-        theme: { background: "#0b0b0c", foreground: "#e8e8e8" },
+        theme: LIGHT,
         allowProposedApi: false,
       })
       const fit = new FitAddon()
@@ -100,7 +134,7 @@ function TerminalView({ tab, active, ended }: { tab: Tab; active: boolean; ended
   }, [active])
 
   // The terminal is always left-to-right, whatever the page's direction.
-  return <div ref={host} dir="ltr" className={cn("min-h-0 flex-1 overflow-hidden rounded-xl bg-[#0b0b0c] p-3", !active && "hidden")} />
+  return <div ref={host} dir="ltr" className={cn("min-h-0 flex-1 overflow-hidden rounded-xl border bg-white p-3", !active && "hidden")} />
 }
 
 /** The Terminal screen: a lane picker, or the open terminals as tabs. Bare: no title, no links. */
@@ -111,10 +145,23 @@ export default function TerminalContent({ lang }: { lang: Locale }) {
   const [tabs, setTabs] = useState<Tab[]>([])
   const [active, setActive] = useState<string | null>(null)
   const [picking, setPicking] = useState(false)
+  const [full, setFull] = useState(false)
 
   useEffect(() => {
     if (inApp) terminalLanes().then(setLanes).catch(() => setLanes([]))
   }, [inApp])
+
+  // Full screen = the terminals cover the whole window and the window goes native full screen.
+  // Leaving the page, or closing the last tab, leaves it. Esc is not bound: claude, vim and the
+  // agents all use it.
+  const toggleFull = useCallback((on: boolean) => {
+    setFull(on)
+    void nativeFullscreen(on)
+  }, [])
+  useEffect(() => () => void nativeFullscreen(false), [])
+  useEffect(() => {
+    if (tabs.length === 0 && full) toggleFull(false)
+  }, [tabs.length, full, toggleFull])
 
   const open = (lane: TerminalLane) => {
     const tab = { id: newId(), lane }
@@ -140,8 +187,12 @@ export default function TerminalContent({ lang }: { lang: Locale }) {
     <section
       aria-label={t(copy.title)}
       className={cn(
-        "flex h-full min-h-0 min-w-0 flex-col ps-[26px] pe-6 pb-6 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16",
-        SHELL_TOP,
+        full
+          ? "fixed inset-0 z-50 flex min-h-0 min-w-0 flex-col bg-white p-3 pt-[max(0.75rem,env(safe-area-inset-top))]"
+          : cn(
+              "flex h-full min-h-0 min-w-0 flex-col ps-[26px] pe-6 pb-6 pt-[max(4.5rem,calc(env(safe-area-inset-top)+3.75rem))] lg:ps-0 lg:pe-16 lg:pb-16",
+              SHELL_TOP,
+            ),
       )}
     >
       {tabs.length > 0 && (
@@ -177,6 +228,14 @@ export default function TerminalContent({ lang }: { lang: Locale }) {
             className="rounded-full p-2 text-muted-foreground hover:bg-background hover:text-foreground"
           >
             <PlusIcon className="size-4" />
+          </button>
+          <button
+            aria-label={t(full ? copy.exitFull : copy.full)}
+            title={t(full ? copy.exitFull : copy.full)}
+            onClick={() => toggleFull(!full)}
+            className="ms-auto rounded-full p-2 text-muted-foreground hover:bg-background hover:text-foreground"
+          >
+            {full ? <Minimize2Icon className="size-4" /> : <Maximize2Icon className="size-4" />}
           </button>
         </div>
       )}

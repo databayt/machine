@@ -11,4 +11,6 @@ export const copy = {
     ar: "لا توجد قائمة أوامر من kun على هذا الجهاز بعد. حدّث نسخة kun ثم افتح الصفحة مجدداً.",
   },
   ended: { en: "Process ended", ar: "انتهت العملية" },
+  full: { en: "Full screen", ar: "ملء الشاشة" },
+  exitFull: { en: "Exit full screen", ar: "الخروج من ملء الشاشة" },
 } as const
