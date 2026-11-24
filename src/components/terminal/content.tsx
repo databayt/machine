@@ -35,6 +35,7 @@ import { freshPart } from "./pure"
 
 import "@fontsource-variable/jetbrains-mono"
 import "@xterm/xterm/css/xterm.css"
+import "./scrollbar.css"
 
 /** JetBrains' Terminal tool window, measured off its screenshot. */
 const HEADER_BG = "#f7f8fa"
@@ -67,6 +68,10 @@ const LIGHT = {
   brightMagenta: "#a475f9",
   brightCyan: "#3192aa",
   brightWhite: "#8c959f",
+  // shadcn ScrollArea thumb: bg-border (oklch 0.922 0 0 ≈ #e5e5e5), a step darker on hover/drag.
+  scrollbarSliderBackground: "#e5e5e5",
+  scrollbarSliderHoverBackground: "#d4d4d4",
+  scrollbarSliderActiveBackground: "#a3a3a3",
 }
 
 /** The grid the last visible terminal had: a new session starts at that size, not 80x24. */
@@ -191,7 +196,7 @@ function TerminalView({ session, active, ended }: { session: SessionInfo; active
   }, [])
 
   // The terminal is always left-to-right, whatever the page's direction. 12px inside, nothing outside.
-  return <div ref={host} dir="ltr" className={cn("min-h-0 flex-1 overflow-hidden bg-white p-3", !active && "hidden")} />
+  return <div ref={host} dir="ltr" className={cn("kun-terminal min-h-0 flex-1 overflow-hidden bg-white p-3", !active && "hidden")} />
 }
 
 /** A flat header icon button. */
@@ -237,9 +242,10 @@ function NameField({ session, onDone }: { session: SessionInfo; onDone: (name: s
 }
 
 /** The launchers as cards, in this order; the logo is each product's original mark. */
-const CARD_ORDER = ["c", "a", "o", "h", "f"]
+const CARD_ORDER = ["c", "x", "a", "o", "h", "f"]
 const LOGOS: Record<string, string> = {
   c: "/logos/claude-code.svg",
+  x: "/logos/openai.svg", // Codex — OpenAI's own mark (no separate Codex logo in public/logos)
   a: "/logos/antigravity.svg",
   o: "/logos/opencode.svg",
   h: "/logos/hermes.png",

@@ -1,0 +1,30 @@
+/* The terminal scrollbar in shadcn/ui's ScrollArea style (registry/new-york-v4/ui/scroll-area.tsx):
+   a 10px (w-2.5) track with 1px padding (p-px), no track colour, a fully rounded thumb in the
+   border colour (rounded-full bg-border). xterm 6 draws its own scrollbar (VS Code's scrollable
+   element), so its slider is restyled here; it still fades in on scroll and out when idle, like
+   the macOS overlay bars ui.shadcn.com shows in the browser. Colours come from the xterm theme
+   (scrollbarSlider* in content.tsx). */
+.kun-terminal .xterm .xterm-scrollable-element > .scrollbar.vertical {
+  width: 10px !important;
+  padding: 1px;
+  background: transparent !important;
+}
+.kun-terminal .xterm .xterm-scrollable-element > .scrollbar.vertical > .slider {
+  left: 1px !important;
+  width: 8px !important;
+  border-radius: 9999px;
+}
+.kun-terminal .xterm .xterm-scrollable-element > .scrollbar.horizontal {
+  height: 10px !important;
+  padding: 1px;
+  background: transparent !important;
+}
+.kun-terminal .xterm .xterm-scrollable-element > .scrollbar.horizontal > .slider {
+  top: 1px !important;
+  height: 8px !important;
+  border-radius: 9999px;
+}
+/* No inset shadow at the top when scrolled — shadcn's ScrollArea has none. */
+.kun-terminal .xterm .xterm-scrollable-element > .shadow {
+  display: none !important;
+}
