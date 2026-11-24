@@ -4,7 +4,7 @@ Kun on every teammate's computer: chat with an agent CLI, voice, the catalog, re
 A Tauri 2 shell (`machine/`) around a **static-export Next.js UI** (`src/`) that is bundled into
 the app — no server, no remote origin. Part of the [databayt](https://github.com/databayt) stack;
 the engine config it installs and the API it talks to (`KUN_API`, default `https://kun.databayt.org`)
-live in [kun](https://github.com/databayt/kun).
+live in [kun](https://github.com/databayt/kun). Docs: [kun.databayt.org/docs/machine](https://kun.databayt.org/en/docs/machine).
 
 ## Develop
 
