@@ -32,6 +32,7 @@ export const copy = {
   setup: { en: "Setup", ar: "الإعداد" },
   library: { en: "Library", ar: "المكتبة" },
   machines: { en: "Machines", ar: "الأجهزة" },
+  terminal: { en: "Terminal", ar: "الطرفية" },
   plugins: { en: "Plugins", ar: "الإضافات" },
   apps: { en: "Apps", ar: "التطبيقات" },
   generalHint: { en: "Language, who you are, your department", ar: "اللغة، من أنت، وقسمك" },

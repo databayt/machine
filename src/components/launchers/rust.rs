@@ -89,6 +89,27 @@ fn load_launchers() -> Result<Vec<Launcher>, LauncherError> {
     block::parse(&text).map_err(LauncherError::Bad)
 }
 
+/// A launcher as the terminal runs it: the program and its fixed arguments, nothing else.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LauncherSpec {
+    pub id: String,
+    pub name: String,
+    pub bin: String,
+    pub args: Vec<String>,
+}
+
+/// The launchers kun lists (`c`, `a`, `o`, `h`, `f`, …), in catalog order.
+///
+/// # Errors
+/// When kun has no launchers file here or it is damaged.
+pub(crate) fn launcher_specs() -> Result<Vec<LauncherSpec>, String> {
+    load_launchers().map_err(|e| e.to_string()).map(|all| {
+        all.into_iter()
+            .map(|l| LauncherSpec { id: l.id, name: l.name, bin: l.bin, args: l.args })
+            .collect()
+    })
+}
+
 fn shell() -> Shell {
     if cfg!(windows) { Shell::PowerShell } else { Shell::Posix }
 }

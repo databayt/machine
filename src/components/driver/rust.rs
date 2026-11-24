@@ -34,15 +34,18 @@ pub enum DriverKind {
     Agy,
     /// Hermes agent, one-shot mode only.
     Hermes,
+    /// kun's free lane (`f`, `kun-free.sh`): Claude Code's CLI on a free model, same stream-json.
+    Free,
 }
 
 impl DriverKind {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Claude,
         Self::Codex,
         Self::Opencode,
         Self::Agy,
         Self::Hermes,
+        Self::Free,
     ];
 
     #[must_use]
@@ -53,8 +56,31 @@ impl DriverKind {
             Self::Opencode => "opencode",
             Self::Agy => "agy",
             Self::Hermes => "hermes",
+            Self::Free => "kun-free.sh",
         }
     }
+
+    /// Other names the same program is installed under (the `f` launcher for `kun-free.sh`).
+    #[must_use]
+    pub fn aliases(self) -> &'static [&'static str] {
+        match self {
+            Self::Free => &["f"],
+            _ => &[],
+        }
+    }
+
+    /// Whether the job speaks Claude Code's flags and stream-json events.
+    #[must_use]
+    pub fn claude_like(self) -> bool {
+        matches!(self, Self::Claude | Self::Free)
+    }
+}
+
+/// The program for `kind` in `dirs`, under its own name first, then its aliases.
+pub(crate) fn find_driver(kind: DriverKind, dirs: &[PathBuf]) -> Option<PathBuf> {
+    std::iter::once(kind.binary())
+        .chain(kind.aliases().iter().copied())
+        .find_map(|name| find_binary(name, dirs))
 }
 
 /// Whether a driver is usable on this machine.
@@ -255,7 +281,7 @@ pub fn detect() -> Vec<DriverStatus> {
     DriverKind::ALL
         .into_iter()
         .map(|kind| {
-            let path = find_binary(kind.binary(), &dirs);
+            let path = find_driver(kind, &dirs);
             DriverStatus {
                 kind,
                 installed: path.is_some(),
@@ -276,7 +302,7 @@ fn validate_extras(job: &Job) -> Result<(), DriverError> {
     }
     if !job.extra_args.is_empty() {
         let tame = |a: &String| a.len() <= 4096 && !a.chars().any(char::is_control);
-        if job.driver != DriverKind::Claude {
+        if !job.driver.claude_like() {
             return Err(DriverError::Invalid("extra args are claude-only"));
         }
         if job.extra_args.len() > MAX_EXTRA_ARGS
@@ -356,7 +382,7 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
         _ => {}
     }
     let mut args: Vec<String> = match job.driver {
-        DriverKind::Claude => {
+        DriverKind::Claude | DriverKind::Free => {
             let mut a: Vec<String> = [
                 "-p",
                 "--output-format",
@@ -408,7 +434,7 @@ pub fn parse_line(kind: DriverKind, line: &str) -> Vec<Event> {
     };
     let s = |v: &Value| v.as_str().map(str::to_owned);
     match kind {
-        DriverKind::Claude => match v["type"].as_str() {
+        DriverKind::Claude | DriverKind::Free => match v["type"].as_str() {
             Some("system") if v["subtype"] == "init" => s(&v["session_id"])
                 .map(|session| Event::Started { session })
                 .into_iter()
@@ -520,7 +546,7 @@ pub fn hermes_events(stdout: &str) -> Vec<Event> {
 /// `ANTHROPIC_API_KEY` would be sent to the proxy, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`
 /// breaks it. Returns the inherited names to drop; a normal run drops nothing.
 fn inherited_to_remove(job: &Job, inherited: impl Iterator<Item = String>) -> Vec<String> {
-    if job.driver != DriverKind::Claude || !job.env.iter().any(|(k, _)| k == "ANTHROPIC_BASE_URL") {
+    if !job.driver.claude_like() || !job.env.iter().any(|(k, _)| k == "ANTHROPIC_BASE_URL") {
         return Vec::new();
     }
     inherited
@@ -534,7 +560,7 @@ fn inherited_to_remove(job: &Job, inherited: impl Iterator<Item = String>) -> Ve
 /// # Errors
 /// When the driver is missing, the job is invalid, the process cannot start, or it times out.
 pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), DriverError> {
-    let bin = find_binary(job.driver.binary(), &search_dirs())
+    let bin = find_driver(job.driver, &search_dirs())
         .ok_or(DriverError::NotInstalled(job.driver.binary()))?;
     let args = args_for(job)?;
     if !Path::new(&job.cwd).is_dir() {

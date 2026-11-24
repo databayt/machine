@@ -360,3 +360,25 @@ fn usage_limit_without_a_reset_time_has_none() {
         Some(Unavailable::UsageLimit { resets_at: None })
     );
 }
+
+#[test]
+fn free_speaks_claude_stream_json_with_the_same_args() {
+    assert_eq!(DriverKind::Free.binary(), "kun-free.sh");
+    assert_eq!(DriverKind::Free.aliases(), ["f"]);
+    assert!(DriverKind::ALL.contains(&DriverKind::Free));
+    let free = args_for(&job(DriverKind::Free, "hi", Some("abc-1"))).unwrap();
+    assert_eq!(free, args_for(&job(DriverKind::Claude, "hi", Some("abc-1"))).unwrap());
+    assert!(free.windows(2).any(|w| w == ["--output-format", "stream-json"]));
+    let got = events(DriverKind::Free, include_str!("fixtures/claude.jsonl"));
+    assert_eq!(got, events(DriverKind::Claude, include_str!("fixtures/claude.jsonl")));
+}
+
+#[test]
+fn free_is_found_under_its_alias() {
+    let dir = tempfile::tempdir().unwrap();
+    let f = dir.path().join("f");
+    std::fs::write(&f, "#!/bin/sh\n").unwrap();
+    let dirs = [dir.path().to_path_buf()];
+    assert_eq!(find_driver(DriverKind::Free, &dirs), Some(f));
+    assert_eq!(find_driver(DriverKind::Claude, &dirs), None);
+}

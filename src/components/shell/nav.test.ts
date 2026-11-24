@@ -96,6 +96,15 @@ test("tree: the six parents in the order a person works", () => {
   assert.ok(ids.indexOf("blender") < ids.indexOf("brew"), "plugins first, then apps")
 })
 
+test("tree: the terminal is the seventh parent, and only inside the app", () => {
+  const input = { isAr: false, inApp: true, engine: false, stages: [], steps: [] }
+  const tree = buildTree(input)
+  assert.deepEqual(tree.map((n) => n.id), ["sessions", "terminal", "plugins", "library", "machines", "setup", "settings"])
+  assert.equal(tree[1].href("ar"), "/ar/terminal/")
+  assert.deepEqual(trail("/en/terminal/"), { parent: "terminal", child: null, leaf: null })
+  assert.equal(backHref("/en/terminal/", q("")), "/en/")
+})
+
 test("app stages are Plugins', every app step sits in one, and the hidden checks are not apps", () => {
   assert.deepEqual([...APP_STAGES], ["foundation", "agents", "tools"])
   assert.equal(isApp({ id: "tool.blender", stage: "tools" }), true)
