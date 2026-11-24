@@ -6,7 +6,7 @@ import { copy } from "../menu/config.ts"
 import { CONNECTORS } from "../plugins/registry.ts"
 import type { Stage, StepStatus } from "../readiness/types.ts"
 
-export type ParentId = "sessions" | "terminal" | "plugins" | "library" | "machines" | "setup" | "settings"
+export type ParentId = "sessions" | "terminal" | "brainstorm" | "plugins" | "library" | "machines" | "setup" | "settings"
 
 export interface NavNode {
   id: string
@@ -66,6 +66,7 @@ export function trailOf(pathname: string, params: Params): Trail {
   const none: Trail = { parent: null, child: null, leaf: null }
   if (rest === "/sessions") return { ...none, parent: "sessions" }
   if (rest === "/terminal") return { ...none, parent: "terminal" }
+  if (rest === "/brainstorm") return { ...none, parent: "brainstorm", child: params.get("item") || null }
   if (rest === "/setup") {
     const stage = params.get("stage") || null
     return { parent: "setup", child: stage, leaf: stage ? params.get("step") || null : null }
@@ -85,6 +86,7 @@ export function trailOf(pathname: string, params: Params): Trail {
 const PARENT_HREF: Record<ParentId, string> = {
   sessions: "/sessions/",
   terminal: "/terminal/",
+  brainstorm: "/brainstorm/",
   plugins: "/plugins/",
   library: "/library/",
   machines: "/machines/",
@@ -152,15 +154,28 @@ export interface TreeInput {
   engine: boolean
   stages: Stage[]
   steps: { stage: string; status: StepStatus }[]
+  /** The web seats kun ships (Brainstorm's children); known only to the app. */
+  seats?: { id: string; name: string }[]
 }
 
-/** The tree, in the order a person works: Sessions, Terminal (inside the app only), Plugins (plugins and apps), Library, Machines, Setup, Settings. Setup's children are the readiness stages Plugins does not own, each with its `done/total`. */
-export function buildTree({ isAr, inApp, engine, stages, steps }: TreeInput): NavNode[] {
+/** The tree, in the order a person works: Sessions, Terminal and Brainstorm (inside the app only), Plugins (plugins and apps), Library, Machines, Setup, Settings. Setup's children are the readiness stages Plugins does not own, each with its `done/total`. */
+export function buildTree({ isAr, inApp, engine, stages, steps, seats = [] }: TreeInput): NavNode[] {
   const counts = stageCounts(steps)
   return [
     { id: "sessions", label: copy.sessions, href: (l) => `/${l}/sessions/` },
     // A pty needs the app: the entry exists only inside it.
     ...(inApp ? [{ id: "terminal", label: copy.terminal, href: (l: string) => `/${l}/terminal/` }] : []),
+    // The seats are native webviews of the app window: the entry exists only inside it, one child per seat.
+    ...(inApp
+      ? [
+          {
+            id: "brainstorm",
+            label: copy.brainstorm,
+            href: (l: string) => `/${l}/brainstorm/`,
+            children: seats.map((c) => ({ id: c.id, label: c.name, href: (l: string) => `/${l}/brainstorm/?item=${encodeURIComponent(c.id)}` })),
+          },
+        ]
+      : []),
     {
       id: "plugins",
       label: copy.plugins,

@@ -64,6 +64,11 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
       const id = trail.child;
       kids = [...kids, { id, label: id, href: (l) => `/${l}/setup/?stage=${encodeURIComponent(id)}` }];
     }
+    // A seat kun does not list (yet) still shows, by its id.
+    if (open && node.id === "brainstorm" && trail.child && !kids.some((k) => k.id === trail.child)) {
+      const id = trail.child;
+      kids = [...kids, { id, label: id, href: (l) => `/${l}/brainstorm/?item=${encodeURIComponent(id)}` }];
+    }
     // A machine has no list in the tree: the one open on the address is the child.
     if (open && node.id === "machines" && trail.child) {
       const id = trail.child;
@@ -78,7 +83,7 @@ export function AppSidebar({ lang, className }: { lang: Locale; className?: stri
           return {
             href: k.href(lang),
             label: text(k),
-            ltr: node.id === "library" || node.id === "plugins" || node.id === "machines",
+            ltr: node.id === "library" || node.id === "plugins" || node.id === "machines" || node.id === "brainstorm",
             active: on,
             mark: on && !leaf,
             current: on && !leaf,

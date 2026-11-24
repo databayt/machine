@@ -3,7 +3,7 @@
 /**
  * Which agent CLI runs the job.
  */
-export type DriverKind = "claude" | "codex" | "opencode" | "agy" | "hermes" | "free";
+export type DriverKind = "claude" | "codex" | "opencode" | "agy" | "hermes" | "free" | "web";
 
 /**
  * Whether a driver is usable on this machine.
@@ -31,7 +31,11 @@ env: Array<[string, string]>,
 /**
  * Claude's `--permission-mode`; the other drivers ignore it.
  */
-permission_mode: PermissionMode, };
+permission_mode: PermissionMode, 
+/**
+ * The web seat a [`DriverKind::Web`] job asks (`chatgpt`, `deepseek`, `glm`, `gemini`, …).
+ */
+seat?: string, };
 
 /**
  * How much Claude may do on its own in a run. `Plan` makes the first answer a plan.

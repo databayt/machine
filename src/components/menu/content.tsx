@@ -78,6 +78,11 @@ export function MachineMenu({ lang }: { lang: Locale }) {
   );
   useEffect(() => () => clearTimeout(timer.current), []);
 
+  // The Brainstorm seats are native webviews above the page: they hide while the menu is over them.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent("kun:menu", { detail: { open: mounted } }));
+  }, [mounted]);
+
   // Navigating closes it.
   useEffect(() => {
     if (mounted) close();

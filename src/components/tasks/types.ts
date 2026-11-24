@@ -5,7 +5,7 @@
  */
 export type KunBlock = { repos: Array<string>, items: Array<string>, after: Array<string>, 
 /**
- * `claude`, `codex`, `opencode`, `agy` or `hermes`; `None` = the machine profile's default.
+ * `claude`, `codex`, `opencode`, `agy` or `hermes`, or a web seat `web:<id>` (`web:chatgpt`); `None` = the machine profile's default.
  */
 driver: string | null, 
 /**

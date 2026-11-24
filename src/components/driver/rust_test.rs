@@ -15,6 +15,7 @@ fn job(driver: DriverKind, prompt: &str, session: Option<&str>) -> Job {
         extra_args: Vec::new(),
         env: Vec::new(),
         permission_mode: PermissionMode::Auto,
+        seat: None,
     }
 }
 
@@ -381,4 +382,36 @@ fn free_is_found_under_its_alias() {
     let dirs = [dir.path().to_path_buf()];
     assert_eq!(find_driver(DriverKind::Free, &dirs), Some(f));
     assert_eq!(find_driver(DriverKind::Claude, &dirs), None);
+}
+
+#[test]
+fn a_driver_spec_is_a_cli_name_or_a_web_seat() {
+    assert_eq!(DriverKind::parse_spec("Claude"), Some((DriverKind::Claude, None)));
+    assert_eq!(DriverKind::parse_spec(" web:chatgpt "), Some((DriverKind::Web, Some("chatgpt".into()))));
+    assert_eq!(DriverKind::parse_spec("free"), Some((DriverKind::Free, None)));
+    for bad in ["web", "web:", "web:../x", "web:Chat GPT", "gpt9", "kun-free.sh"] {
+        assert_eq!(DriverKind::parse_spec(bad), None, "{bad}");
+    }
+}
+
+#[test]
+fn a_web_seat_is_not_a_program() {
+    assert!(!DriverKind::Web.claude_like());
+    assert!(!DriverKind::ALL.contains(&DriverKind::Web), "detect() never looks for a web binary");
+    assert!(args_for(&job(DriverKind::Web, "hi", None)).is_err());
+    assert!(parse_line(DriverKind::Web, "{\"type\":\"result\"}").is_empty());
+}
+
+#[tokio::test]
+async fn a_web_job_needs_a_valid_seat_and_a_prompt() {
+    let mut j = job(DriverKind::Web, "hi", None);
+    assert!(matches!(run(&j, |_| {}).await, Err(DriverError::Invalid("web seat"))));
+    j.seat = Some("../x".into());
+    assert!(matches!(run(&j, |_| {}).await, Err(DriverError::Invalid("web seat"))));
+    j.seat = Some("chatgpt".into());
+    j.prompt = "  ".into();
+    assert!(matches!(run(&j, |_| {}).await, Err(DriverError::Invalid("empty prompt"))));
+    j.prompt = "hi".into();
+    j.extra_args = vec!["--model".into(), "x".into()];
+    assert!(run(&j, |_| {}).await.is_err(), "a web seat takes no CLI flags");
 }

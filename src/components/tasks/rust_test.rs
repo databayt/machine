@@ -367,6 +367,10 @@ fn the_kun_block_reads_a_known_driver_and_ignores_an_unknown_one() {
     assert_eq!(k.driver.as_deref(), Some("codex"));
     let k: KunBlock = serde_json::from_str(r#"{"driver":"gpt9"}"#).unwrap();
     assert_eq!(k.driver, None);
+    let k: KunBlock = serde_json::from_str(r#"{"driver":"Web:ChatGPT"}"#).unwrap();
+    assert_eq!(k.driver.as_deref(), Some("web:chatgpt"));
+    let k: KunBlock = serde_json::from_str(r#"{"driver":"web:../etc"}"#).unwrap();
+    assert_eq!(k.driver, None);
     let k: KunBlock = serde_json::from_str(r#"{"driver":null}"#).unwrap();
     assert_eq!(k.driver, None);
     let k: KunBlock = serde_json::from_str("{}").unwrap();

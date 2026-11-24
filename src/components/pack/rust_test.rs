@@ -649,6 +649,7 @@ fn route_flags_pass_the_driver_validation() {
         extra_args: route_flags(&m.routes[0]),
         env: vec![],
         permission_mode: m.routes[0].permission(),
+        seat: None,
     };
     let args = crate::driver::args_for(&job).unwrap();
     assert!(args.windows(2).any(|w| w == ["--permission-mode", "plan"]));

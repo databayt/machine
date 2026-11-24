@@ -19,12 +19,13 @@ pub enum TaskStatus {
     Done,
 }
 
-/// An agent CLI name from the block's `driver=`; anything unknown reads as `None`.
+/// An agent CLI name, or a web seat as `web:<id>` (`web:chatgpt`), from the block's `driver=`;
+/// anything unknown reads as `None`.
 fn known_driver<'de, D: serde::Deserializer<'de>>(d: D) -> Result<Option<String>, D::Error> {
     let raw = Option::<String>::deserialize(d)?;
-    Ok(raw
-        .map(|s| s.trim().to_lowercase())
-        .filter(|s| DRIVERS.contains(&s.as_str())))
+    Ok(raw.map(|s| s.trim().to_lowercase()).filter(|s| {
+        DRIVERS.contains(&s.as_str()) || s.strip_prefix("web:").is_some_and(crate::web::valid_seat_id)
+    }))
 }
 
 /// The parsed `<!-- kun: repos=…; items=…; after=…; driver=…; formula=…; stage=… -->` block of an issue.
@@ -35,7 +36,7 @@ pub struct KunBlock {
     pub repos: Vec<String>,
     pub items: Vec<String>,
     pub after: Vec<String>,
-    /// `claude`, `codex`, `opencode`, `agy` or `hermes`; `None` = the machine profile's default.
+    /// `claude`, `codex`, `opencode`, `agy` or `hermes`, or a web seat `web:<id>` (`web:chatgpt`); `None` = the machine profile's default.
     #[serde(deserialize_with = "known_driver")]
     pub driver: Option<String>,
     /// The formula the issue was filled from (`formula=`), when it has one.

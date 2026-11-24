@@ -9,6 +9,8 @@ export interface AskOptions {
   jobId: string
   session?: string | null
   driver?: DriverKind
+  /** The web seat when `driver` is `web` (`chatgpt`, `deepseek`, `glm`, `gemini`); the run asks that site's page. */
+  seat?: string
   /** A started task (`databayt/<repo>#<n>`): its repos open with the run and the prompt points at TASK.md. */
   taskId?: string | null
   /** Limits the run to one repository of the department (null: all repos). */
@@ -36,13 +38,13 @@ export interface AskOptions {
 /** Runs one prompt, calling `onEvent` for every streamed event. Resolves when the run ends. */
 export async function ask(
   prompt: string,
-  { jobId, session = null, driver, taskId = null, repo = null, mode = null, route = null, model = null, effort = null, timing = null, title = null }: AskOptions,
+  { jobId, session = null, driver, seat, taskId = null, repo = null, mode = null, route = null, model = null, effort = null, timing = null, title = null }: AskOptions,
   onEvent: (event: Event) => void
 ): Promise<void> {
   if (!isTauri()) throw new Error("not in the machine app")
   const channel = new Channel<Event>()
   channel.onmessage = onEvent
-  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, jobId, taskId, repo, mode, route, model, effort, timing, title, channel })
+  await invoke("plugin:chat|ask", { prompt, session, driver: driver ?? null, seat: seat ?? null, jobId, taskId, repo, mode, route, model, effort, timing, title, channel })
 }
 
 /**

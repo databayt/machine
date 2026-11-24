@@ -96,13 +96,27 @@ test("tree: the six parents in the order a person works", () => {
   assert.ok(ids.indexOf("blender") < ids.indexOf("brew"), "plugins first, then apps")
 })
 
-test("tree: the terminal is the seventh parent, and only inside the app", () => {
-  const input = { isAr: false, inApp: true, engine: false, stages: [], steps: [] }
+test("tree: the terminal and brainstorm are app-only parents, brainstorm's children are the seats", () => {
+  const seats = [{ id: "chatgpt", name: "ChatGPT" }, { id: "gemini", name: "Gemini" }]
+  const input = { isAr: false, inApp: true, engine: false, stages: [], steps: [], seats }
   const tree = buildTree(input)
-  assert.deepEqual(tree.map((n) => n.id), ["sessions", "terminal", "plugins", "library", "machines", "setup", "settings"])
+  assert.deepEqual(tree.map((n) => n.id), ["sessions", "terminal", "brainstorm", "plugins", "library", "machines", "setup", "settings"])
   assert.equal(tree[1].href("ar"), "/ar/terminal/")
+  assert.equal(tree[2].href("ar"), "/ar/brainstorm/")
+  assert.deepEqual(tree[2].children?.map((c) => [c.id, c.label, c.href("en")]), [
+    ["chatgpt", "ChatGPT", "/en/brainstorm/?item=chatgpt"],
+    ["gemini", "Gemini", "/en/brainstorm/?item=gemini"],
+  ])
+  assert.ok(!buildTree({ ...input, inApp: false }).some((n) => n.id === "brainstorm"), "no webviews in a browser")
   assert.deepEqual(trail("/en/terminal/"), { parent: "terminal", child: null, leaf: null })
   assert.equal(backHref("/en/terminal/", q("")), "/en/")
+})
+
+test("brainstorm: the seat rides on the query and is the child; back goes to the seats, then the chat", () => {
+  assert.deepEqual(trail("/en/brainstorm/"), { parent: "brainstorm", child: null, leaf: null })
+  assert.deepEqual(trail("/ar/brainstorm/", "item=deepseek"), { parent: "brainstorm", child: "deepseek", leaf: null })
+  assert.equal(backHref("/ar/brainstorm/", q("item=deepseek")), "/ar/brainstorm/")
+  assert.equal(backHref("/ar/brainstorm/", q("")), "/ar/")
 })
 
 test("app stages are Plugins', every app step sits in one, and the hidden checks are not apps", () => {

@@ -36,9 +36,13 @@ pub enum DriverKind {
     Hermes,
     /// kun's free lane (`f`, `kun-free.sh`): Claude Code's CLI on a free model, same stream-json.
     Free,
+    /// A web seat (a chat site driven inside the app, see the `web` feature): no binary, no argv. The
+    /// seat is `Job::seat`; the spec form is `web:<id>` (see [`DriverKind::parse_spec`]).
+    Web,
 }
 
 impl DriverKind {
+    /// The drivers that are programs on disk. `Web` is not one, so it is never detected.
     pub const ALL: [Self; 6] = [
         Self::Claude,
         Self::Codex,
@@ -57,7 +61,20 @@ impl DriverKind {
             Self::Agy => "agy",
             Self::Hermes => "hermes",
             Self::Free => "kun-free.sh",
+            Self::Web => "web",
         }
+    }
+
+    /// Reads a driver spec as a task's `driver=` or a caller writes it: a CLI name (`claude`, `free`, …) or a
+    /// web seat (`web:chatgpt`). The seat id is a short lowercase word; anything else is `None`.
+    #[must_use]
+    pub fn parse_spec(spec: &str) -> Option<(Self, Option<String>)> {
+        let spec = spec.trim().to_lowercase();
+        if let Some(seat) = spec.strip_prefix("web:") {
+            return crate::web::valid_seat_id(seat).then(|| (Self::Web, Some(seat.to_owned())));
+        }
+        let kind: Self = serde_json::from_value(Value::String(spec)).ok()?;
+        Self::ALL.contains(&kind).then_some((kind, None))
     }
 
     /// Other names the same program is installed under (the `f` launcher for `kun-free.sh`).
@@ -141,6 +158,10 @@ pub struct Job {
     /// Claude's `--permission-mode`; the other drivers ignore it.
     #[serde(default)]
     pub permission_mode: PermissionMode,
+    /// The web seat a [`DriverKind::Web`] job asks (`chatgpt`, `deepseek`, `glm`, `gemini`, …).
+    #[serde(default)]
+    #[ts(optional)]
+    pub seat: Option<String>,
 }
 
 /// What the UI sees while a job runs. Normalized across drivers.
@@ -355,6 +376,10 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
         return Err(DriverError::Invalid("session id"));
     }
     validate_extras(job)?;
+    // A web seat is not a process: nothing to spawn, `run` hands it to the web feature.
+    if job.driver == DriverKind::Web {
+        return Err(DriverError::Invalid("a web seat has no argv"));
+    }
     // agy and hermes take the prompt as the value of their own flag, so they return early
     // (a value that starts with "-" is still read as the value, verified on both CLIs).
     match job.driver {
@@ -412,7 +437,7 @@ pub fn args_for(job: &Job) -> Result<Vec<String>, DriverError> {
             }
             a
         }
-        DriverKind::Agy | DriverKind::Hermes => unreachable!("returned above"),
+        DriverKind::Agy | DriverKind::Hermes | DriverKind::Web => unreachable!("returned above"),
     };
     if let Some(s) = &job.session {
         match job.driver {
@@ -507,7 +532,8 @@ pub fn parse_line(kind: DriverKind, line: &str) -> Vec<Event> {
             out
         }
         // hermes prints plain text, not JSON: `hermes_events` handles the whole stdout.
-        DriverKind::Hermes => Vec::new(),
+        // A web seat has no stream: `web::run_seat` emits the events itself.
+        DriverKind::Hermes | DriverKind::Web => Vec::new(),
         DriverKind::Opencode => match v["type"].as_str() {
             Some("error") => {
                 let message = s(&v["error"]["data"]["message"])
@@ -560,6 +586,9 @@ fn inherited_to_remove(job: &Job, inherited: impl Iterator<Item = String>) -> Ve
 /// # Errors
 /// When the driver is missing, the job is invalid, the process cannot start, or it times out.
 pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), DriverError> {
+    if job.driver == DriverKind::Web {
+        return run_web(job, emit).await;
+    }
     let bin = find_driver(job.driver, &search_dirs())
         .ok_or(DriverError::NotInstalled(job.driver.binary()))?;
     let args = args_for(job)?;
@@ -623,6 +652,27 @@ pub async fn run(job: &Job, mut emit: impl FnMut(Event) + Send) -> Result<(), Dr
         }
     };
     tokio::time::timeout(Duration::from_secs(u64::from(secs)), read)
+        .await
+        .map_err(|_| DriverError::Timeout(secs))
+}
+
+/// A job on a web seat: the page is asked (never raising the window) and its answer arrives as the
+/// usual events. A bad job is rejected here; a failure on the page (limit, login, timeout) is an
+/// `error` event, like any driver's.
+async fn run_web(job: &Job, emit: impl FnMut(Event) + Send) -> Result<(), DriverError> {
+    let seat = job.seat.as_deref().filter(|s| crate::web::valid_seat_id(s)).ok_or(DriverError::Invalid("web seat"))?;
+    if job.prompt.trim().is_empty() {
+        return Err(DriverError::Invalid("empty prompt"));
+    }
+    if job.prompt.len() > MAX_PROMPT_BYTES {
+        return Err(DriverError::Invalid("prompt too large"));
+    }
+    if !job.extra_args.is_empty() {
+        return Err(DriverError::Invalid("extra args are claude-only"));
+    }
+    validate_extras(job)?;
+    let secs = job.timeout_secs.unwrap_or(DEFAULT_TIMEOUT_SECS);
+    tokio::time::timeout(Duration::from_secs(u64::from(secs)), crate::web::run_seat(seat, &job.prompt, emit))
         .await
         .map_err(|_| DriverError::Timeout(secs))
 }

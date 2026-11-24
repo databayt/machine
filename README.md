@@ -36,6 +36,7 @@ params, read in the client (`useSearchParams`), since a static export has no dyn
 | Parent (sidebar) | Level 1 | Level 2 | Level 3 |
 | --- | --- | --- | --- |
 | Sessions | `/sessions/` | | |
+| Brainstorm (app only) | `/brainstorm/` | `/brainstorm/?item=<seat>` (the live site: ChatGPT, DeepSeek, GLM, Gemini) | |
 | Plugins | `/plugins/` | `/plugins/?item=<id>` | |
 | Apps | `/apps/` | `/apps/?item=<stepId>` | |
 | Library | `/library/` | `/library/?dir=<skills\|agents\|rules\|hooks\|departments>` | `/library/?dir=<dir>&item=<type:name>` |

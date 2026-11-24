@@ -49,6 +49,8 @@ pub enum ChatError {
     Refine(String),
     #[error("task id is invalid")]
     BadTask,
+    #[error("a web run needs its seat (chatgpt, deepseek, glm or gemini)")]
+    BadSeat,
     #[error("that task was not started here: start it from the task list first")]
     TaskNotStarted,
     #[error(transparent)]
@@ -237,6 +239,16 @@ fn with_preface(prompt: String, repo: Option<&str>, department: &str, is_new: bo
     }
 }
 
+/// The seat of a web run: required (and checked) for [`DriverKind::Web`], ignored otherwise.
+fn web_seat(kind: DriverKind, seat: Option<&str>) -> Result<Option<String>, ChatError> {
+    if kind != DriverKind::Web {
+        return Ok(None);
+    }
+    seat.filter(|s| crate::web::valid_seat_id(s))
+        .map(|s| Some(s.to_owned()))
+        .ok_or(ChatError::BadSeat)
+}
+
 /// The driver for a run: the profile's when it fixes one, else the request, else the saved default.
 fn pick_driver(
     resolved: &Resolved,
@@ -263,6 +275,7 @@ fn build_job(
         return Err(ChatError::BadJobId);
     }
     Ok(Job {
+        seat: None,
         job_id: job_id.to_owned(),
         driver,
         prompt,
@@ -407,6 +420,7 @@ async fn ask(
     prompt: String,
     session: Option<String>,
     driver: Option<DriverKind>,
+    seat: Option<String>,
     job_id: String,
     task_id: Option<String>,
     repo: Option<String>,
@@ -423,6 +437,8 @@ async fn ask(
     let settings = settings::load()?;
     let resolved = profile::current()?;
     let kind = pick_driver(&resolved, driver, settings.driver);
+    // A web seat (`driver: "web"` + `seat`) is a free chat site driven inside the app: it needs its seat.
+    let seat = web_seat(kind, seat.as_deref())?;
     let department = profile::effective_department(&resolved.profile, &settings.department);
     let root = crate::repos::repos_root().map_err(|e| ChatError::Pack(PackError::Profile(e.to_string())))?;
     let repo = validate_repo(&resolved, &department, repo.as_deref(), &root, &pack::kun_dir()?)?;
@@ -449,8 +465,10 @@ async fn ask(
     let mut seen = session.clone();
     let mut notice = sticky.map(|b| still_notice(b, arabic));
     let make_job = |setup: RunSetup| -> Result<Job, ChatError> {
-        let text = assemble_prompt(&prompt, &inputs, session.is_some(), &setup.suffix);
+        // A web seat gets the person's words only: no department preface or workspace context leaves the machine.
+        let text = if seat.is_some() { prompt.clone() } else { assemble_prompt(&prompt, &inputs, session.is_some(), &setup.suffix) };
         let mut job = build_job(&job_id, kind, text, setup.cwd, session.clone(), setup.extras, setup.env)?;
+        job.seat.clone_from(&seat);
         job.timeout_secs = setup.timeout;
         job.permission_mode = setup.permission;
         Ok(job)
