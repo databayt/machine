@@ -2,7 +2,7 @@
 # content.tsx in src/components/<feature>/rust.rs and is wired in by build.rs.
 [package]
 name = "machine"
-version = "0.1.0"
+version = "0.1.1"
 description = "Kun on every teammate's computer — catalog, chat, voice, dispatch"
 edition = "2024"
 rust-version = "1.90"
