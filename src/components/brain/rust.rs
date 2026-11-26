@@ -3,7 +3,7 @@
 //! Claude on the person's own sign-in is the default. Three opt-in free routes point the same CLI
 //! at a local Anthropic-compatible proxy: NVIDIA and `OpenRouter` through Free Claude Code (`fcc-server`,
 //! :8082, configured by `~/.fcc/.env`), and `OmniRoute` (:20128), the token pool: kun's launchd
-//! service with its own model classes (`kun-code`, `kun-fast`, ...), each an ordered chain of free
+//! service with its own model classes (`code`, `fast`, ...), each an ordered chain of free
 //! models. The app starts a proxy when nothing answers, adopts one that does, and stops only one it
 //! started when it quits (see [`supervise`]); kun's `OmniRoute` service is never ours to stop.
 //! Providers (which keys feed the pool) are in [`providers`], the ledger they read in [`pool`].
@@ -69,10 +69,10 @@ const FCC_PLACEHOLDER_TOKEN: &str = "freecc";
 const NVIDIA_MODEL: &str = "nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b";
 const OPENROUTER_MODEL: &str = "open_router/openrouter/free";
 /// `OmniRoute`'s own `auto` also routes to the keyless reverse-engineered providers it pre-registers.
-/// `kun-code` is kun's ranked chain over only the providers the person connected.
-const OMNIROUTE_MODEL: &str = "kun-code";
+/// `code` is kun's ranked chain over only the providers the person connected.
+const OMNIROUTE_MODEL: &str = "code";
 /// The small / background class: Claude Code's haiku and subagent models.
-const OMNIROUTE_FAST_MODEL: &str = "kun-fast";
+const OMNIROUTE_FAST_MODEL: &str = "fast";
 /// How long a freshly started proxy gets to answer.
 const START_WAIT: Duration = Duration::from_secs(20);
 
@@ -348,8 +348,8 @@ pub fn apply_fcc_env(path: &Path, brain: Brain, key: &str) -> io::Result<bool> {
 // ---------------------------------------------------------------- the run's environment
 
 /// The environment a run gets from a route: where Claude Code talks and as whom. Pure.
-/// `OmniRoute` needs its own key as the token, `ANTHROPIC_MODEL=kun-code` for the main model and
-/// `kun-fast` for the small and subagent models; Free Claude Code takes a placeholder token.
+/// `OmniRoute` needs its own key as the token, `ANTHROPIC_MODEL=code` for the main model and
+/// `fast` for the small and subagent models; Free Claude Code takes a placeholder token.
 /// Claude adds nothing.
 #[must_use]
 pub fn route_env(brain: Brain, omniroute_key: Option<&str>) -> Vec<(String, String)> {

@@ -81,9 +81,9 @@ fn the_env_per_route() {
         s(&[
             ("ANTHROPIC_BASE_URL", "http://localhost:20128"),
             ("ANTHROPIC_AUTH_TOKEN", "sk-omni"),
-            ("ANTHROPIC_MODEL", "kun-code"),
-            ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "kun-fast"),
-            ("CLAUDE_CODE_SUBAGENT_MODEL", "kun-fast"),
+            ("ANTHROPIC_MODEL", "code"),
+            ("ANTHROPIC_DEFAULT_HAIKU_MODEL", "fast"),
+            ("CLAUDE_CODE_SUBAGENT_MODEL", "fast"),
         ])
     );
 }
@@ -236,7 +236,7 @@ const HARVEST: &str = r#"{
      "note": "no analytics permission"},
     {"id": "groq", "tier": "free", "enabled": true, "status": "needs-key"}
   ],
-  "combos": {"kun-code": {"members": ["a/b", "c/d"], "ready": true}, "kun-vision": {"members": [], "ready": false}},
+  "combos": {"code": {"members": ["a/b", "c/d"], "ready": true}, "vision": {"members": [], "ready": false}},
   "totals": {"requests": 55, "tokens": 1, "cost_usd": 0}
 }"#;
 
@@ -264,7 +264,7 @@ fn the_ledger_parses_loosely() {
     let q = cf.quota.as_ref().unwrap();
     assert_eq!((q.used, q.limit, q.remaining), (Some(5.0), Some(10.0), Some(5.0)), "a numeric string is a number");
     assert_eq!(q.resets_at.as_deref(), Some("1764000000"));
-    assert!(h.providers[0].quota.is_none() && h.combos["kun-code"].ready);
+    assert!(h.providers[0].quota.is_none() && h.combos["code"].ready);
     assert!(pool::parse_catalog("not json").is_err());
 }
 
@@ -321,8 +321,8 @@ fn the_view_merges_the_catalog_with_the_ledger() {
     assert_eq!(by("claude-max").mode, Plan);
     assert_eq!((by("antigravity").mode, by("antigravity").note.as_deref(), by("antigravity").status.as_str()), (Direct, Some("Google account in agy"), "unknown"));
     assert_eq!(view.combos, vec![
-        providers::ComboRow { name: "kun-code".into(), ready: true, members: 2 },
-        providers::ComboRow { name: "kun-vision".into(), ready: false, members: 0 },
+        providers::ComboRow { name: "code".into(), ready: true, members: 2 },
+        providers::ComboRow { name: "vision".into(), ready: false, members: 0 },
     ]);
     // The gateway is read live: the ledger saying ok does not make it so.
     assert_eq!(providers::build_view(&catalog(), Some(&harvest()), None, false, false).gateway, "down");
@@ -461,5 +461,5 @@ fn a_service_started_outside_the_omniroute_folder_is_never_how_the_app_starts_it
     let cwd = Proxy::OmniRoute.cwd().unwrap();
     assert!(cwd.ends_with(".omniroute"));
     assert!(Proxy::Fcc.cwd().is_none());
-    assert_eq!(Brain::OmniRoute.model(), "kun-code");
+    assert_eq!(Brain::OmniRoute.model(), "code");
 }
