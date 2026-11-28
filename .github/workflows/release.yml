@@ -116,6 +116,8 @@ jobs:
         run: |
           set -euo pipefail
           cd dist
+          # upload-artifact keeps each job's bundle subfolders (macos/, dmg/): flatten them.
+          find . -mindepth 2 -type f -exec mv {} . \;
           ls -l
           base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
           mac=$(ls ./*.app.tar.gz)
