@@ -609,14 +609,14 @@ async fn terminal_open<R: Runtime>(
         }
     }
     let pty = native_pty_system().openpty(size(cols, rows)).map_err(|e| TerminalError::Pty(e.to_string()))?;
-    let mut cmd = CommandBuilder::new(&plan.argv[0]);
-    cmd.args(&plan.argv[1..]);
-    cmd.cwd(&plan.cwd);
-    cmd.env("TERM", "xterm-256color");
-    cmd.env("COLORTERM", "truecolor");
+    let mut command = CommandBuilder::new(&plan.argv[0]);
+    command.args(&plan.argv[1..]);
+    command.cwd(&plan.cwd);
+    command.env("TERM", "xterm-256color");
+    command.env("COLORTERM", "truecolor");
     // A Finder launch has a bare PATH; start from the dirs the CLIs are found in (zsh -l adds its own).
-    cmd.env("PATH", crate::driver::run_path(&crate::driver::search_dirs()));
-    let mut child = pty.slave.spawn_command(cmd).map_err(|e| TerminalError::Pty(e.to_string()))?;
+    command.env("PATH", crate::driver::run_path(&crate::driver::search_dirs()));
+    let mut child = pty.slave.spawn_command(command).map_err(|e| TerminalError::Pty(e.to_string()))?;
     drop(pty.slave);
     let killer = child.clone_killer();
     let mut reader = pty.master.try_clone_reader().map_err(|e| TerminalError::Pty(e.to_string()))?;

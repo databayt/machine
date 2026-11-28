@@ -187,12 +187,12 @@ pub(super) async fn stream(
     cancel: &Notify,
     emit: &mut (impl FnMut(RunEvent) + Send),
 ) -> Result<RunSummary, ReadinessError> {
-    let mut cmd = Command::new(program);
-    cmd.args(args).current_dir(cwd);
+    let mut command = Command::new(program);
+    command.args(args).current_dir(cwd);
     if let Some(path) = provision_path() {
-        cmd.env("PATH", path);
+        command.env("PATH", path);
     }
-    let mut child = cmd
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

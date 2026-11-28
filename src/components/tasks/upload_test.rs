@@ -115,10 +115,10 @@ fn the_wire_types_use_the_contract_names() {
         serde_json::to_value(&req).unwrap(),
         json!({"id":"databayt/hogwarts#7","files":[{"name":"a.mp4","size":9,"contentType":"video/mp4"}]})
     );
-    let res: UploadResponse = serde_json::from_value(json!({"uploads":[{
+    let response: UploadResponse = serde_json::from_value(json!({"uploads":[{
         "name":"a.mp4","key":"work/f/7/a.mp4","putUrl":"https://s/put","publicUrl":"https://cdn/a.mp4","contentType":"video/mp4"}]}))
     .unwrap();
-    assert_eq!(res.uploads[0].put_url, "https://s/put");
+    assert_eq!(response.uploads[0].put_url, "https://s/put");
     let ev = serde_json::to_value(SubmitEvent::Progress { index: 0, count: 2, name: "a".into(), sent: 5, total: 10 }).unwrap();
     assert_eq!(ev, json!({"kind":"progress","index":0,"count":2,"name":"a","sent":5,"total":10}));
 }
