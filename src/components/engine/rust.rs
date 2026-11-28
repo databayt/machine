@@ -362,24 +362,28 @@ pub async fn pull(dir: &Path) -> Result<UpdateReport, EngineError> {
     })
 }
 
-/// Runs the engine's health script.
+/// Runs the engine's health script: `health.sh` under bash, or `health.ps1` under `PowerShell` on
+/// Windows.
 ///
 /// # Errors
-/// If bash is unavailable (Windows), the script is missing or it times out.
+/// If bash is unavailable, the script is missing or it times out.
 pub async fn run_health(dir: &Path) -> Result<HealthReport, EngineError> {
-    if cfg!(windows) {
-        return Err(EngineError::Unsupported(
-            "الفحص يحتاج bash ولا يعمل على ويندوز بعد · health needs bash, not supported on Windows yet",
-        ));
-    }
     check_checkout(dir)?;
-    let script = dir.join(".claude/scripts/health.sh");
+    let name = if cfg!(windows) { "health.ps1" } else { "health.sh" };
+    let script = dir.join(".claude/scripts").join(name);
     if !script.is_file() {
         return Err(EngineError::NoCheckout(script.display().to_string()));
     }
-    let mut cmd = Command::new(find_tool("bash")?);
-    cmd.arg(&script).current_dir(dir);
-    let run = run_capture("health.sh", cmd, HEALTH_TIMEOUT).await?;
+    let mut cmd;
+    if cfg!(windows) {
+        cmd = Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]).arg(&script);
+    } else {
+        cmd = Command::new(find_tool("bash")?);
+        cmd.arg(&script);
+    }
+    cmd.current_dir(dir);
+    let run = run_capture(name, cmd, HEALTH_TIMEOUT).await?;
     let report = HealthReport {
         ok: run.ok,
         at: now_secs(),

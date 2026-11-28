@@ -272,7 +272,7 @@ impl Runner for KunRunner {
         let dirs = search_dirs();
         let program = match tool {
             Tool::Node => find_binary("node", &dirs).ok_or("Node.js is not installed")?,
-            Tool::Bash => PathBuf::from("/bin/bash"),
+            Tool::Bash => crate::terminal::bash_program().ok_or("Git for Windows (Git Bash) is not installed")?,
         };
         let mut path_dirs = dirs;
         path_dirs.dedup();

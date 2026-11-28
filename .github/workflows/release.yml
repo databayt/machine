@@ -1,15 +1,22 @@
 name: release
 
-# A tag `v*` builds the macOS app, signs the updater artifacts and publishes the release with
-# latest.json, the .app.tar.gz (+ .sig) and the .dmg. The signing key is a repository secret;
-# the matching public key is in machine/tauri.conf.json.
+# A tag `v*` builds the macOS and Windows apps, signs the updater artifacts and publishes ONE
+# release with latest.json (darwin-aarch64 + windows-x86_64), the .app.tar.gz, the .dmg and the
+# .msi (each updater artifact with its .sig). The signing key is a repository secret; the matching
+# public key is in machine/tauri.conf.json.
+#
+# The build jobs only upload workflow artifacts. The `publish` job needs both, creates the release
+# and writes latest.json once, so the two platforms can never race on it.
 on:
   push:
     tags:
       - "v*"
 
 permissions:
-  contents: write
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   macos:
@@ -26,15 +33,107 @@ jobs:
         with:
           workspaces: machine
       - run: pnpm install --frozen-lockfile
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build the app, .dmg and signed updater archive
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: "Kun ${{ github.ref_name }}"
-          releaseDraft: false
-          prerelease: false
-          uploadUpdaterJson: true
-          updaterJsonPreferNsis: false
+          name: release-macos
+          path: |
+            machine/target/release/bundle/macos/*.app.tar.gz
+            machine/target/release/bundle/macos/*.app.tar.gz.sig
+            machine/target/release/bundle/dmg/*.dmg
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "machine -> target"
+
+      # whisper-rs compiles whisper.cpp: it needs cmake (preinstalled with Visual Studio on the
+      # runner) and libclang for bindgen. The runner image ships LLVM; install it only if not.
+      - name: Make LLVM and cmake available
+        shell: pwsh
+        run: |
+          $llvm = 'C:\Program Files\LLVM\bin'
+          if (-not (Test-Path "$llvm\libclang.dll")) {
+            choco install llvm --no-progress -y
+          }
+          "LIBCLANG_PATH=$llvm" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if (-not (Get-Command cmake -ErrorAction SilentlyContinue)) {
+            choco install cmake --installargs 'ADD_CMAKE_TO_PATH=System' --no-progress -y
+          }
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The updater uses the .msi itself; signing it writes the matching .msi.sig. Run from the
+      # repo root: the Tauri CLI finds machine/tauri.conf.json there.
+      - name: Build the signed .msi
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles msi
+
+      # tauri.conf.json builds one .msi per WiX language; the updater points at the en-US one.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: |
+            machine/target/release/bundle/msi/*_en-US.msi
+            machine/target/release/bundle/msi/*_en-US.msi.sig
+          if-no-files-found: error
+
+  publish:
+    needs: [macos, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Write latest.json and publish the release
+        run: |
+          set -euo pipefail
+          cd dist
+          ls -l
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          mac=$(ls ./*.app.tar.gz)
+          win=$(ls ./*_en-US.msi)
+          mac=${mac#./}
+          win=${win#./}
+          jq -n \
+            --arg version "${TAG#v}" \
+            --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg macurl "$base/$mac" --arg macsig "$(cat "$mac.sig")" \
+            --arg winurl "$base/$win" --arg winsig "$(cat "$win.sig")" \
+            '{version: $version, notes: ("Kun " + $version), pub_date: $date,
+              platforms: {
+                "darwin-aarch64": {signature: $macsig, url: $macurl},
+                "darwin-aarch64-app": {signature: $macsig, url: $macurl},
+                "windows-x86_64": {signature: $winsig, url: $winurl},
+                "windows-x86_64-msi": {signature: $winsig, url: $winurl}
+              }}' > latest.json
+          cat latest.json
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --title "Kun $TAG" --verify-tag \
+            latest.json ./*.dmg "$mac" "$mac.sig" "$win" "$win.sig"

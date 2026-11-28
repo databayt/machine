@@ -855,3 +855,19 @@ fn iso_formats_epoch_seconds() {
     assert_eq!(catalog::iso(0), "1970-01-01T00:00:00Z");
     assert_eq!(catalog::iso(951_782_400), "2000-02-29T00:00:00Z");
 }
+
+#[test]
+fn prepended_dirs_come_first_once_and_only_if_they_exist() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let inherited = std::env::join_paths(["/Windows/System32", "/usr/bin"]).unwrap();
+    let out = super::run::prepend_path(
+        &[a.path().to_path_buf(), a.path().join("missing"), b.path().to_path_buf(), a.path().to_path_buf()],
+        Some(inherited),
+    );
+    let parts: Vec<_> = std::env::split_paths(&out).collect();
+    assert_eq!(parts[0], a.path());
+    assert_eq!(parts[1], b.path());
+    assert_eq!(parts.len(), 4);
+    assert!(parts[2].to_string_lossy().contains("System32"));
+}

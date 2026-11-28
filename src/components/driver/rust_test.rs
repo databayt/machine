@@ -227,6 +227,7 @@ fn windows_search_paths() {
         dirs,
         vec![
             PathBuf::from("C:/L/Programs/claude"),
+            PathBuf::from("C:/L/Programs"),
             PathBuf::from("C:/U/.local/bin"),
             PathBuf::from("C:/A/npm"),
         ]

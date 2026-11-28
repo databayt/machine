@@ -4,6 +4,8 @@
 use std::{path::Path, process::Stdio};
 
 use tokio::process::Command;
+#[cfg(windows)]
+use std::os::windows::process::CommandExt as _;
 
 use super::model::{Fix, FixKind, ReadinessError, Step, UninstallKind};
 
@@ -140,11 +142,32 @@ pub(super) fn plan(step: &Step, kun: &Path) -> Result<Action, ReadinessError> {
     }
 }
 
+/// A new PowerShell console window running `line`; it stays open.
+#[cfg(windows)]
+fn open_console(line: &str) -> Result<(), ReadinessError> {
+    const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+    std::process::Command::new("powershell.exe")
+        .args(["-NoLogo", "-NoExit", "-Command", line])
+        .creation_flags(CREATE_NEW_CONSOLE)
+        .stdin(Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| ReadinessError::Spawn("powershell", e.to_string()))
+}
+
+#[cfg(not(windows))]
+fn open_console(_line: &str) -> Result<(), ReadinessError> {
+    Err(ReadinessError::Unsupported("no console on this platform"))
+}
+
 /// Opens Terminal.app running `line`.
 ///
 /// # Errors
-/// Off macOS, or when `osascript` fails.
+/// Off macOS and Windows, or when `osascript` or `PowerShell` fails to start.
 pub(super) async fn open_terminal(line: &str) -> Result<(), ReadinessError> {
+    if cfg!(windows) {
+        return open_console(line);
+    }
     if !cfg!(target_os = "macos") {
         return Err(ReadinessError::Unsupported(
             "Terminal fixes need macOS; run the command in your own terminal",

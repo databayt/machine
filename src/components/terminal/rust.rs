@@ -156,13 +156,131 @@ pub(crate) fn default_cwd(home: &Path) -> PathBuf {
 
 const ZSH: [&str; 3] = ["/bin/zsh", "-l", "-i"];
 
-/// Lane → the argv that runs it. `None` or `local` is the person's own shell; anything else must
+/// The shell a terminal session (and the other script spawns) runs in. Resolved once by the caller
+/// so [`plan`] stays pure and every shape can be tested on any host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum Shell {
+    /// `/bin/zsh -l -i`: macOS and Linux.
+    Zsh,
+    /// Git for Windows' `bash.exe`, as a forward-slash path.
+    GitBash(String),
+    /// `powershell.exe -NoLogo`: Windows without Git.
+    Ps,
+}
+
+/// `'…'` for `PowerShell`: a quote (straight or typographic, which `PowerShell` also reads as one) doubles.
+pub(crate) fn ps_quote(s: &str) -> String {
+    let mut out = String::from("'");
+    for c in s.chars() {
+        out.push(c);
+        if matches!(c, '\'' | '\u{2018}' | '\u{2019}' | '\u{201A}' | '\u{201B}') {
+            out.push(c);
+        }
+    }
+    out.push('\'');
+    out
+}
+
+/// The Git for Windows install roots that exist, from `%ProgramFiles%`, `%ProgramW6432%` and
+/// `%LOCALAPPDATA%\Programs`, in that order.
+pub(crate) fn git_roots(program_files: Option<PathBuf>, program_w6432: Option<PathBuf>, local_app_data: Option<PathBuf>) -> Vec<PathBuf> {
+    [program_files, program_w6432, local_app_data.map(|p| p.join("Programs"))]
+        .into_iter()
+        .flatten()
+        .map(|p| p.join("Git"))
+        .collect()
+}
+
+/// `git_roots` from the environment.
+fn env_git_roots() -> Vec<PathBuf> {
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from);
+    git_roots(var("ProgramFiles"), var("ProgramW6432"), var("LOCALAPPDATA"))
+}
+
+/// Git for Windows' `bin` and `usr\bin` folders that exist: where `bash.exe` and the unix tools live.
+pub(crate) fn git_dirs() -> Vec<PathBuf> {
+    env_git_roots()
+        .into_iter()
+        .flat_map(|r| [r.join("bin"), r.join("usr").join("bin")])
+        .filter(|d| d.is_dir())
+        .collect()
+}
+
+/// The first `bash.exe` under the given Git roots, as a forward-slash path.
+pub(crate) fn find_git_bash(roots: &[PathBuf]) -> Option<String> {
+    roots
+        .iter()
+        .map(|r| r.join("bin").join("bash.exe"))
+        .find(|p| p.is_file())
+        .map(|p| p.to_string_lossy().replace('\\', "/"))
+}
+
+impl Shell {
+    /// The shell for this computer: zsh on macOS and Linux; on Windows Git Bash when installed,
+    /// else `PowerShell`.
+    pub(crate) fn host() -> Self {
+        if cfg!(windows) {
+            find_git_bash(&env_git_roots()).map_or(Self::Ps, Self::GitBash)
+        } else {
+            Self::Zsh
+        }
+    }
+
+    /// The argv of a plain interactive shell.
+    pub(crate) fn login_argv(&self) -> Vec<String> {
+        match self {
+            Self::Zsh => ZSH.map(String::from).to_vec(),
+            Self::GitBash(bash) => vec![bash.clone(), "-l".into(), "-i".into()],
+            Self::Ps => vec!["powershell.exe".into(), "-NoLogo".into()],
+        }
+    }
+
+    /// The argv that runs `bin args…` first and leaves the person at a prompt when it quits.
+    pub(crate) fn launcher_argv(&self, bin: &str, args: &[String]) -> Vec<String> {
+        let mut out = self.login_argv();
+        match self {
+            Self::Zsh | Self::GitBash(_) => {
+                let cmd = std::iter::once(shell_quote(bin))
+                    .chain(args.iter().map(|a| shell_quote(a)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                let again = match self {
+                    Self::GitBash(bash) => format!("{} -l -i", shell_quote(bash)),
+                    _ => ZSH.join(" "),
+                };
+                out.push("-c".into());
+                out.push(format!("{cmd}; exec {again}"));
+            }
+            Self::Ps => {
+                let line = std::iter::once(ps_quote(bin))
+                    .chain(args.iter().map(|a| ps_quote(a)))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                out.push("-NoExit".into());
+                out.push("-Command".into());
+                out.push(format!("& {line}"));
+            }
+        }
+        out
+    }
+}
+
+/// The `bash` that runs kun's `.sh` scripts: `/bin/bash`, or Git Bash on Windows.
+pub(crate) fn bash_program() -> Option<PathBuf> {
+    if cfg!(windows) {
+        find_git_bash(&env_git_roots()).map(PathBuf::from)
+    } else {
+        Some(PathBuf::from("/bin/bash"))
+    }
+}
+
+/// Lane → the argv that runs it, inside `shell`. `None` or `local` is the person's own shell; anything else must
 /// be a launcher id, run inside a shell so quitting the agent leaves the prompt. Pure apart from
 /// folder checks.
 ///
 /// # Errors
 /// When the lane is not in `specs`, anything names `fable`, or the folder is not one.
-pub(crate) fn plan(lane: Option<&str>, specs: &[LauncherSpec], cwd: Option<&str>, home: &Path) -> Result<Plan, TerminalError> {
+pub(crate) fn plan(shell: &Shell, lane: Option<&str>, specs: &[LauncherSpec], cwd: Option<&str>, home: &Path) -> Result<Plan, TerminalError> {
     let lane = lane.map(str::trim).filter(|l| !l.is_empty() && *l != "local");
     let spec = match lane {
         None => None,
@@ -191,17 +309,10 @@ pub(crate) fn plan(lane: Option<&str>, specs: &[LauncherSpec], cwd: Option<&str>
         }
         None => default_cwd(home),
     };
-    let mut argv: Vec<String> = ZSH.map(String::from).to_vec();
     let Some(spec) = spec else {
-        return Ok(Plan { argv, cwd, lane: "local".into(), base: "Local".into() });
+        return Ok(Plan { argv: shell.login_argv(), cwd, lane: "local".into(), base: "Local".into() });
     };
-    let run = std::iter::once(shell_quote(&spec.bin))
-        .chain(spec.args.iter().map(|a| shell_quote(a)))
-        .collect::<Vec<_>>()
-        .join(" ");
-    argv.push("-c".into());
-    argv.push(format!("{run}; exec {}", ZSH.join(" ")));
-    Ok(Plan { argv, cwd, lane: spec.id.clone(), base: spec.name.clone() })
+    Ok(Plan { argv: shell.launcher_argv(&spec.bin, &spec.args), cwd, lane: spec.id.clone(), base: spec.name.clone() })
 }
 
 fn clamp(n: u16) -> u16 {
@@ -487,7 +598,7 @@ async fn terminal_open<R: Runtime>(
         launcher_specs().map_err(TerminalError::NoCatalog)?
     };
     let home = dirs::home_dir().unwrap_or_default();
-    let plan = plan(lane.as_deref(), &specs, cwd.as_deref(), &home)?;
+    let plan = plan(&Shell::host(), lane.as_deref(), &specs, cwd.as_deref(), &home)?;
     {
         let reg = state.reg();
         if reg.len() >= MAX_TERMINALS {

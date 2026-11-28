@@ -93,6 +93,37 @@ fn node_dirs() -> Vec<PathBuf> {
     dirs
 }
 
+/// `prefix` (existing folders only, each once) in front of `inherited`, joined with the platform separator.
+pub(super) fn prepend_path(prefix: &[PathBuf], inherited: Option<std::ffi::OsString>) -> std::ffi::OsString {
+    let mut dirs: Vec<PathBuf> = Vec::new();
+    for d in prefix {
+        if d.is_dir() && !dirs.contains(d) {
+            dirs.push(d.clone());
+        }
+    }
+    if let Some(path) = inherited {
+        dirs.extend(std::env::split_paths(&path));
+    }
+    std::env::join_paths(dirs).unwrap_or_default()
+}
+
+/// The PATH the provision script runs with. On Windows, Git for Windows' `bin` and `usr\bin` come
+/// first so a plain `bash` is Git Bash, never `System32\bash.exe` (WSL), then the npm and `.local`
+/// installer folders. Elsewhere `None`: the inherited PATH is already right.
+fn provision_path() -> Option<std::ffi::OsString> {
+    if !cfg!(windows) {
+        return None;
+    }
+    let mut prefix = crate::terminal::git_dirs();
+    if let Some(p) = std::env::var_os("APPDATA") {
+        prefix.push(PathBuf::from(p).join("npm"));
+    }
+    if let Some(h) = dirs::home_dir() {
+        prefix.push(h.join(".local").join("bin"));
+    }
+    Some(prepend_path(&prefix, std::env::var_os("PATH")))
+}
+
 /// The `node` binary, if there is one.
 pub(super) fn find_node() -> Option<PathBuf> {
     let exe = if cfg!(windows) { "node.exe" } else { "node" };
@@ -156,9 +187,12 @@ pub(super) async fn stream(
     cancel: &Notify,
     emit: &mut (impl FnMut(RunEvent) + Send),
 ) -> Result<RunSummary, ReadinessError> {
-    let mut child = Command::new(program)
-        .args(args)
-        .current_dir(cwd)
+    let mut cmd = Command::new(program);
+    cmd.args(args).current_dir(cwd);
+    if let Some(path) = provision_path() {
+        cmd.env("PATH", path);
+    }
+    let mut child = cmd
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())

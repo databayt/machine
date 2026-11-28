@@ -311,7 +311,7 @@ fn the_catalog_offers_what_is_not_installed() {
 
 #[test]
 fn the_secrets_action_takes_a_gist_id_and_nothing_else() {
-    let line = super::secrets_line(Path::new("/Users/x/kun"), "a1b2c3d4e5f6").unwrap();
+    let line = super::secrets_line_for(false, Path::new("/Users/x/kun"), "a1b2c3d4e5f6").unwrap();
     assert_eq!(
         line,
         "cd '/Users/x/kun' && bash .claude/scripts/secrets.sh a1b2c3d4e5f6"
@@ -328,4 +328,14 @@ fn the_secrets_action_takes_a_gist_id_and_nothing_else() {
             "{bad:?}"
         );
     }
+}
+
+#[test]
+fn the_windows_secrets_line_runs_the_ps1_with_the_gist_id() {
+    let line = super::secrets_line_for(true, Path::new(r"C:\Users\a b\kun"), "a1b2c3d4e5f6").unwrap();
+    assert_eq!(
+        line,
+        r"Set-Location 'C:\Users\a b\kun'; & .\.claude\scripts\secrets.ps1 -GistId a1b2c3d4e5f6"
+    );
+    assert!(super::secrets_line_for(true, Path::new("C:/k"), "x; calc").is_err());
 }

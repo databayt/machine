@@ -242,6 +242,8 @@ pub(crate) fn search_dirs() -> Vec<PathBuf> {
             std::env::var_os("USERPROFILE").map(PathBuf::from),
             std::env::var_os("APPDATA").map(PathBuf::from),
         ));
+        // Git for Windows: bash.exe and the unix tools the launcher scripts use.
+        dirs.extend(crate::terminal::git_dirs());
     }
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].map(PathBuf::from));
     if let Some(path) = std::env::var_os("PATH") {
@@ -271,6 +273,7 @@ fn windows_dirs(
     let mut dirs = Vec::new();
     if let Some(p) = local_app_data {
         dirs.push(p.join("Programs").join("claude"));
+        dirs.push(p.join("Programs"));
     }
     if let Some(p) = user_profile {
         dirs.push(p.join(".local").join("bin"));

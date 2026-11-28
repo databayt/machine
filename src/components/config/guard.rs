@@ -66,7 +66,11 @@ pub(super) async fn health_verdict(kun: &Path) -> Verdict {
     if !script.is_file() {
         return Verdict::Unknown;
     }
-    let run = Command::new("/bin/bash")
+    // health.sh is the one that prints the JSON verdict, so Windows runs it under Git Bash.
+    let Some(bash) = crate::terminal::bash_program() else {
+        return Verdict::Unknown;
+    };
+    let run = Command::new(bash)
         .arg(&script)
         .arg("--json")
         .current_dir(kun)

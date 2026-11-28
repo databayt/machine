@@ -27,19 +27,19 @@ fn quoting_survives_embedded_quotes() {
 #[test]
 fn a_launcher_runs_inside_a_shell_that_survives_it() {
     let home = tempfile::tempdir().unwrap();
-    let p = plan(Some("c"), &specs(), None, home.path()).unwrap();
+    let p = plan(&Shell::Zsh, Some("c"), &specs(), None, home.path()).unwrap();
     assert_eq!(p.argv[..4], ["/bin/zsh", "-l", "-i", "-c"]);
     assert_eq!(p.argv[4], "'claude' '--dangerously-skip-permissions'; exec /bin/zsh -l -i");
     assert_eq!(p.argv.len(), 5);
     assert_eq!((p.lane.as_str(), p.base.as_str()), ("c", "c"));
-    assert_eq!(plan(Some("f"), &specs(), None, home.path()).unwrap().argv[4], "'kun-free.sh'; exec /bin/zsh -l -i");
+    assert_eq!(plan(&Shell::Zsh, Some("f"), &specs(), None, home.path()).unwrap().argv[4], "'kun-free.sh'; exec /bin/zsh -l -i");
 }
 
 #[test]
 fn local_is_a_plain_login_shell() {
     let home = tempfile::tempdir().unwrap();
     for lane in [None, Some("local"), Some(" local "), Some("")] {
-        let p = plan(lane, &specs(), None, home.path()).unwrap();
+        let p = plan(&Shell::Zsh, lane, &specs(), None, home.path()).unwrap();
         assert_eq!(p.argv, ["/bin/zsh", "-l", "-i"], "{lane:?}");
         assert_eq!((p.lane.as_str(), p.base.as_str()), ("local", "Local"));
         assert_eq!(p.cwd, home.path());
@@ -50,7 +50,7 @@ fn local_is_a_plain_login_shell() {
 fn only_a_listed_lane_runs() {
     let home = tempfile::tempdir().unwrap();
     for lane in ["x", "claude", "c; rm -rf ~", "C", "LOCAL"] {
-        assert!(matches!(plan(Some(lane), &specs(), None, home.path()), Err(TerminalError::Unknown(_))), "{lane:?}");
+        assert!(matches!(plan(&Shell::Zsh, Some(lane), &specs(), None, home.path()), Err(TerminalError::Unknown(_))), "{lane:?}");
     }
 }
 
@@ -61,24 +61,24 @@ fn fable_is_refused_wherever_it_hides() {
         spec("a", "claude", &["--model", "Claude-Fable-5"]),
         spec("b", "fable-cli", &[]),
     ];
-    assert!(matches!(plan(Some("a"), &bad, None, home.path()), Err(TerminalError::Refused(_))));
-    assert!(matches!(plan(Some("b"), &bad, None, home.path()), Err(TerminalError::Refused(_))));
+    assert!(matches!(plan(&Shell::Zsh, Some("a"), &bad, None, home.path()), Err(TerminalError::Refused(_))));
+    assert!(matches!(plan(&Shell::Zsh, Some("b"), &bad, None, home.path()), Err(TerminalError::Refused(_))));
     let dir = home.path().join("fable-dir");
     std::fs::create_dir(&dir).unwrap();
-    assert!(matches!(plan(Some("c"), &specs(), dir.to_str(), home.path()), Err(TerminalError::Refused(_))));
-    assert!(matches!(plan(None, &specs(), dir.to_str(), home.path()), Err(TerminalError::Refused(_))));
+    assert!(matches!(plan(&Shell::Zsh, Some("c"), &specs(), dir.to_str(), home.path()), Err(TerminalError::Refused(_))));
+    assert!(matches!(plan(&Shell::Zsh, None, &specs(), dir.to_str(), home.path()), Err(TerminalError::Refused(_))));
 }
 
 #[test]
 fn the_folder_defaults_to_kun_then_home_and_must_exist() {
     let home = tempfile::tempdir().unwrap();
-    assert_eq!(plan(Some("c"), &specs(), None, home.path()).unwrap().cwd, home.path());
+    assert_eq!(plan(&Shell::Zsh, Some("c"), &specs(), None, home.path()).unwrap().cwd, home.path());
     std::fs::create_dir(home.path().join("kun")).unwrap();
-    assert_eq!(plan(Some("c"), &specs(), Some("  "), home.path()).unwrap().cwd, home.path().join("kun"));
+    assert_eq!(plan(&Shell::Zsh, Some("c"), &specs(), Some("  "), home.path()).unwrap().cwd, home.path().join("kun"));
     let work = tempfile::tempdir().unwrap();
-    assert_eq!(plan(None, &specs(), work.path().to_str(), home.path()).unwrap().cwd, work.path());
+    assert_eq!(plan(&Shell::Zsh, None, &specs(), work.path().to_str(), home.path()).unwrap().cwd, work.path());
     for bad in ["relative/dir", "/definitely/not/here"] {
-        assert!(matches!(plan(Some("c"), &specs(), Some(bad), home.path()), Err(TerminalError::Refused(_))), "{bad}");
+        assert!(matches!(plan(&Shell::Zsh, Some("c"), &specs(), Some(bad), home.path()), Err(TerminalError::Refused(_))), "{bad}");
     }
 }
 
@@ -233,4 +233,72 @@ fn clean_name_rules() {
     assert_eq!(clean_name("  hi\n  "), "hi");
     assert_eq!(clean_name(""), "");
     assert_eq!(clean_name(&"x".repeat(41)).len(), 40);
+}
+
+fn git_bash() -> Shell {
+    Shell::GitBash("C:/Program Files/Git/bin/bash.exe".into())
+}
+
+#[test]
+fn unix_local_and_launcher_shapes_are_unchanged() {
+    assert_eq!(Shell::Zsh.login_argv(), ["/bin/zsh", "-l", "-i"]);
+    assert_eq!(
+        Shell::Zsh.launcher_argv("claude", &["--dangerously-skip-permissions".into()]),
+        ["/bin/zsh", "-l", "-i", "-c", "'claude' '--dangerously-skip-permissions'; exec /bin/zsh -l -i"]
+    );
+}
+
+#[test]
+fn git_bash_runs_the_launcher_then_a_prompt() {
+    assert_eq!(git_bash().login_argv(), ["C:/Program Files/Git/bin/bash.exe", "-l", "-i"]);
+    assert_eq!(
+        git_bash().launcher_argv("claude", &["--dangerously-skip-permissions".into(), "it's".into()]),
+        [
+            "C:/Program Files/Git/bin/bash.exe",
+            "-l",
+            "-i",
+            "-c",
+            r"'claude' '--dangerously-skip-permissions' 'it'\''s'; exec 'C:/Program Files/Git/bin/bash.exe' -l -i"
+        ]
+    );
+}
+
+#[test]
+fn powershell_launcher_doubles_quotes_and_keeps_spaces_in_one_word() {
+    assert_eq!(Shell::Ps.login_argv(), ["powershell.exe", "-NoLogo"]);
+    assert_eq!(
+        Shell::Ps.launcher_argv("claude", &["--add-dir".into(), "C:\\Users\\a b\\it's".into()]),
+        [
+            "powershell.exe",
+            "-NoLogo",
+            "-NoExit",
+            "-Command",
+            "& 'claude' '--add-dir' 'C:\\Users\\a b\\it''s'"
+        ]
+    );
+    assert_eq!(ps_quote("\u{2019}x"), "'\u{2019}\u{2019}x'");
+}
+
+#[test]
+fn plan_takes_the_shell_it_is_given() {
+    let home = tempfile::tempdir().unwrap();
+    let p = plan(&Shell::Ps, Some("o"), &specs(), None, home.path()).unwrap();
+    assert_eq!(p.argv, ["powershell.exe", "-NoLogo", "-NoExit", "-Command", "& 'opencode'"]);
+    assert_eq!(plan(&git_bash(), None, &specs(), None, home.path()).unwrap().argv.len(), 3);
+}
+
+#[test]
+fn git_bash_is_found_in_the_first_root_that_has_it() {
+    let a = tempfile::tempdir().unwrap();
+    let b = tempfile::tempdir().unwrap();
+    let roots = vec![a.path().join("Git"), b.path().join("Git")];
+    assert_eq!(find_git_bash(&roots), None);
+    std::fs::create_dir_all(b.path().join("Git/bin")).unwrap();
+    std::fs::write(b.path().join("Git/bin/bash.exe"), "").unwrap();
+    let found = find_git_bash(&roots).unwrap();
+    assert!(found.ends_with("Git/bin/bash.exe") && !found.contains('\\'));
+    assert_eq!(
+        git_roots(Some("P".into()), None, Some("L".into())),
+        [PathBuf::from("P").join("Git"), PathBuf::from("L").join("Programs").join("Git")]
+    );
 }

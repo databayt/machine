@@ -197,8 +197,19 @@ pub(super) fn valid_gist(id: &str) -> bool {
 /// The Terminal line that loads the team secrets: the id is typed by the person into the app, the
 /// secrets are fetched by kun's script into `~/.claude/.env`, and nothing comes back here.
 pub(super) fn secrets_line(kun: &Path, gist_id: &str) -> Result<String, ConfigError> {
+    secrets_line_for(cfg!(windows), kun, gist_id)
+}
+
+/// [`secrets_line`] for a named platform: `secrets.sh` under bash, `secrets.ps1 -GistId` under `PowerShell`.
+pub(super) fn secrets_line_for(windows: bool, kun: &Path, gist_id: &str) -> Result<String, ConfigError> {
     if !valid_gist(gist_id) {
         return Err(ConfigError::BadGist(gist_id.chars().take(12).collect()));
+    }
+    if windows {
+        return Ok(format!(
+            "Set-Location {}; & .\\.claude\\scripts\\secrets.ps1 -GistId {gist_id}",
+            crate::terminal::ps_quote(&kun.display().to_string())
+        ));
     }
     Ok(format!(
         "cd {} && bash .claude/scripts/secrets.sh {gist_id}",
